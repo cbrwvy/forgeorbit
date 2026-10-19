@@ -397,7 +397,7 @@ test("missing URL throws the clone usage error (first USAGE.clone line) and neve
   );
 
   await expect(cmdClone([], flags)).rejects.toThrow(
-    "usage: agetor clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]",
+    "usage: forgeorbit clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]",
   );
   expect(calls).toHaveLength(0);
 });
@@ -411,7 +411,7 @@ test("a first arg starting with '-' throws the same usage error and never calls 
   );
 
   await expect(cmdClone(["--provider", "github"], flags)).rejects.toThrow(
-    "usage: agetor clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]",
+    "usage: forgeorbit clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]",
   );
   expect(calls).toHaveLength(0);
 });

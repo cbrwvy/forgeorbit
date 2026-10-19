@@ -73,10 +73,10 @@ function refuse(message: string): never {
   process.exit(2);
 }
 
-const rawDataDir = process.env.AGETOR_DATA_DIR;
+const rawDataDir = process.env.FORGEORBIT_DATA_DIR ?? process.env.AGETOR_DATA_DIR;
 if (!rawDataDir || rawDataDir.trim() === "") {
   refuse(
-    "AGETOR_DATA_DIR is required (point it at ~/.agetor-dev holding a `.backup` copy of the production DB — see the header of this file)",
+    "FORGEORBIT_DATA_DIR / AGETOR_DATA_DIR is required (point it at ~/.agetor-dev holding a `.backup` copy of the production DB — see the header of this file)",
   );
 }
 const prodLexical = path.resolve(homedir(), ".agetor");
@@ -86,7 +86,7 @@ const dataReal = realpathOr(dataLexical);
 for (const prod of new Set([prodLexical, prodReal])) {
   for (const cand of new Set([dataLexical, dataReal])) {
     if (isInsideOrEqual(prod, cand)) {
-      refuse(`AGETOR_DATA_DIR (${rawDataDir}) is or is inside the production data dir ${prodLexical}`);
+      refuse(`data dir (${rawDataDir}) is or is inside the production data dir ${prodLexical}`);
     }
   }
 }
@@ -102,6 +102,7 @@ for (const prod of new Set([prodLexical, prodReal])) {
   }
 }
 // Normalise so db.ts opens exactly the directory we verified.
+process.env.FORGEORBIT_DATA_DIR = dataReal;
 process.env.AGETOR_DATA_DIR = dataReal;
 
 // Measure production defaults: the watcher must be on (the repo's test seams

@@ -22,10 +22,11 @@ import path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SRC = path.join(REPO_ROOT, "native", "notifier", "notifier.swift");
 const PLIST = path.join(REPO_ROOT, "native", "notifier", "Info.plist");
-const ICONSET = path.join(REPO_ROOT, "src", "assets", "agetor.iconset");
+const ICONSET = path.join(REPO_ROOT, "src", "assets", "forgeorbit.iconset");
 
 const OUT_DIR = path.join(REPO_ROOT, "vendor", "notifier");
-const APP = path.join(OUT_DIR, "AgetorNotifier.app");
+const APP = path.join(OUT_DIR, "ForgeOrbitNotifier.app");
+const LEGACY_APP = path.join(OUT_DIR, "AgetorNotifier.app");
 const CONTENTS = path.join(APP, "Contents");
 const EXE = path.join(CONTENTS, "MacOS", "notifier");
 const STAMP = path.join(OUT_DIR, ".signed-by");
@@ -59,7 +60,7 @@ async function main() {
     return;
   }
   if (process.arch !== "arm64") {
-    fail(`expected an arm64 build host (got ${process.arch}); Agetor only ships arm64`);
+    fail(`expected an arm64 build host (got ${process.arch}); ForgeOrbit only ships arm64`);
   }
   if (!existsSync(SRC) || !existsSync(PLIST)) {
     fail(`missing helper sources at ${path.relative(REPO_ROOT, path.dirname(SRC))}/`);
@@ -86,6 +87,7 @@ async function main() {
 
   // Fresh bundle each time so stale artifacts can't linger.
   await rm(APP, { recursive: true, force: true });
+  await rm(LEGACY_APP, { recursive: true, force: true });
   await mkdir(path.join(CONTENTS, "MacOS"), { recursive: true });
   await mkdir(path.join(CONTENTS, "Resources"), { recursive: true });
 

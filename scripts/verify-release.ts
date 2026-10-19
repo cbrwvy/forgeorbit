@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { verifyVendorSigning } from "./verify-vendor-signing.ts";
 
-const APP_NAME = "Agetor";
+const APP_NAME = "ForgeOrbit";
 
 function fail(msg: string): never {
   console.error(`\n❌ ${msg}\n`);
@@ -48,7 +48,7 @@ const summary: { dmg: string; arch: string; size: number; sha: string }[] = [];
 for (const dmgName of dmgs) {
   const dmg = join("artifacts", dmgName);
   // Try to locate matching .app for codesign + spctl checks. Filename pattern:
-  // Agetor-<arch>.dmg ↔ build/<env>-macos-<arch>/Agetor.app
+  // ForgeOrbit-<arch>.dmg ↔ build/<env>-macos-<arch>/ForgeOrbit.app
   const archMatch = dmgName.match(/-(arm64|x64)\.dmg$/);
   if (!archMatch) fail(`cannot parse arch from ${dmgName}`);
   const arch = archMatch[1];
@@ -66,7 +66,7 @@ for (const dmgName of dmgs) {
   console.log("    codesign:  app satisfies its Designated Requirement");
 
   // The nested binaries we ship under Contents/Resources/app/bin/ (tmux + its
-  // dylibs, AgetorNotifier.app, disclaim) are NOT signed by electrobun — its
+  // dylibs, ForgeOrbitNotifier.app, disclaim) are NOT signed by electrobun — its
   // codesign pass covers Frameworks, Contents/MacOS/**, Resources/app/bun/
   // *.node, the launcher and the outer bundle, without --deep. They must
   // therefore be Developer ID + hardened runtime + secure timestamp before the

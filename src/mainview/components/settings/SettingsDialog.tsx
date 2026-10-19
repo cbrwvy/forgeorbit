@@ -961,7 +961,7 @@ function ArchivedHistorySection() {
         <>
           Rewrites the database file to give back unused space
           {fresh ? ` (about ${formatBytes(fresh.reclaimableBytes)} reclaimable)` : ""}. This takes about {estimateSec} s,
-          and Agetor won't respond while it runs. Compacting is refused while any task is running.
+          and ForgeOrbit won't respond while it runs. Compacting is refused while any task is running.
         </>
       ),
       confirmLabel: "Compact",
@@ -1022,7 +1022,7 @@ function ArchivedHistorySection() {
         >
           Compact database
         </Button>
-        <span className="text-[11px] text-muted-foreground">Reclaims unused space; pauses Agetor briefly.</span>
+        <span className="text-[11px] text-muted-foreground">Reclaims unused space; pauses ForgeOrbit briefly.</span>
       </div>
       {compactResult && (
         <p className="text-[11px] text-success" data-testid="settings-db-compact-result">
@@ -1046,7 +1046,7 @@ function ArchivedHistorySection() {
                 Compacting… ~{compacting?.estimateSec ?? 0} s
               </h2>
               <p className="text-xs text-muted-foreground">
-                Agetor won't respond until this finishes. Please don't quit.
+                ForgeOrbit won't respond until this finishes. Please don't quit.
               </p>
             </div>
           </div>
@@ -1137,7 +1137,7 @@ function GeneralSection({
           <option value="system">System tmux (from PATH)</option>
           <option value="bundled" disabled={!bundledTmuxAvailable}>
             {bundledTmuxAvailable
-              ? "Bundled tmux (shipped with Agetor)"
+              ? "Bundled tmux (shipped with ForgeOrbit)"
               : "Bundled tmux — not available in this build"}
           </option>
         </Select>
@@ -1240,19 +1240,19 @@ function GeneralSection({
       <section className="space-y-1">
         <div className="flex items-center justify-between gap-4">
           <label htmlFor="disclaim-spawned-agents" className="text-xs text-muted-foreground">
-            Isolate agent permissions from Agetor (macOS)
+            Isolate agent permissions from ForgeOrbit (macOS)
           </label>
           <Switch
             id="disclaim-spawned-agents"
             checked={disclaimSpawnedAgents}
             // keep in sync with DISCLAIM_PREF_KEY in src/bun/disclaim.ts
             onCheckedChange={onDisclaimSpawnedAgentsChange}
-            aria-label="Isolate agent permissions from Agetor (macOS)"
+            aria-label="Isolate agent permissions from ForgeOrbit (macOS)"
           />
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Spawned agents ask for macOS permissions under their own name instead of Agetor's, so the "access data
-          from other apps" prompt stops naming Agetor and sticks after you Allow it once. Turn off to revert to the
+          Spawned agents ask for macOS permissions under their own name instead of ForgeOrbit's, so the "access data
+          from other apps" prompt stops naming ForgeOrbit and sticks after you Allow it once. Turn off to revert to the
           previous behavior.
         </p>
       </section>
@@ -1271,7 +1271,7 @@ function GeneralSection({
           />
         </div>
         <p className="text-[11px] text-muted-foreground">
-          When fx pauses after repeated Gateway 429s, Agetor resumes the response automatically, up to {FX_AUTO_RESUME_MAX} times per pause.
+          When fx pauses after repeated Gateway 429s, ForgeOrbit resumes the response automatically, up to {FX_AUTO_RESUME_MAX} times per pause.
         </p>
         <div className="flex items-center justify-between gap-4 pt-1">
           <label htmlFor="fx-auto-resume-delay" className="text-xs text-muted-foreground">
@@ -1330,6 +1330,13 @@ function GeneralSection({
         </div>
         <p className="text-[11px] text-muted-foreground">
           Bring back the onboarding checklist.
+        </p>
+      </section>
+
+      <section className="space-y-0.5 border-t border-border/50 pt-3">
+        <p className="text-xs font-medium text-foreground">ForgeOrbit — Your agents. One orbit.</p>
+        <p className="text-[11px] text-muted-foreground">
+          Developed by Lunarian Forge · Open Source (MIT) · Based on Agetor
         </p>
       </section>
     </div>

@@ -142,13 +142,13 @@ test("cmdCancel: a plain task that isn't running throws 'task is not running'", 
 
 // ── cmdStart ─────────────────────────────────────────────────────────────
 
-test("cmdStart: a running pipeline (parent) task's error points at `agetor cancel` / `agetor pipeline retry`, not cancel/answer/send", async () => {
+test("cmdStart: a running pipeline (parent) task's error points at `forgeorbit cancel` / `forgeorbit pipeline retry`, not cancel/answer/send", async () => {
   const parent = makeTask({ id: "parent-1", pipelineId: "pipe-1", column: "running", runId: null });
   const { client, startTaskCalls } = makeClient([parent]);
   currentClient = client;
 
   await expect(cmdStart(["parent-1"], flags)).rejects.toThrow(
-    /pipeline is already running — stop it with 'agetor cancel parent-1', or retry .* 'agetor pipeline retry parent-1'/,
+    /pipeline is already running — stop it with 'forgeorbit cancel parent-1', or retry .* 'forgeorbit pipeline retry parent-1'/,
   );
   expect(startTaskCalls).toEqual([]);
 });
@@ -159,7 +159,7 @@ test("cmdStart: a blocked pipeline (parent) task reads 'already blocked' and poi
   currentClient = client;
 
   await expect(cmdStart(["parent-1"], flags)).rejects.toThrow(/pipeline is already blocked/);
-  await expect(cmdStart(["parent-1"], flags)).rejects.toThrow(/agetor pipeline retry parent-1/);
+  await expect(cmdStart(["parent-1"], flags)).rejects.toThrow(/forgeorbit pipeline retry parent-1/);
 });
 
 test("cmdStart: a not-yet-run pipeline (parent) task starts normally via startTask", async () => {
@@ -177,5 +177,5 @@ test("cmdStart: a plain running task keeps the generic cancel/answer/send error"
   const { client } = makeClient([makeTask({ id: "t1", column: "running", runId: "run-9" })]);
   currentClient = client;
 
-  await expect(cmdStart(["t1"], flags)).rejects.toThrow(/agetor cancel t1.*agetor answer t1.*agetor send t1/);
+  await expect(cmdStart(["t1"], flags)).rejects.toThrow(/forgeorbit cancel t1.*forgeorbit answer t1.*forgeorbit send t1/);
 });

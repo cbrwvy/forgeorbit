@@ -107,7 +107,7 @@ test("pipelineLogsHint: lists every step task's title + short id", async () => {
   } as unknown as AgetorClient;
   const hint = await pipelineLogsHint(client, { id: "parent-1" } as unknown as Task);
   expect(hint).toContain("pipeline task");
-  expect(hint).toContain("agetor logs <stepTaskId>");
+  expect(hint).toContain("forgeorbit logs <stepTaskId>");
   expect(hint).toContain("Bug fix flow · Investigate (step-tas");
   expect(hint).toContain("Bug fix flow · Fix (step-tas");
 });
@@ -132,7 +132,7 @@ test("pipelineLogsHint: degrades to the plain hint (never throws) if the pipelin
 });
 
 // L-CLI6: a parent's `/tasks/:id/events` stream is silent forever, so
-// `agetor logs <parent>` prints the hint and RETURNS instead of following
+// `forgeorbit logs <parent>` prints the hint and RETURNS instead of following
 // (or rebuilding) nothing — only `--notify` keeps a subscription open, since
 // the parent's own column transitions do ride the global event stream.
 
@@ -203,7 +203,7 @@ test("logs --rebuild: an fx_permission interaction gets the fx-specific line", a
   currentClient = makeClient([e]);
   await cmdLogs(["t1", "--rebuild"], flags);
   expect(outputs).toHaveLength(1);
-  expect(outputs[0]).toContain("! fx is requesting permission — agetor answer t1");
+  expect(outputs[0]).toContain("! fx is requesting permission — forgeorbit answer t1");
 });
 
 test("logs --rebuild: a non-fx interaction gets the generic '(kind)' line", async () => {
@@ -215,7 +215,7 @@ test("logs --rebuild: a non-fx interaction gets the generic '(kind)' line", asyn
   currentClient = makeClient([e]);
   await cmdLogs(["t1", "--rebuild"], flags);
   expect(outputs).toHaveLength(1);
-  expect(outputs[0]).toContain("! needs answer (ask_questions) — agetor answer t1");
+  expect(outputs[0]).toContain("! needs answer (ask_questions) — forgeorbit answer t1");
 });
 
 test("logs --rebuild: internal-only status sentinels (fx-usage, permission-mode) are suppressed", async () => {

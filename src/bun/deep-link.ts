@@ -1,20 +1,23 @@
 /**
- * Pure helpers for agetor's custom URL scheme (`agetor://`), used to deep
- * link from outside the app (e.g. a terminal-notifier click) back into a
- * specific task. The only verb today is opening a task:
+ * Pure helpers for ForgeOrbit's custom URL scheme (`forgeorbit://`, with
+ * backward compatibility for legacy `agetor://`), used to deep link from
+ * outside the app (e.g. a notification click) back into a specific task:
  *
- *   agetor://task/<taskId>
+ *   forgeorbit://task/<taskId>
  *
  * Kept dependency-free and side-effect-free at import time so it's trivially
  * unit-testable and safe to import from both the main process and tests.
  */
 
 /** The app's custom URL scheme, without the trailing colon. */
-export const APP_URL_SCHEME = "agetor";
+export const APP_URL_SCHEME = "forgeorbit";
+
+/** Legacy URL scheme accepted for backward compatibility. */
+export const LEGACY_APP_URL_SCHEME = "agetor";
 
 /**
  * Builds a deep link that opens a given task, e.g.
- *   buildTaskDeepLink("abc123") -> "agetor://task/abc123"
+ *   buildTaskDeepLink("abc123") -> "forgeorbit://task/abc123"
  * The taskId is percent-encoded so ids containing "/", "?", "#", etc. still
  * round-trip through parseTaskDeepLink.
  */
@@ -23,21 +26,9 @@ export function buildTaskDeepLink(taskId: string): string {
 }
 
 /**
- * Parses a `agetor://task/<taskId>` deep link and returns the decoded
- * taskId, or `null` if the URL is malformed in any way. Never throws.
- *
- * Strictness rules (deliberately the stricter reading where the spec allows
- * a choice):
- *   - scheme must be exactly "agetor:" (case-insensitive, per the URL spec —
- *     WHATWG URL parsing already lowercases the scheme for us).
- *   - host/authority must be exactly "task".
- *   - the path must be exactly one non-empty segment: "/<id>". Anything else
- *     (missing id, empty id, an extra "/segment", a doubled "//") is
- *     rejected outright rather than best-effort-normalized.
- *   - a query string or fragment is treated as identity-changing junk and
- *     rejected — a deep link either has one canonical form or is invalid,
- *     so callers never have to reason about how "?x=1" or "#y" should be
- *     ignored.
+ * Parses a `forgeorbit://task/<taskId>` (or legacy `agetor://task/<taskId>`)
+ * deep link and returns the decoded taskId, or `null` if the URL is malformed
+ * in any way. Never throws.
  */
 export function parseTaskDeepLink(url: string): string | null {
   let parsed: URL;
@@ -47,7 +38,8 @@ export function parseTaskDeepLink(url: string): string | null {
     return null;
   }
 
-  if (parsed.protocol.toLowerCase() !== `${APP_URL_SCHEME}:`) return null;
+  const proto = parsed.protocol.toLowerCase();
+  if (proto !== `${APP_URL_SCHEME}:` && proto !== `${LEGACY_APP_URL_SCHEME}:`) return null;
   if (parsed.host.toLowerCase() !== "task") return null;
   if (parsed.search !== "" || parsed.hash !== "") return null;
 

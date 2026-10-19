@@ -2,18 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Branded "Agetor" so the one-time notification-permission prompt and the
-       System Settings > Notifications row read as Agetor, even though this
+  <!-- Branded "ForgeOrbit" so the one-time notification-permission prompt and the
+       System Settings > Notifications row read as ForgeOrbit, even though this
        helper posts under its own bundle id (below). -->
   <key>CFBundleName</key>
-  <string>Agetor</string>
+  <string>ForgeOrbit</string>
   <key>CFBundleDisplayName</key>
-  <string>Agetor</string>
-  <!-- Distinct from the main app's sh.alamops.agetor. MUST stay stable across
+  <string>ForgeOrbit</string>
+  <!-- Distinct from the main app's com.lunarianforge.forgeorbit. MUST stay stable across
        releases: TCC keys the granted notification permission on this id, so
        changing it would re-prompt the user. -->
   <key>CFBundleIdentifier</key>
-  <string>sh.alamops.agetor.notifier</string>
+  <string>com.lunarianforge.forgeorbit.notifier</string>
   <key>CFBundleExecutable</key>
   <string>notifier</string>
   <key>CFBundlePackageType</key>

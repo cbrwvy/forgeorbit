@@ -228,7 +228,7 @@ export async function cmdAdd(args: string[], flags: Flags): Promise<void> {
   if (chooseAddPath({ explicit, isTTY, json: flags.json }) === "non-interactive") {
     if (!(o.title && prompt)) {
       throw new Error(
-        "agetor add needs --title and --prompt (or --prompt-file), or --issue <url>, when not run interactively",
+        "forgeorbit add needs --title and --prompt (or --prompt-file), or --issue <url>, when not run interactively",
       );
     }
     // An explicit `--mode` is never touched; only fill the gap a scripted
@@ -375,10 +375,10 @@ export async function cmdAdd(args: string[], flags: Flags): Promise<void> {
   );
   if (startError) out(c.yellow(`  ! ${escapeFreeText(startError)}`));
   warnUnresolvedRefs(unresolvedRefsWarning);
-  if (!started) out(c.dim(`  start it: agetor start ${task.id.slice(0, 8)}`));
+  if (!started) out(c.dim(`  start it: forgeorbit start ${task.id.slice(0, 8)}`));
 }
 
-/** Pure decision of whether `agetor add` should run non-interactively (a
+/** Pure decision of whether `forgeorbit add` should run non-interactively (a
  *  ready-made title+prompt already in hand) or launch the interactive
  *  wizard — factored out of `cmdAdd` so the branching (fix for `--issue`
  *  wrongly bypassing the wizard) is testable without driving `@clack/prompts`.
@@ -400,7 +400,7 @@ export function chooseAddPath(input: {
 }
 
 /**
- * The `mode` a non-interactive `agetor add` should store when `--mode`
+ * The `mode` a non-interactive `forgeorbit add` should store when `--mode`
  * wasn't passed. Before this, the non-interactive path (`baseInput`)
  * forwarded `o.mode` verbatim, so a scripted add with no `--mode` stored
  * `null` and the task spawned on whatever bare fallback the driver picks at
@@ -510,7 +510,7 @@ async function wizard(
   o: AddOpts,
   prefilledPrompt: string | undefined,
 ): Promise<CreateTaskInput | null> {
-  p.intro(c.cyan("New Agetor task"));
+  p.intro(c.cyan("New ForgeOrbit task"));
 
   const title =
     o.title ??

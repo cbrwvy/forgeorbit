@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Publishes the artifacts/ folder to a GitHub Release on alamops/agetor:
+// Publishes the artifacts/ folder to a GitHub Release on cbrwvy/forgeorbit:
 //
 //   1. Creates a release tagged v<package.json#version>, or replaces all
 //      assets if the tag already exists. The release row itself is never
@@ -7,23 +7,23 @@
 //      off it, so destroying it briefly would 404 anyone polling at the
 //      wrong moment.
 //   2. Uploads:
-//        - artifacts/Agetor-arm64.dmg                    (first-install DMG)
-//        - artifacts/<channel>-macos-arm64-Agetor.app.tar.zst  (updater bundle)
-//        - artifacts/<channel>-macos-arm64-update.json   (updater manifest)
-//      The DMG is intentionally unversioned so agetor.dev can link at
-//      releases/latest/download/Agetor-arm64.dmg without per-release edits.
+//        - artifacts/ForgeOrbit-arm64.dmg                    (first-install DMG)
+//        - artifacts/<channel>-macos-arm64-ForgeOrbit.app.tar.zst  (updater bundle)
+//        - artifacts/<channel>-macos-arm64-update.json       (updater manifest)
+//      The DMG is intentionally unversioned so the site/README can link at
+//      releases/latest/download/ForgeOrbit-arm64.dmg without per-release edits.
 //   3. Each filename is preserved verbatim — Electrobun's updater fetches
 //      <baseUrl>/<channel>-macos-arm64-update.json and expects an exact match.
 //
 // Auth: requires GITHUB_TOKEN with `contents:write` on the target repo (a
-// fine-grained PAT scoped to alamops/agetor is enough). Read from env or
+// fine-grained PAT scoped to cbrwvy/forgeorbit is enough). Read from env or
 // from .env.local via bun's auto-loader.
 
 import { existsSync, statSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const REPO = "alamops/agetor";
+const REPO = "cbrwvy/forgeorbit";
 const API = "https://api.github.com";
 const VERSION = (await Bun.file("package.json").json()).version as string;
 const TAG = `v${VERSION}`;
@@ -157,8 +157,8 @@ async function main() {
 
   // Pick the three files the release ships. Filenames are pinned by
   // electrobun build / rename-dmg, so a hardcoded shape is fine here.
-  const dmg = files.find((f) => f === "Agetor-arm64.dmg");
-  const tarZst = files.find((f) => f === "stable-macos-arm64-Agetor.app.tar.zst");
+  const dmg = files.find((f) => f === "ForgeOrbit-arm64.dmg");
+  const tarZst = files.find((f) => f === "stable-macos-arm64-ForgeOrbit.app.tar.zst");
   const updateJson = files.find((f) => f === "stable-macos-arm64-update.json");
   const missing = (
     !dmg ? ["DMG"] : []
@@ -170,9 +170,9 @@ async function main() {
 
   // CLI assets (built by `bun run build:cli`). Optional — a DMG-only release
   // still works — but a normal release ships all three so the curl|sh installer
-  // at …/latest/download/install.sh + agetor-arm64 stays current. Filenames are
+  // at …/latest/download/install.sh + forgeorbit-arm64 stays current. Filenames are
   // stable across releases, so the unversioned download URLs never change.
-  const cliAssets = ["agetor-arm64", "agetor-arm64.sha256", "install.sh"].filter((n) =>
+  const cliAssets = ["forgeorbit-arm64", "forgeorbit-arm64.sha256", "install.sh"].filter((n) =>
     files.includes(n),
   );
   if (!cliAssets.length) {
@@ -187,7 +187,7 @@ async function main() {
     join(artifactsDir, n),
   );
 
-  const notes = process.env.AGETOR_RELEASE_NOTES;
+  const notes = process.env.FORGEORBIT_RELEASE_NOTES ?? process.env.AGETOR_RELEASE_NOTES;
 
   console.log(`[upload-release] target: ${REPO} @ ${TAG}`);
   let release = await findExistingRelease(TAG);
@@ -204,17 +204,17 @@ async function main() {
     }
     // Only seed the body on re-cut if the existing release has no manually
     // edited notes — clobbering hand-written highlights on a hotfix re-upload
-    // would be a nasty surprise. Set AGETOR_RELEASE_NOTES_FORCE=1 to override.
+    // would be a nasty surprise. Set FORGEORBIT_RELEASE_NOTES_FORCE=1 to override.
     if (notes) {
       const hasManualBody = !!release.body?.trim();
       if (!hasManualBody) {
         console.log("[upload-release] seeding release notes (existing body empty)");
         await updateReleaseBody(release.id, notes);
-      } else if (process.env.AGETOR_RELEASE_NOTES_FORCE) {
+      } else if (process.env.FORGEORBIT_RELEASE_NOTES_FORCE || process.env.AGETOR_RELEASE_NOTES_FORCE) {
         console.log("[upload-release] overwriting release notes (FORCE=1)");
         await updateReleaseBody(release.id, notes);
       } else {
-        console.log("[upload-release] keeping existing release notes (set AGETOR_RELEASE_NOTES_FORCE=1 to overwrite)");
+        console.log("[upload-release] keeping existing release notes (set FORGEORBIT_RELEASE_NOTES_FORCE=1 to overwrite)");
       }
     }
   } else {

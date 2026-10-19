@@ -1,10 +1,10 @@
 #!/bin/sh
-# Agetor CLI installer.  Usage:
-#   curl -fsSL https://github.com/alamops/agetor/releases/latest/download/install.sh | sh
+# ForgeOrbit CLI installer.  Usage:
+#   curl -fsSL https://github.com/cbrwvy/forgeorbit/releases/latest/download/install.sh | sh
 set -eu
 
-REPO="alamops/agetor"
-ASSET="agetor-arm64"
+REPO="cbrwvy/forgeorbit"
+ASSET="forgeorbit-arm64"
 BASE="https://github.com/${REPO}/releases/latest/download"
 
 red() { printf '\033[31m%s\033[0m\n' "$1"; }
@@ -15,7 +15,7 @@ dim() { printf '\033[2m%s\033[0m\n' "$1"; }
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 if [ "$OS" != "Darwin" ] || [ "$ARCH" != "arm64" ]; then
-  red "Agetor's CLI ships for arm64 macOS only."
+  red "ForgeOrbit's CLI ships for arm64 macOS only."
   echo "  (Cross-compiling is fragile and the Intel/Linux audience is small.)"
   echo "  Use the desktop app, or build from source: https://github.com/${REPO}"
   exit 1
@@ -29,15 +29,15 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 dim "downloading ${ASSET}…"
-curl -fL --proto '=https' --tlsv1.2 "${BASE}/${ASSET}" -o "$TMP/agetor"
+curl -fL --proto '=https' --tlsv1.2 "${BASE}/${ASSET}" -o "$TMP/forgeorbit"
 
 # ── checksum (required — a missing one signals a tampered/partial release) ──
-if ! curl -fsL "${BASE}/${ASSET}.sha256" -o "$TMP/agetor.sha256"; then
+if ! curl -fsL "${BASE}/${ASSET}.sha256" -o "$TMP/forgeorbit.sha256"; then
   red "could not fetch ${ASSET}.sha256 — refusing to install unverified"
   exit 1
 fi
-expected="$(awk '{print $1}' "$TMP/agetor.sha256")"
-actual="$(shasum -a 256 "$TMP/agetor" | awk '{print $1}')"
+expected="$(awk '{print $1}' "$TMP/forgeorbit.sha256")"
+actual="$(shasum -a 256 "$TMP/forgeorbit" | awk '{print $1}')"
 if [ "$expected" != "$actual" ]; then
   red "checksum mismatch — refusing to install"
   echo "  expected $expected"
@@ -46,27 +46,30 @@ if [ "$expected" != "$actual" ]; then
 fi
 dim "checksum ok"
 
-chmod +x "$TMP/agetor"
+chmod +x "$TMP/forgeorbit"
 # curl usually doesn't set the quarantine xattr, but strip it defensively so a
 # browser-downloaded copy never trips Gatekeeper.
-xattr -d com.apple.quarantine "$TMP/agetor" 2>/dev/null || true
+xattr -d com.apple.quarantine "$TMP/forgeorbit" 2>/dev/null || true
 
 # ── choose an install dir ──────────────────────────────────────────────────
 DEST_DIR="/usr/local/bin"
 if [ -w "$DEST_DIR" ] || { [ ! -e "$DEST_DIR" ] && [ -w "$(dirname "$DEST_DIR")" ]; }; then
   mkdir -p "$DEST_DIR"
-  mv "$TMP/agetor" "$DEST_DIR/agetor"
+  mv "$TMP/forgeorbit" "$DEST_DIR/forgeorbit"
+  ln -sf forgeorbit "$DEST_DIR/agetor" 2>/dev/null || true
 elif command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
   dim "installing to $DEST_DIR (needs sudo)…"
   sudo mkdir -p "$DEST_DIR"
-  sudo mv "$TMP/agetor" "$DEST_DIR/agetor"
+  sudo mv "$TMP/forgeorbit" "$DEST_DIR/forgeorbit"
+  sudo ln -sf forgeorbit "$DEST_DIR/agetor" 2>/dev/null || true
 else
   DEST_DIR="$HOME/.local/bin"
   mkdir -p "$DEST_DIR"
-  mv "$TMP/agetor" "$DEST_DIR/agetor"
+  mv "$TMP/forgeorbit" "$DEST_DIR/forgeorbit"
+  ln -sf forgeorbit "$DEST_DIR/agetor" 2>/dev/null || true
 fi
-DEST="$DEST_DIR/agetor"
-grn "installed → $DEST"
+DEST="$DEST_DIR/forgeorbit"
+grn "installed → $DEST (with compatibility alias: $DEST_DIR/agetor)"
 
 # ── verify ─────────────────────────────────────────────────────────────────
 if "$DEST" --version >/dev/null 2>&1; then
@@ -85,11 +88,11 @@ case ":$PATH:" in
     ;;
 esac
 
-existing="$(command -v agetor 2>/dev/null || true)"
+existing="$(command -v forgeorbit 2>/dev/null || true)"
 if [ -n "$existing" ] && [ "$existing" != "$DEST" ]; then
   echo
-  dim "note: another 'agetor' on PATH at $existing may shadow $DEST"
+  dim "note: another 'forgeorbit' on PATH at $existing may shadow $DEST"
 fi
 
 echo
-grn "done — run 'agetor' for the dashboard, or 'agetor add' to create a task."
+grn "done — run 'forgeorbit' for the dashboard, or 'forgeorbit add' to create a task."

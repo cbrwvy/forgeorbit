@@ -7326,7 +7326,7 @@ function IssueActions({
             of keeping "label" and "controls" as two groups. */}
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" data-testid="issue-work-with-agetor" onClick={() => setTaskOpen(true)}>
-            <Bot className="mr-2 size-3.5" /> Work on this with Agetor
+            <Bot className="mr-2 size-3.5" /> Work on this with ForgeOrbit
           </Button>
           {taskConfirmed && (
             <span className="inline-flex items-center gap-1 text-[11px] text-success">
@@ -8086,7 +8086,7 @@ function PullActions({
                   {canResolveConflicts && (
                     <Button size="sm" variant="outline" onClick={() => setResolveOpen(true)}>
                       <GitMerge className="mr-2 size-3.5" />
-                      Resolve with Agetor
+                      Resolve with ForgeOrbit
                     </Button>
                   )}
                   {resolveConfirmed && (

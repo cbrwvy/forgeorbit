@@ -363,7 +363,7 @@ describe("POST /bundle/export/save", () => {
     expect(existsSync(outside)).toBe(false);
   });
 
-  test("a folder Agetor may not write to answers 500 with a privacy-settings hint, not a bare errno", async () => {
+  test("a folder ForgeOrbit may not write to answers 500 with a privacy-settings hint, not a bare errno", async () => {
     const p = await createProfile({ name: "Worker" });
     const locked = path.join(DATA_DIR, "locked-downloads");
     mkdirSync(locked, { recursive: true });
@@ -373,7 +373,7 @@ describe("POST /bundle/export/save", () => {
       const res = await call("/bundle/export/save", { agentIds: [p.id], target: "downloads" });
       expect(res.status).toBe(500);
       const body = (await res.json()) as { error: string };
-      expect(body.error).toContain("macOS didn't allow Agetor to write to your Downloads folder");
+      expect(body.error).toContain("macOS didn't allow ForgeOrbit to write to your Downloads folder");
       expect(body.error).toContain("Files and Folders");
     } finally {
       process.env.AGETOR_DOWNLOADS_DIR = DOWNLOADS;
@@ -412,7 +412,7 @@ describe("POST /bundle/export/save", () => {
     const { bundleSaveErrorMessage } = await import("./bundle.ts");
     const errno = (code: string) => Object.assign(new Error(`${code}: operation not permitted`), { code });
     expect(bundleSaveErrorMessage(errno("EPERM"), "folder", "/Volumes/X")).toBe(
-      "couldn't save the export: macOS didn't allow Agetor to write to /Volumes/X — allow it in System Settings → Privacy & Security, or use Copy JSON instead",
+      "couldn't save the export: macOS didn't allow ForgeOrbit to write to /Volumes/X — allow it in System Settings → Privacy & Security, or use Copy JSON instead",
     );
     expect(bundleSaveErrorMessage(errno("EACCES"), "downloads", "/Users/x/Downloads")).toContain("or Choose folder instead");
     expect(bundleSaveErrorMessage(errno("ENOSPC"), "downloads", "/d")).toBe(

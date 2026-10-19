@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 
 /**
- * "AGETOR" wordmarks for the dashboard's empty state. Two variants so the logo
+ * "FORGEORBIT" wordmarks for the dashboard's empty state. Two variants so the logo
  * adapts to the detail pane's width; `logoFor` picks the widest that fits.
  *
  * Both use only block / half-block glyphs (█ ▀ ▄) + space — all unambiguously
@@ -9,16 +9,16 @@ import { Box, Text } from "ink";
  * (emoji-presentation chars measure 1 in Ink but render 2 in the terminal).
  */
 export const LOGO_WIDE = [
-  " █████  ██████ ███████ ████████  ██████  ██████",
-  "██   ██ ██     ██         ██    ██    ██ ██   ██",
-  "███████ ██  ██ █████      ██    ██    ██ ██████",
-  "██   ██ ██   ██ ██        ██    ██    ██ ██   ██",
-  "██   ██ ██████ ███████    ██     ██████  ██   ██",
+  "███████  ██████  ██████   ██████  ███████  ██████  ██████  ██████  ██ ████████",
+  "██      ██    ██ ██   ██ ██       ██      ██    ██ ██   ██ ██   ██ ██    ██   ",
+  "█████   ██    ██ ██████  ██   ███ █████   ██    ██ ██████  ██████  ██    ██   ",
+  "██      ██    ██ ██   ██ ██    ██ ██      ██    ██ ██   ██ ██   ██ ██    ██   ",
+  "██       ██████  ██   ██  ██████  ███████  ██████  ██   ██ ██████  ██    ██   ",
 ];
 
 export const LOGO_COMPACT = [
-  "▄▀█ █▀▀ █▀▀ ▀█▀ █▀█ █▀█",
-  "█▀█ █▄█ █▄▄  █  █▄█ █▀▄",
+  "█▀▀ █▀█ █▀█ █▀▀ █▀▀ █▀█ █▀█ █▄▄ █ ▀█▀",
+  "█▀  █▄█ █▀▄ █▄█ ██▄ █▄█ █▀▄ █▄█ █  █ ",
 ];
 
 const widthOf = (lines: string[]) => Math.max(...lines.map((l) => l.length));
@@ -39,7 +39,7 @@ export function Logo({ maxWidth }: { maxWidth: number }) {
   return (
     <Box flexDirection="column">
       {lines.map((line, i) => (
-        <Text key={i} color="cyan">
+        <Text key={i} color="magenta">
           {line}
         </Text>
       ))}

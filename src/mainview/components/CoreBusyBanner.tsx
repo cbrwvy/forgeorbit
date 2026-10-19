@@ -22,7 +22,7 @@ export function CoreBusyBanner() {
     >
       <Loader2 className="size-3.5 shrink-0 animate-spin text-warning motion-reduce:animate-none" aria-hidden />
       <span className="min-w-0 flex-1 font-medium text-foreground">
-        Agetor is busy — waiting for the core…
+        ForgeOrbit is busy — waiting for the core…
       </span>
     </div>
   );

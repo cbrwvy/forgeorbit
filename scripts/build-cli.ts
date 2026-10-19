@@ -1,17 +1,17 @@
 #!/usr/bin/env bun
 /**
- * Build the standalone `agetor` CLI binary (arm64 macOS), codesign it with the
+ * Build the standalone `forgeorbit` CLI binary (arm64 macOS), codesign it with the
  * same Developer ID the DMG uses, and emit a SHA256 the installer verifies.
  *
  * Runs standalone (`bun run build:cli`) and as a step inside `scripts/release.ts`.
  */
-import { mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 
 /**
- * Target resolution: `AGETOR_CLI_TARGET` (a bun `--target` value, e.g.
+ * Target resolution: `FORGEORBIT_CLI_TARGET` / `AGETOR_CLI_TARGET` (a bun `--target` value, e.g.
  * `bun-linux-x64`) wins if set; otherwise infer from the host running the
  * build. Defaulting to the host means the maintainer's mac laptop keeps
- * producing exactly `artifacts/agetor-arm64` (the filename upload-release.ts
+ * producing `artifacts/forgeorbit-arm64` (the filename upload-release.ts
  * and install.sh hardcode) with no env var needed, while `bun run build:cli`
  * on a Linux box now produces a Linux binary instead of failing/mis-targeting.
  */
@@ -22,15 +22,21 @@ const HOST_TARGETS: Record<string, string> = {
   "linux-arm64": "bun-linux-arm64",
 };
 const hostKey = `${process.platform}-${process.arch}`;
-const TARGET = process.env.AGETOR_CLI_TARGET ?? HOST_TARGETS[hostKey];
+const TARGET =
+  process.env.FORGEORBIT_CLI_TARGET ??
+  process.env.AGETOR_CLI_TARGET ??
+  HOST_TARGETS[hostKey];
 if (!TARGET) {
-  console.error(`[build:cli] no default target for host ${hostKey} — set AGETOR_CLI_TARGET explicitly.`);
+  console.error(`[build:cli] no default target for host ${hostKey} — set FORGEORBIT_CLI_TARGET explicitly.`);
   process.exit(1);
 }
-// Asset name mirrors the bun target, e.g. "agetor-arm64" (mac, unchanged —
-// existing release tooling hardcodes this name) or "agetor-linux-x64".
-const ASSET_NAME = TARGET === "bun-darwin-arm64" ? "agetor-arm64" : `agetor-${TARGET.replace(/^bun-/, "")}`;
+// Asset name mirrors the bun target, e.g. "forgeorbit-arm64" (mac) or "forgeorbit-linux-x64".
+const ASSET_NAME =
+  TARGET === "bun-darwin-arm64" ? "forgeorbit-arm64" : `forgeorbit-${TARGET.replace(/^bun-/, "")}`;
+const LEGACY_ASSET_NAME =
+  TARGET === "bun-darwin-arm64" ? "agetor-arm64" : `agetor-${TARGET.replace(/^bun-/, "")}`;
 const OUT = `artifacts/${ASSET_NAME}`;
+const LEGACY_OUT = `artifacts/${LEGACY_ASSET_NAME}`;
 const IS_DARWIN = TARGET.startsWith("bun-darwin");
 
 async function run(cmd: string[], opts: { allowFail?: boolean } = {}): Promise<number> {
@@ -50,11 +56,11 @@ async function run(cmd: string[], opts: { allowFail?: boolean } = {}): Promise<n
  * A bare binary can't be stapled (stapler targets bundles/dmg/pkg) — the
  * notarization ticket lives on Apple's servers and Gatekeeper checks it online.
  * We ship the signed binary, not the zip. Skipped when the API creds are absent
- * or AGETOR_SKIP_NOTARIZE is set (e.g. fast local builds).
+ * or FORGEORBIT_SKIP_NOTARIZE / AGETOR_SKIP_NOTARIZE is set (e.g. fast local builds).
  */
 async function notarize(): Promise<void> {
-  if (process.env.AGETOR_SKIP_NOTARIZE) {
-    console.warn("[build:cli] AGETOR_SKIP_NOTARIZE set — skipping notarization.");
+  if (process.env.FORGEORBIT_SKIP_NOTARIZE || process.env.AGETOR_SKIP_NOTARIZE) {
+    console.warn("[build:cli] FORGEORBIT_SKIP_NOTARIZE set — skipping notarization.");
     return;
   }
   const keyPath = process.env.ELECTROBUN_APPLEAPIKEYPATH;
@@ -141,6 +147,10 @@ await sha.exited;
 // works from the download dir.
 const digest = shaText.trim().split(/\s+/)[0] ?? "";
 await Bun.write(`${OUT}.sha256`, `${digest}  ${ASSET_NAME}\n`);
+
+// Also emit legacy agetor-* artifact copy for backward-compatible scripts/tooling
+copyFileSync(OUT, LEGACY_OUT);
+await Bun.write(`${LEGACY_OUT}.sha256`, `${digest}  ${LEGACY_ASSET_NAME}\n`);
 
 // Stage the installer next to the binary so the release uploader ships it as a
 // stable asset: …/releases/latest/download/install.sh

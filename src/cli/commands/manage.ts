@@ -69,7 +69,7 @@ export async function cmdEdit(args: string[], flags: Flags): Promise<void> {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && err.message.startsWith("task is bound to agent")) {
         const rewritten = err.message.replace(/^task is bound to agent/, "task is bound to profile");
-        throw new Error(`${rewritten} (agetor edit ${task.id.slice(0, 8)} --detach-profile)`);
+        throw new Error(`${rewritten} (forgeorbit edit ${task.id.slice(0, 8)} --detach-profile)`);
       }
       throw err;
     }

@@ -240,7 +240,7 @@ test("show: a task bound to an agent profile prints a 'profile:' line (not 'agen
 test("show: missing task-id argument throws the usage error", async () => {
   outputs.length = 0;
   currentClient = makeClient(task());
-  await expect(cmdShow([], flags)).rejects.toThrow(/usage: agetor show/);
+  await expect(cmdShow([], flags)).rejects.toThrow(/usage: forgeorbit show/);
 });
 
 // ── pipeline (docs/plans/pipelines.md §3 D11/T7) ─────────────────────────
@@ -402,7 +402,7 @@ test("show: a pending interaction aggregated from a step task names that step ta
   await cmdShow([TASK_ID], flags);
 
   const rendered = outputs.join("\n");
-  expect(rendered).toContain(`! 2 pending interaction(s) — answer: agetor answer ${TASK_ID.slice(0, 8)}`);
+  expect(rendered).toContain(`! 2 pending interaction(s) — answer: forgeorbit answer ${TASK_ID.slice(0, 8)}`);
   expect(rendered).toContain("↳ ask_questions on step task step-tas");
   expect(rendered).not.toContain("↳ tmux_prompt");
 });

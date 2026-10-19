@@ -793,3 +793,6 @@ function safeJson(text: string): unknown {
     return text;
   }
 }
+
+/** Backward-compatible alias for the API client. */
+export { AgetorClient as ForgeOrbitClient };

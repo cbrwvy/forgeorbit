@@ -1,37 +1,38 @@
 <div align="center">
 
-<img src="src/assets/agetor-icon.png" alt="Agetor" width="112" height="112" />
+<img src="src/assets/forgeorbit-icon.png" alt="ForgeOrbit" width="112" height="112" />
 
-# Agetor
+# ForgeOrbit
 
-**The harness orchestrator.**<br />
-A local-first kanban for running Claude Code, Codex, Cursor, Gemini CLI, fx and Antigravity in parallel, with each task in its own git worktree.
+**Your agents. One orbit.**<br />
+A local-first AI agent orchestrator by **Lunarian Forge** for running Claude Code, Codex, Cursor, Gemini CLI, fx and Antigravity in parallel on macOS (Apple Silicon), with each task in its own git worktree.
 
-[![Latest release](https://img.shields.io/github/v/release/alamops/agetor?style=flat-square&label=release&color=4c1)](https://github.com/alamops/agetor/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/cbrwvy/forgeorbit?style=flat-square&label=release&color=7c3aed)](https://github.com/cbrwvy/forgeorbit/releases/latest)
 [![Platform](https://img.shields.io/badge/macOS-Apple%20Silicon-111?style=flat-square&logo=apple&logoColor=white)](#install)
-[![License: MIT](https://img.shields.io/github/license/alamops/agetor?style=flat-square&color=blue)](./LICENSE)
+[![License: MIT](https://img.shields.io/github/license/cbrwvy/forgeorbit?style=flat-square&color=blue)](./LICENSE)
 [![Built with Bun](https://img.shields.io/badge/built%20with-Bun-fbf0df?style=flat-square&logo=bun&logoColor=000)](https://bun.sh)
-[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-ea4aaa?style=flat-square&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/alamops)
 
-[Website](https://agetor.dev) · [Download](https://github.com/alamops/agetor/releases/latest) · [Quick start](#quick-start) · [Pipelines](#pipelines) · [CLI](#command-line-interface) · [Contributing](#contributing)
+[Download](https://github.com/cbrwvy/forgeorbit/releases/latest) · [Quick start](#quick-start) · [Pipelines](#pipelines) · [CLI](#command-line-interface) · [Contributing](#contributing)
 
 <br />
 
-<img src="docs/agetor-demo.png" alt="The Agetor board: tasks across Backlog, Running, Blocked and Review columns, with a live agent transcript open in the side panel" width="100%" />
+<img src="docs/agetor-demo.png" alt="The ForgeOrbit board: tasks across Backlog, Running, Blocked and Review columns, with a live agent transcript open in the side panel" width="100%" />
 
 </div>
 
 ---
 
-## Why Agetor
+## Why ForgeOrbit
 
-Coding agents are good enough now that the limiting factor is you: one terminal, one conversation, one branch at a time. Agetor turns a kanban board into a control plane for the agents you **already** use. Each card is a prompt, a repository and a harness. When you press **Run**, Agetor creates an isolated git worktree, launches the agent's own CLI inside it and streams the conversation to the board. The card moves by itself when the agent finishes or needs you.
+Coding agents are good enough now that the limiting factor is you: one terminal, one conversation, one branch at a time. **ForgeOrbit** turns a kanban board into a central control plane for the agents you **already** use. Each card is a prompt, a repository and a harness. When you press **Run**, ForgeOrbit creates an isolated git worktree, launches the agent's own CLI inside it and streams the conversation to the board. The card moves by itself when the agent finishes or needs you.
 
-**Agetor doesn't replace your agents, and it doesn't replace your harness.** Claude Code is still Claude Code, with the same login, skills, MCP servers, slash commands and settings. Agetor adds what one terminal can't give you: many agents working in parallel, isolation between them, and one place to review, answer and ship their work.
+**ForgeOrbit doesn't replace your agents, and it doesn't replace your harness.** Claude Code is still Claude Code, with the same login, skills, MCP servers, slash commands and settings. ForgeOrbit adds what one terminal can't give you: many agents working in parallel, isolation between them, and one orbit to review, answer and ship their work.
 
-- **Local-first.** Everything runs on your machine. There's no Agetor account, no cloud relay and no telemetry.
-- **Non-invasive.** Agetor installs no hooks and no MCP server, and it doesn't edit your `CLAUDE.md`. It drives the real CLI the way you would.
-- **Restart-safe.** Claude Code, Codex, Cursor, Gemini CLI and Antigravity run inside `tmux`, so quitting Agetor doesn't stop them, and the next launch reconnects to them. fx is the exception: it runs as a child process of Agetor and stops when Agetor quits, so an fx turn in progress doesn't survive a restart.
+- **Local-first.** Everything runs on your machine. There's no ForgeOrbit account, no cloud relay and no telemetry.
+- **Non-invasive.** ForgeOrbit installs no hooks and no MCP server, and it doesn't edit your `CLAUDE.md`. It drives the real CLI the way you would.
+- **Restart-safe.** Claude Code, Codex, Cursor, Gemini CLI and Antigravity run inside `tmux`, so quitting ForgeOrbit doesn't stop them, and the next launch reconnects to them. fx is the exception: it runs as a child process of ForgeOrbit and stops when ForgeOrbit quits, so an fx turn in progress doesn't survive a restart.
+
+> **Origin:** ForgeOrbit is developed by **Lunarian Forge** and is based on the open-source [Agetor](https://github.com/alamops/agetor) project originally created by Alamo Saravali under the MIT License.
 
 ---
 
@@ -40,19 +41,19 @@ Coding agents are good enough now that the limiting factor is you: one terminal,
 ### Orchestrate
 
 - **Kanban workflow.** Tasks move through *Backlog → Ready → Running → Blocked → Review → Done* as their runs start, stall, fail or finish. You can drag a card to override the flow at any time.
-- **A git worktree for every task.** Each task runs on its own branch (`agetor/<id>-<slug>`) under `~/.agetor/worktrees/`, so two agents can work on the same repo at once without colliding. The base commit is pinned when the task is created, so the task keeps the same starting point even after the source branch moves on.
+- **A git worktree for every task.** Each task runs on its own branch under `~/.agetor/worktrees/`, so two agents can work on the same repo at once without colliding. The base commit is pinned when the task is created, so the task keeps the same starting point even after the source branch moves on.
 - **Six harnesses, many accounts.** Run Claude Code, Codex, Cursor, Gemini CLI, fx and Antigravity side by side. To use a second account for any of them, add a harness with its own isolated `$HOME`.
 - **Agents (reusable profiles).** Save a harness, model, effort, mode, instructions and skills as a named **Agent**, then launch tasks from it in one click.
 - **Pipelines.** Chain Agents into a reusable graph on a canvas, such as *Plan → Implement → Review*. Steps hand context to each other, branch, fan out and loop, all from a single board card. See [Pipelines](#pipelines).
-- **Model discovery.** Model and effort pickers start from a curated list. For Codex, Cursor, fx and Antigravity, they also include the models your account actually offers, as reported by the CLI. If a model needs a newer CLI than you have installed, Agetor refuses the run with an upgrade hint instead of letting the CLI fail with a confusing error.
+- **Model discovery.** Model and effort pickers start from a curated list. For Codex, Cursor, fx and Antigravity, they also include the models your account actually offers, as reported by the CLI. If a model needs a newer CLI than you have installed, ForgeOrbit refuses the run with an upgrade hint instead of letting the CLI fail with a confusing error.
 
 ### Converse
 
 - **A live, structured transcript.** Assistant text, thinking, tool calls, subagents, plans, TODO progress and files the agent sends you each render as their own UI components, not as raw terminal output.
-- **Questions and approvals as cards.** Claude's `AskUserQuestion`, plan approvals and permission prompts show up as cards you answer in the panel. Agetor then types the keystrokes into the real session. fx permission requests and Cursor plans work the same way.
+- **Questions and approvals as cards.** Claude's `AskUserQuestion`, plan approvals and permission prompts show up as cards you answer in the panel. ForgeOrbit then types the keystrokes into the real session. fx permission requests and Cursor plans work the same way.
 - **Follow-ups at any time.** You can message a running agent and the message folds into its current turn. Drafts you're not ready to send go to a per-task **Save for later** tray.
-- **An autocompleting composer.** `/` completes slash commands, skills, MCP servers and plugins. `@` completes files and folders, which Agetor resolves to real paths inside the task's worktree. You can also attach files and images and reuse saved prompts.
-- **Built-in terminals.** Every task has terminal tabs rooted in its worktree. `agetor attach <id>` connects your own terminal to the live agent session.
+- **An autocompleting composer.** `/` completes slash commands, skills, MCP servers and plugins. `@` completes files and folders, which ForgeOrbit resolves to real paths inside the task's worktree. You can also attach files and images and reuse saved prompts.
+- **Built-in terminals.** Every task has terminal tabs rooted in its worktree. `forgeorbit attach <id>` connects your own terminal to the live agent session.
 
 ### Ship
 
@@ -62,17 +63,17 @@ Coding agents are good enough now that the limiting factor is you: one terminal,
 
 ### Stay in the loop
 
-- **Notifications.** Native macOS notifications link straight to the task that needs you. Cards show an unread dot when the agent has said something new.
+- **Notifications.** Native macOS notifications (`forgeorbit://`) link straight to the task that needs you. Cards show an unread dot when the agent has said something new.
 - **Usage meter.** Plan quota for Claude Code, Codex and Cursor accounts, read with the logins those CLIs already have, plus local token rollups.
-- **Themes and automatic updates.** Auto, dark or light theme. The app is signed, notarized and updates itself in place.
+- **Themes and automatic updates.** Auto, dark or light theme. The app is signed, notarized and updates itself in place from `cbrwvy/forgeorbit`.
 
 ---
 
 ## Supported harnesses
 
-A **harness** is the agent CLI Agetor drives. Agetor launches the real binary on your `PATH` with your existing login, and it doesn't proxy or re-implement the agent.
+A **harness** is the agent CLI ForgeOrbit drives. ForgeOrbit launches the real binary on your `PATH` with your existing login, and it doesn't proxy or re-implement the agent.
 
-| Harness | Binary | How Agetor drives it | Default model | Install |
+| Harness | Binary | How ForgeOrbit drives it | Default model | Install |
 | --- | --- | --- | --- | --- |
 | **Claude Code** | `claude` | Interactive session in a per-task `tmux` session; output is tailed from Claude's own JSONL transcript | Opus 5.5 | `npm i -g @anthropic-ai/claude-code` |
 | **Codex** <sup>experimental</sup> | `codex` | `codex exec --json` for each turn inside `tmux`; the conversation resumes by thread id | GPT-6.1 Sol | `npm i -g @openai/codex` |
@@ -91,22 +92,22 @@ Each harness offers the permission modes its CLI actually supports. They range f
 
 ### Desktop app (macOS, Apple Silicon)
 
-1. Download **[Agetor-arm64.dmg](https://github.com/alamops/agetor/releases/latest/download/Agetor-arm64.dmg)** from the latest release.
-2. Drag **Agetor** into Applications and open it.
+1. Download **[ForgeOrbit-arm64.dmg](https://github.com/cbrwvy/forgeorbit/releases/latest/download/ForgeOrbit-arm64.dmg)** from the latest release.
+2. Drag **ForgeOrbit** into Applications and open it.
 3. Install at least one [harness](#supported-harnesses) and log in to it the way you normally would (for example, run `claude` once).
 
-The app is signed and notarized by Apple and updates itself. Harnesses hosted in `tmux` need it on your `PATH`; if it's missing, the app offers to use a bundled copy instead.
+The app is signed and notarized by Apple and updates itself from `cbrwvy/forgeorbit`. Harnesses hosted in `tmux` need it on your `PATH`; if it's missing, the app offers to use a bundled copy instead.
 
 ### CLI
 
 ```bash
-curl -fsSL https://github.com/alamops/agetor/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/cbrwvy/forgeorbit/releases/latest/download/install.sh | sh
 ```
 
-The installer verifies a SHA-256 checksum and installs a single `agetor` binary into `/usr/local/bin`, or `~/.local/bin` if that isn't writable. The CLI works with or without the desktop app. See [Command-line interface](#command-line-interface) below.
+The installer verifies a SHA-256 checksum and installs a single `forgeorbit` binary (along with a `agetor` compatibility symlink) into `/usr/local/bin`, or `~/.local/bin` if that isn't writable. The CLI works with or without the desktop app. See [Command-line interface](#command-line-interface) below.
 
 > [!NOTE]
-> Agetor ships for **macOS on Apple Silicon** only. Linux and Windows targets are configured but not built or tested yet.
+> ForgeOrbit ships for **macOS on Apple Silicon** only. Linux and Windows targets are configured but not built or tested yet.
 
 ---
 
@@ -138,7 +139,7 @@ flowchart LR
 - **Live run view.** The canvas animates as the pipeline runs: the active step pulses, and a token travels along each edge when a handoff happens.
 - **Blocks instead of guessing.** If a step needs your input, fails, or can't produce a valid handoff even after one automatic reminder, the card moves to **Blocked** with the reason. From there you can retry the step, choose the next step yourself, stop, or restart.
 - **Frozen at launch.** A pipeline and its Agents are captured the moment you click Run, so editing or deleting them never affects a run already in progress.
-- **Portable.** Export Agents and Pipelines to one JSON file and import them on another machine — from Settings → Agents, Settings → Pipelines or the Pipelines page (per row, a multi-select, or Export all; import by choosing a file, pasting JSON or dropping the file onto the list), or with `agetor export` / `agetor import`. A pipeline brings every Agent it uses, with its full settings. Each Agent records its harness and the built-in harness that harness wraps, so an Agent on an extra account such as `secondary-claude-code` still imports on a machine without that account: it lands on the built-in Claude Code harness, with a warning. Import shows a preview first — what it will create, which harness each Agent lands on, and the instructions it carries — and then creates everything in one step; in a terminal, `agetor import` prints the same preview and asks before importing (`--dry-run` only previews, `--yes` skips the question for scripts). If something changes on this machine between the preview and the import (a name gets taken, say), the import stops and shows the new preview instead of creating something you didn't confirm. Instructions with invisible characters a preview couldn't show are refused. A name that's already taken becomes `Name (imported)`; nothing local is overwritten.
+- **Portable.** Export Agents and Pipelines to one JSON file and import them on another machine — from Settings → Agents, Settings → Pipelines or the Pipelines page (per row, a multi-select, or Export all; import by choosing a file, pasting JSON or dropping the file onto the list), or with `forgeorbit export` / `forgeorbit import`. A pipeline brings every Agent it uses, with its full settings. Each Agent records its harness and the built-in harness that harness wraps, so an Agent on an extra account such as `secondary-claude-code` still imports on a machine without that account: it lands on the built-in Claude Code harness, with a warning. Import shows a preview first — what it will create, which harness each Agent lands on, and the instructions it carries — and then creates everything in one step; in a terminal, `forgeorbit import` prints the same preview and asks before importing (`--dry-run` only previews, `--yes` skips the question for scripts). If something changes on this machine between the preview and the import (a name gets taken, say), the import stops and shows the new preview instead of creating something you didn't confirm. Instructions with invisible characters a preview couldn't show are refused. A name that's already taken becomes `Name (imported)`; nothing local is overwritten.
 
 > [!WARNING]
 > Parallel steps share **one** worktree, and nothing stops two of them from editing the same files. Use fan-out only for work that is truly independent, such as docs in one branch and tests in another.
@@ -167,15 +168,15 @@ A step ends its turn with a block like this. The last block in the turn wins.
 
 | Action | What it does | CLI |
 | --- | --- | --- |
-| **Run** | Starts the pipeline. On a blocked or cancelled pipeline, it resumes where it stopped and never starts over. | `agetor start <id>` for the first run; `agetor pipeline retry <ref>` to resume |
-| **Retry** | Re-runs the blocked or cancelled step. When the step cap was hit, each Retry adds another full allowance. | `agetor pipeline retry <ref> [--from <step-task>]` |
-| **Advance** | Skips the stuck step: you pick the next step, or finish the run. | `agetor pipeline advance <ref> --next <step> \| --finish` |
-| **Stop** | From the run view header, stops the whole pipeline. From a single step, stops only that branch. | `agetor cancel <id>` |
-| **Restart** | Cancels anything still running and starts over from the first step, discarding the previous run. | `agetor pipeline restart <ref>` |
+| **Run** | Starts the pipeline. On a blocked or cancelled pipeline, it resumes where it stopped and never starts over. | `forgeorbit start <id>` for the first run; `forgeorbit pipeline retry <ref>` to resume |
+| **Retry** | Re-runs the blocked or cancelled step. When the step cap was hit, each Retry adds another full allowance. | `forgeorbit pipeline retry <ref> [--from <step-task>]` |
+| **Advance** | Skips the stuck step: you pick the next step, or finish the run. | `forgeorbit pipeline advance <ref> --next <step> \| --finish` |
+| **Stop** | From the run view header, stops the whole pipeline. From a single step, stops only that branch. | `forgeorbit cancel <id>` |
+| **Restart** | Cancels anything still running and starts over from the first step, discarding the previous run. | `forgeorbit pipeline restart <ref>` |
 
-A step can also list other Agents it's allowed to delegate to as subagents, with an optional cap. Agetor passes this to the step as guidance in its prompt; it doesn't enforce the cap. Deleting or archiving a pipeline task also deletes or archives its steps.
+A step can also list other Agents it's allowed to delegate to as subagents, with an optional cap. ForgeOrbit passes this to the step as guidance in its prompt; it doesn't enforce the cap. Deleting or archiving a pipeline task also deletes or archives its steps.
 
-On your own machine, a step points at the Agent itself, not at its name, so renaming an Agent doesn't break a pipeline. Two Agents can't share a name. An exported file carries the Agents themselves, so names only matter when you import a pipeline file from an older version of Agetor: those files list each step's Agent by name only, and import uses the local Agent with that name.
+On your own machine, a step points at the Agent itself, not at its name, so renaming an Agent doesn't break a pipeline. Two Agents can't share a name. An exported file carries the Agents themselves, so names only matter when you import a pipeline file from an older version of ForgeOrbit/Agetor: those files list each step's Agent by name only, and import uses the local Agent with that name.
 
 </details>
 
@@ -183,51 +184,51 @@ On your own machine, a step points at the Agent itself, not at its name, so rena
 
 ## Command-line interface
 
-The `agetor` CLI drives the same board from your shell. If the desktop app is running, the CLI talks to it. If it isn't, the CLI starts a **headless background daemon** that shares the same `~/.agetor` state. A task you add in the terminal shows up in the app, and the reverse is also true. When you open the app later, the daemon hands over to it.
+The `forgeorbit` CLI (with backward-compatible alias `agetor`) drives the same board from your shell. If the desktop app is running, the CLI talks to it. If it isn't, the CLI starts a **headless background daemon** that shares the same `~/.agetor` state. A task you add in the terminal shows up in the app, and the reverse is also true. When you open the app later, the daemon hands over to it.
 
 ```bash
-agetor                       # full-screen live dashboard: board, streaming detail, inline compose/answer
+forgeorbit                       # full-screen live dashboard: board, streaming detail, inline compose/answer
 
 # create · inspect
-agetor add                   # create a task (guided wizard, or --title/--prompt[/--start])
-agetor add --issue <url>     # seed a task from a GitHub/GitLab/Bitbucket issue and its thread
-agetor add --profile <name>  # launch from a saved Agent profile
-agetor add --pipeline <name> # launch a saved Pipeline (its steps supply every agent)
-agetor ls [filters]          # list tasks (--column/--agent/--type/--repo/--search/--archived/--all)
-agetor ls --steps            # include the hidden step tasks of pipelines
-agetor ps                    # running and blocked tasks only
-agetor show <id>             # details, runs, pending interactions
+forgeorbit add                   # create a task (guided wizard, or --title/--prompt[/--start])
+forgeorbit add --issue <url>     # seed a task from a GitHub/GitLab/Bitbucket issue and its thread
+forgeorbit add --profile <name>  # launch from a saved Agent profile
+forgeorbit add --pipeline <name> # launch a saved Pipeline (its steps supply every agent)
+forgeorbit ls [filters]          # list tasks (--column/--agent/--type/--repo/--search/--archived/--all)
+forgeorbit ls --steps            # include the hidden step tasks of pipelines
+forgeorbit ps                    # running and blocked tasks only
+forgeorbit show <id>             # details, runs, pending interactions
 
 # run · converse
-agetor start <id>            # run a task
-agetor send <id> <msg…>      # message a task (--ref <path> to attach a file; resumes a finished one)
-agetor answer <id>           # answer a task that's waiting on you
-agetor logs <id>             # stream the conversation (--no-follow · --notify · --rebuild)
-agetor commit <id>           # ask the agent to commit everything and push the branch
-agetor cancel <id>           # stop the active run
-agetor resume <id>           # resume an fx response paused by rate limiting
-agetor attach <id>           # attach your terminal to the live tmux session
-agetor shell <id>            # open a shell in the task's worktree
-agetor diff <id>             # the task's git diff
-agetor files <id>            # files the agent sent you
+forgeorbit start <id>            # run a task
+forgeorbit send <id> <msg…>      # message a task (--ref <path> to attach a file; resumes a finished one)
+forgeorbit answer <id>           # answer a task that's waiting on you
+forgeorbit logs <id>             # stream the conversation (--no-follow · --notify · --rebuild)
+forgeorbit commit <id>           # ask the agent to commit everything and push the branch
+forgeorbit cancel <id>           # stop the active run
+forgeorbit resume <id>           # resume an fx response paused by rate limiting
+forgeorbit attach <id>           # attach your terminal to the live tmux session
+forgeorbit shell <id>            # open a shell in the task's worktree
+forgeorbit diff <id>             # the task's git diff
+forgeorbit files <id>            # files the agent sent you
 
 # manage · setup
-agetor edit <id> [flags]     # change title, prompt, harness, model, mode, effort, column…
-agetor move <id> <column>    # e.g. `agetor move <id> done`
-agetor archive <id>          # archive a done task (unarchive to restore)
-agetor rm <id> --yes         # delete a task, its worktree and its branch
-agetor clone <url>           # clone a GitHub/GitLab/Bitbucket repo as a new project
-agetor projects <sub>        # list | add <path> | rm <path> | branches <path>
-agetor harness <sub>         # list | add | edit | enable | disable | rm | shell
-agetor profile <sub>         # ls | show | add | edit | rm | export | import (saved Agents)
-agetor pipeline <sub>        # ls | show | rm | export | import | status | retry | advance | restart
-agetor export --all --out f  # Agents and/or Pipelines to a JSON file (--profile/--pipeline <ref> to pick)
-agetor import <file>         # preview + confirm, then import (--dry-run, --yes, --harness-map <from>=<to>, --enable-harnesses)
-agetor daemon status|start|stop
-agetor config [key] [value]  # view or set preferences
+forgeorbit edit <id> [flags]     # change title, prompt, harness, model, mode, effort, column…
+forgeorbit move <id> <column>    # e.g. `forgeorbit move <id> done`
+forgeorbit archive <id>          # archive a done task (unarchive to restore)
+forgeorbit rm <id> --yes         # delete a task, its worktree and its branch
+forgeorbit clone <url>           # clone a GitHub/GitLab/Bitbucket repo as a new project
+forgeorbit projects <sub>        # list | add <path> | rm <path> | branches <path>
+forgeorbit harness <sub>         # list | add | edit | enable | disable | rm | shell
+forgeorbit profile <sub>         # ls | show | add | edit | rm | export | import (saved Agents)
+forgeorbit pipeline <sub>        # ls | show | rm | export | import | status | retry | advance | restart
+forgeorbit export --all --out f  # Agents and/or Pipelines to a JSON file (--profile/--pipeline <ref> to pick)
+forgeorbit import <file>         # preview + confirm, then import (--dry-run, --yes, --harness-map <from>=<to>, --enable-harnesses)
+forgeorbit daemon status|start|stop
+forgeorbit config [key] [value]  # view or set preferences
 ```
 
-Every command accepts `--json` for scripting. Short id prefixes (the 8 characters `agetor ls` shows) work anywhere an `<id>` is expected. In the CLI, `--agent` always means the **harness**, and a saved Agent is called a **profile**.
+Every command accepts `--json` for scripting. Short id prefixes (the 8 characters `forgeorbit ls` shows) work anywhere an `<id>` is expected. In the CLI, `--agent` always means the **harness**, and a saved Agent is called a **profile**.
 
 **Dashboard keys:** `↑/↓` or `j/k` select · `s` run · `x` stop · `m` message · `c` commit and push · `g` answer · `r` resume · `p` show a pipeline's steps · `q` quit.
 
@@ -235,12 +236,12 @@ Every command accepts `--json` for scripting. Short id prefixes (the 8 character
 
 ## How it works
 
-Agetor is an [Electrobun](https://github.com/blackboardsh/electrobun) app: a **Bun** main process that owns the orchestration, and a native macOS WebView that renders a **React** UI.
+ForgeOrbit is an [Electrobun](https://github.com/blackboardsh/electrobun) app: a **Bun** main process that owns the orchestration, and a native macOS WebView that renders a **React** UI.
 
 ```mermaid
 flowchart LR
     UI["Desktop app<br/>(React webview)"] -- "HTTP + SSE" --> Core
-    CLI["agetor CLI / TUI"] -- "HTTP + SSE" --> Core
+    CLI["forgeorbit CLI / TUI"] -- "HTTP + SSE" --> Core
     Core["Bun core<br/>orchestrator · SQLite · git"]
     Core -- "tmux (interactive)" --> Claude["claude"]
     Core -- "tmux (one-shot per turn)" --> OneShot["codex · cursor-agent · gemini · agy"]
@@ -252,7 +253,7 @@ flowchart LR
 
 - **One local API.** The desktop UI and the CLI both talk to the core over HTTP and Server-Sent Events. The API listens only on `127.0.0.1`, and every route except `/health` requires a random token generated at each launch.
 - **Drive the real CLI; don't re-implement it.** Claude Code runs as an interactive session inside `tmux` and receives prompts as keystrokes. Its structured output comes from the transcript Claude writes itself. Codex, Cursor and Gemini CLI run once per turn inside `tmux` and resume by session id. fx talks the Agent Client Protocol.
-- **Restart-safe by design.** On boot, Agetor reattaches to any `tmux`-hosted session that is still alive and replays its transcript without duplicates. Runs whose session is gone move back to **Ready**, so no card is left stuck in Running.
+- **Restart-safe by design.** On boot, ForgeOrbit reattaches to any `tmux`-hosted session that is still alive and replays its transcript without duplicates. Runs whose session is gone move back to **Ready**, so no card is left stuck in Running.
 - **Local persistence.** Tasks, runs, events, projects, harnesses and preferences live in a SQLite database with versioned migrations.
 
 The architecture, lifecycle and gotchas are documented in depth in [`CLAUDE.md`](./CLAUDE.md). Design notes for individual features are in [`docs/plans/`](./docs/plans).
@@ -261,7 +262,7 @@ The architecture, lifecycle and gotchas are documented in depth in [`CLAUDE.md`]
 
 ## Configuration
 
-Most settings live in the app under **Settings**: General, Harnesses, Agents, Pipelines, Git Integration and Saved Prompts. All state is stored under `~/.agetor/`:
+Most settings live in the app under **Settings**: General, Harnesses, Agents, Pipelines, Git Integration and Saved Prompts. All state is stored under `~/.agetor/` (preserved for seamless backward compatibility with existing Agent Profiles, Harnesses, Pipelines, worktrees and SQLite state):
 
 ```
 ~/.agetor/
@@ -282,37 +283,40 @@ Most settings live in the app under **Settings**: General, Harnesses, Agents, Pi
 
 <br />
 
+Both `FORGEORBIT_*` and legacy `AGETOR_*` variables are supported:
+
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `AGETOR_DATA_DIR` | Where the database, worktrees and logs live. | `~/.agetor` |
-| `AGETOR_API_PORT` | Port for the local API. | `4317` |
-| `AGETOR_API_HOST` | Address the headless core's API binds to: `127.0.0.1`, `0.0.0.0` or `::`. Only for running Agetor headless in a container (see below); the desktop app ignores it. | `127.0.0.1` |
+| `FORGEORBIT_DATA_DIR` / `AGETOR_DATA_DIR` | Where the database, worktrees and logs live. | `~/.agetor` |
+| `FORGEORBIT_API_PORT` / `AGETOR_API_PORT` | Port for the local API. | `4317` |
+| `FORGEORBIT_API_HOST` / `AGETOR_API_HOST` | Address the headless core's API binds to: `127.0.0.1`, `0.0.0.0` or `::`. Only for running ForgeOrbit headless in a container (see below); the desktop app ignores it. | `127.0.0.1` |
 | `AGETOR_CLAUDE_BIN` / `AGETOR_CLAUDE_ARGS` | Override the `claude` binary / append extra args. | `claude` on `PATH` |
 | `AGETOR_CODEX_BIN` / `AGETOR_CODEX_ARGS` | Same, for Codex. | `codex` on `PATH` |
 | `AGETOR_CURSOR_BIN` / `AGETOR_CURSOR_ARGS` | Same, for Cursor. | `cursor-agent` on `PATH` |
 | `AGETOR_GEMINI_BIN` / `AGETOR_GEMINI_ARGS` | Same, for Gemini CLI. | `gemini` on `PATH` |
 | `AGETOR_FX_BIN` / `AGETOR_FX_ARGS` | Same, for fx. | `fx` on `PATH` |
 | `AGETOR_ANTIGRAVITY_BIN` / `AGETOR_ANTIGRAVITY_ARGS` | Same, for Antigravity. | `agy` on `PATH` |
-| `AGETOR_TMUX_BIN` | Override the `tmux` binary. | `tmux` on `PATH` |
+| `FORGEORBIT_TMUX_BIN` / `AGETOR_TMUX_BIN` | Override the `tmux` binary. | `tmux` on `PATH` |
 | `AGETOR_SKIP_CLI_VERSION_FLOOR` | Set to `1` to skip the per-model minimum CLI version check. | unset |
-| `AGETOR_DAEMON_IDLE_MS` | Shut the CLI daemon down after this long with no run and no client (`0` disables). | `300000` |
+| `FORGEORBIT_DAEMON_IDLE_MS` / `AGETOR_DAEMON_IDLE_MS` | Shut the CLI daemon down after this long with no run and no client (`0` disables). | `300000` |
+| `FORGEORBIT_DISABLE_UPDATES` | Set to `1` to disable automatic update checks completely. | unset |
 
-The bin, home and env overrides you set per harness in Settings take precedence over these variables. The CLI honors `AGETOR_DATA_DIR` and `AGETOR_API_PORT` too, and so do its `--data-dir` and `--port` flags. Test-only switches (fake drivers, API stubs) are documented in [`CLAUDE.md`](./CLAUDE.md).
+The bin, home and env overrides you set per harness in Settings take precedence over these variables. The CLI honors `FORGEORBIT_DATA_DIR` / `AGETOR_DATA_DIR` and `FORGEORBIT_API_PORT` / `AGETOR_API_PORT` too, and so do its `--data-dir` and `--port` flags. Test-only switches (fake drivers, API stubs) are documented in [`CLAUDE.md`](./CLAUDE.md).
 
-**Running headless in a container.** The API binds to `127.0.0.1` by default, and a Docker port mapping can't reach a loopback-only listener inside the container. Set `AGETOR_API_HOST=0.0.0.0` (or `::`) in the container so the published port works. The headless core (`agetor daemon`) accepts only `127.0.0.1`, `0.0.0.0` or `::`, and refuses to start on anything else: the CLI and agent hooks inside the container connect over `127.0.0.1`, which a specific address such as the container's own IP, or `localhost`/`::1` (IPv6-only), would break. The desktop app always stays on `127.0.0.1`.
+**Running headless in a container.** The API binds to `127.0.0.1` by default, and a Docker port mapping can't reach a loopback-only listener inside the container. Set `FORGEORBIT_API_HOST=0.0.0.0` (or `::`) in the container so the published port works. The headless core (`forgeorbit daemon`) accepts only `127.0.0.1`, `0.0.0.0` or `::`, and refuses to start on anything else: the CLI and agent hooks inside the container connect over `127.0.0.1`, which a specific address such as the container's own IP, or `localhost`/`::1` (IPv6-only), would break. The desktop app always stays on `127.0.0.1`.
 
-A wildcard bind is protected **only by the bearer token**, and the API speaks plain HTTP, so that token travels in cleartext. Agetor logs a warning about this at startup. Publish the port to `127.0.0.1` on the host so nothing beyond your machine can reach it, and never publish it more widely. For remote access, use an SSH tunnel or a TLS-terminating proxy:
+A wildcard bind is protected **only by the bearer token**, and the API speaks plain HTTP, so that token travels in cleartext. ForgeOrbit logs a warning about this at startup. Publish the port to `127.0.0.1` on the host so nothing beyond your machine can reach it, and never publish it more widely. For remote access, use an SSH tunnel or a TLS-terminating proxy:
 
 ```bash
-docker run -e AGETOR_API_HOST=0.0.0.0 -p 127.0.0.1:4317:4317 <your-agetor-image>
+docker run -e FORGEORBIT_API_HOST=0.0.0.0 -p 127.0.0.1:4317:4317 <your-forgeorbit-image>
 ```
 
 ```yaml
 services:
-  agetor:
-    image: <your-agetor-image>
+  forgeorbit:
+    image: <your-forgeorbit-image>
     environment:
-      AGETOR_API_HOST: 0.0.0.0
+      FORGEORBIT_API_HOST: 0.0.0.0
     ports:
       - "127.0.0.1:4317:4317"
 ```
@@ -325,26 +329,24 @@ The token changes on every launch and is written to `agetor-core.json` in the da
 
 ## Security model
 
-- **Agents run with your privileges.** Each harness runs with your full user privileges in the task's directory, exactly as it would if you launched it yourself. Agetor adds no sandbox beyond what the CLI provides. The default modes are hands-off; pick an *Ask* or *Read-only* mode for tasks where you want approvals.
+- **Agents run with your privileges.** Each harness runs with your full user privileges in the task's directory, exactly as it would if you launched it yourself. ForgeOrbit adds no sandbox beyond what the CLI provides. The default modes are hands-off; pick an *Ask* or *Read-only* mode for tasks where you want approvals.
 - **Only local, authenticated access.** The API binds to `127.0.0.1` and requires a random token generated at each launch. A website you visit can't read the token, so it can't drive an agent run.
 - **Untrusted text is labeled.** Issue and PR text pulled into a prompt is marked as untrusted, and the agent is told not to follow instructions found inside it.
-- **Minimal network use.** The only network calls Agetor itself makes are update checks against GitHub Releases, the git host APIs you configure, and quota lookups against your harnesses' own providers.
-
-Found a vulnerability? Please report it privately to **alamo@alamoweb.com.br** instead of opening a public issue.
+- **Minimal network use.** The only network calls ForgeOrbit itself makes are update checks against GitHub Releases (`cbrwvy/forgeorbit` only — upstream Agetor releases are explicitly blocked), the git host APIs you configure, and quota lookups against your harnesses' own providers.
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome, including AI-assisted and fully vibecoded ones. Agetor itself is built almost entirely by Claude Code running inside Agetor. Hold your PR to the same bar as a hand-written one: tests green, types clean, and a description that makes the *why* obvious.
+Issues and pull requests are welcome. Hold your PR to the same bar as a hand-written one: tests green, types clean, and a description that makes the *why* obvious.
 
 ### Development setup
 
 You'll need [Bun](https://bun.sh) ≥ 1.3.5, Git, `tmux`, and at least one harness CLI.
 
 ```bash
-git clone https://github.com/alamops/agetor.git
-cd agetor
+git clone https://github.com/cbrwvy/forgeorbit.git
+cd forgeorbit
 bun install
 bun run dev:hmr        # Vite (HMR) + Electrobun, using ~/.agetor-dev on port 4318
 ```
@@ -385,17 +387,18 @@ The orchestrator, UI and CLI pick up the new kind automatically.
 - Graduating Codex, Cursor, Gemini CLI, fx and Antigravity from experimental to stable.
 - More harnesses as new agent CLIs mature.
 
-Have an idea? [Open an issue](https://github.com/alamops/agetor/issues).
+Have an idea? [Open an issue](https://github.com/cbrwvy/forgeorbit/issues).
 
 ---
 
-## Acknowledgements
+## Acknowledgements & Origin
 
-- [Electrobun](https://github.com/blackboardsh/electrobun) and [Bun](https://bun.sh): the runtime Agetor is built on.
-- [Claude Code](https://github.com/anthropics/claude-code), [Codex CLI](https://github.com/openai/codex), [Cursor CLI](https://cursor.com/cli), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [fx](https://fx.sh) and [Antigravity CLI](https://antigravity.google): the agents Agetor orchestrates.
+- **Origin:** ForgeOrbit is based on [Agetor](https://github.com/alamops/agetor), originally created by [Alamo Saravali](https://github.com/alamops).
+- [Electrobun](https://github.com/blackboardsh/electrobun) and [Bun](https://bun.sh): the runtime ForgeOrbit is built on.
+- [Claude Code](https://github.com/anthropics/claude-code), [Codex CLI](https://github.com/openai/codex), [Cursor CLI](https://cursor.com/cli), [Gemini CLI](https://github.com/google-gemini/gemini-cli), [fx](https://fx.sh) and [Antigravity CLI](https://antigravity.google): the agents ForgeOrbit orchestrates.
 - [tmux](https://github.com/tmux/tmux): what keeps agent sessions alive across restarts.
 - [React](https://react.dev), [React Flow](https://reactflow.dev), [dagre](https://github.com/dagrejs/dagre), [Motion](https://motion.dev), [dnd-kit](https://dndkit.com), [shadcn/ui](https://ui.shadcn.com), [Tailwind CSS](https://tailwindcss.com), [Lucide](https://lucide.dev), [Sonner](https://sonner.emilkowal.ski), [xterm.js](https://xtermjs.org), [Ink](https://github.com/vadimdemedes/ink) and [Clack](https://github.com/bombshell-dev/clack): the UI and TUI stack.
 
 ## License
 
-[MIT](./LICENSE) © 2026 Alamo Saravali
+[MIT](./LICENSE) © 2026 Lunarian Forge · Original work © 2026 Alamo Saravali

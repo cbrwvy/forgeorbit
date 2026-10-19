@@ -1,5 +1,5 @@
 /**
- * Content for the "Connect Agetor to GitHub" setup guide (`GitHubSetupDialog.tsx`).
+ * Content for the "Connect ForgeOrbit to GitHub" setup guide (`GitHubSetupDialog.tsx`).
  *
  * This module is the **single source of truth** for that guide's copy — the
  * component only maps over these exports; no permission/scope/step text is
@@ -10,7 +10,7 @@
  *
  * Permission facts (scope names, fine-grained permission names, what each
  * token type can and can't do) were verified against docs.github.com as of
- * July 2026. **Classic tokens are recommended for full Agetor access**
+ * July 2026. **Classic tokens are recommended for full ForgeOrbit access**
  * because three of the ~70 `/github/*` integration surfaces
  * (`src/bun/server.ts`) are classic-token-only or otherwise unreachable with
  * a fine-grained PAT: the Notifications API only accepts classic tokens, the
@@ -49,7 +49,7 @@ export const GITHUB_URLS = {
 } as const;
 
 /**
- * How Agetor resolves the token used to authenticate a GitHub request, in
+ * How ForgeOrbit resolves the token used to authenticate a GitHub request, in
  * order — mirrors `githubToken()` in `src/bun/github.ts:856-863` exactly.
  * Keep this in lockstep with that function; it's documentation of real
  * runtime behavior, not aspirational copy.
@@ -58,25 +58,25 @@ export const AUTH_RESOLUTION_STEPS: GuideStep[] = [
   {
     title: "A token saved in this Settings section",
     detail:
-      "Agetor looks up the token stored for the repo's remote host (the raw ssh host — " +
+      "ForgeOrbit looks up the token stored for the repo's remote host (the raw ssh host — " +
       "e.g. github-work.com for an ssh alias remote). If none is stored for that exact " +
       "host, it falls back to whatever token is stored under the github.com entry.",
   },
   {
     title: "Environment variables",
     detail:
-      "If no token is stored for the host, Agetor reads the GITHUB_TOKEN or GH_TOKEN " +
+      "If no token is stored for the host, ForgeOrbit reads the GITHUB_TOKEN or GH_TOKEN " +
       "environment variable from the process it was launched with.",
   },
   {
     title: "GitHub CLI login",
     detail:
-      "If neither of the above resolves a token, Agetor shells out to `gh auth token` " +
+      "If neither of the above resolves a token, ForgeOrbit shells out to `gh auth token` " +
       "and uses whatever the GitHub CLI has you logged in as, if anything.",
   },
 ];
 
-/** Recommended classic-token scopes for FULL Agetor access. */
+/** Recommended classic-token scopes for FULL ForgeOrbit access. */
 export const CLASSIC_SCOPES: GuideScopeRow[] = [
   {
     scope: "repo",
@@ -149,7 +149,7 @@ export const FINE_GRAINED_PERMISSIONS: GuidePermissionRow[] = [
   },
 ];
 
-/** What a fine-grained PAT cannot reach in Agetor, even with every
+/** What a fine-grained PAT cannot reach in ForgeOrbit, even with every
  *  permission above granted — phrased for the dialog's warning list. */
 export const FINE_GRAINED_LIMITATIONS: string[] = [
   "The notifications inbox — GitHub's Notifications API only supports classic tokens.",
@@ -172,7 +172,7 @@ export const MULTI_ACCOUNT_NOTE: string =
   "alias (e.g. git@github-work.com:org/repo.git) authenticates with whatever token is " +
   "stored for that alias host; the github.com entry is the default used for ordinary " +
   "github.com remotes. This is how multiple GitHub identities — a personal account and " +
-  "a work account, say — can coexist in the same Agetor install.";
+  "a work account, say — can coexist in the same ForgeOrbit install.";
 
 /** Click-path to create a fine-grained personal access token. */
 export const FINE_GRAINED_CREATE_STEPS: GuideStep[] = [
@@ -188,12 +188,12 @@ export const FINE_GRAINED_CREATE_STEPS: GuideStep[] = [
     title: "Name, expiration, and resource owner",
     detail:
       "Pick a name and expiration. Set \"Resource owner\" to your personal account, or " +
-      "the organization that owns the repositories you want Agetor to work with.",
+      "the organization that owns the repositories you want ForgeOrbit to work with.",
   },
   {
     title: "Repository access",
     detail:
-      "Choose \"Only select repositories\" and pick the repos Agetor should touch (or " +
+      "Choose \"Only select repositories\" and pick the repos ForgeOrbit should touch (or " +
       "\"All repositories\" if you want it to cover everything under that owner).",
   },
   {

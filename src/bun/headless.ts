@@ -38,7 +38,7 @@ const IDLE_CHECK_MS = 30_000;
  *  agent/workflow, and no attached client.
  *  `AGETOR_DAEMON_IDLE_MS=0` disables idle shutdown (daemon stays up). */
 const IDLE_TIMEOUT_MS = Number(
-  process.env.AGETOR_DAEMON_IDLE_MS ?? 5 * 60 * 1000,
+  process.env.FORGEORBIT_DAEMON_IDLE_MS ?? process.env.AGETOR_DAEMON_IDLE_MS ?? 5 * 60 * 1000,
 );
 
 /** Ceiling on how long a `running` subagent row alone can hold the daemon up.

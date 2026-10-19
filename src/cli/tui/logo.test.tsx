@@ -12,7 +12,7 @@ test("both logo variants use only block / half-block + space (width-safe)", () =
 
 test("logoFor picks the widest variant that fits, else null", () => {
   expect(logoFor(200)).toBe(LOGO_WIDE); // plenty of room → bold
-  expect(logoFor(30)).toBe(LOGO_COMPACT); // too narrow for bold, fits the compact
+  expect(logoFor(40)).toBe(LOGO_COMPACT); // too narrow for bold, fits the compact
   expect(logoFor(10)).toBeNull(); // too narrow for either → caller shows plain text
 });
 

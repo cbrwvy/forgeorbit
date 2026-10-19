@@ -29,9 +29,9 @@ import { cmdShell } from "./commands/shell.ts";
 import { cmdCommands } from "./commands/discovery.ts";
 import { helpFor } from "./usage.ts";
 
-const HELP = `agetor — drive Agetor from the terminal
+const HELP = `forgeorbit — drive ForgeOrbit from the terminal
 
-Usage: agetor [command] [options]
+Usage: forgeorbit [command] [options]
 
 Commands:
   (no command)        open the live dashboard
@@ -76,7 +76,7 @@ Global options:
   --json              machine-readable JSON output
   --plain             disable color / animation
   --no-daemon         fail instead of auto-starting a background core
-  --data-dir <dir>    target a specific AGETOR_DATA_DIR
+  --data-dir <dir>    target a specific FORGEORBIT_DATA_DIR / AGETOR_DATA_DIR
   --port <n>          port for a freshly-spawned daemon
   -h, --help          show help
   -V, --version       print version
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
   if (flags.plain || flags.json) setPlain(true);
 
   if (version) return out(pkg.version);
-  // `agetor help [cmd [sub]]` and `agetor <cmd> [sub] --help` both resolve to a
+  // `forgeorbit help [cmd [sub]]` and `forgeorbit <cmd> [sub] --help` both resolve to a
   // command/subcommand block; bare `help`/`--help` falls back to the index.
   if (cmd === "help") return out(helpFor(args[0], args[1]) ?? HELP);
   if (help) return out(helpFor(cmd, args[0]) ?? HELP);
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   switch (cmd) {
     case undefined: {
       if (!isTTY || flags.json) {
-        out(c.dim("the dashboard needs an interactive terminal — try `agetor ls` or `agetor --help`"));
+        out(c.dim("the dashboard needs an interactive terminal — try `forgeorbit ls` or `forgeorbit --help`"));
         return;
       }
       const core = await ensureCore(ensureOpts(flags));
@@ -219,11 +219,11 @@ async function main(): Promise<void> {
     case "info": {
       const client = await getClient(flags);
       const meta = await client.info();
-      return flags.json ? printJson(meta) : out(`agetor core v${meta.version}`);
+      return flags.json ? printJson(meta) : out(`forgeorbit core v${meta.version}`);
     }
     default:
       errln(c.red(`unknown command: ${cmd}`));
-      errln("run `agetor --help` for usage");
+      errln("run `forgeorbit --help` for usage");
       process.exitCode = 1;
   }
 }

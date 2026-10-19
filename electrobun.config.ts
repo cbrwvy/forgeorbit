@@ -2,24 +2,24 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
   app: {
-    name: "Agetor",
-    identifier: "sh.alamops.agetor",
+    name: "ForgeOrbit",
+    identifier: "com.lunarianforge.forgeorbit",
     version: "1.0.2",
-    // Registers agetor:// so a clicked terminal-notifier notification's
-    // `-open agetor://task/<id>` (see src/bun/notifier.ts) routes back into
-    // this app as an "open-url" event, which src/bun/deep-link.ts parses
-    // back into a task id. Hardcoded rather than imported from
-    // src/bun/deep-link.ts (APP_URL_SCHEME) to keep this build-config file
-    // free of app-source imports — keep the two in sync by hand.
-    urlSchemes: ["agetor"],
+    // Registers forgeorbit:// (and legacy agetor:// for backward compatibility)
+    // so a clicked notification's `-open forgeorbit://task/<id>` (see
+    // src/bun/notifier.ts) routes back into this app as an "open-url" event,
+    // which src/bun/deep-link.ts parses back into a task id. Hardcoded rather
+    // than imported from src/bun/deep-link.ts (APP_URL_SCHEME) to keep this
+    // build-config file free of app-source imports — keep the two in sync by hand.
+    urlSchemes: ["forgeorbit", "agetor"],
   },
   release: {
-    // GitHub Releases' "latest" download URL — always redirects to the most
-    // recent non-prerelease tag. `electrobun build` bakes this into
-    // Resources/version.json, and Updater.checkForUpdate() fetches
-    // <baseUrl>/<channel>-macos-arm64-update.json from there. Filenames stay
-    // identical across releases so the redirect resolves cleanly each time.
-    baseUrl: "https://github.com/alamops/agetor/releases/latest/download",
+    // GitHub Releases' "latest" download URL for ForgeOrbit — always redirects
+    // to the most recent non-prerelease tag on cbrwvy/forgeorbit.
+    // `electrobun build` bakes this into Resources/version.json, and
+    // Updater.checkForUpdate() fetches <baseUrl>/<channel>-macos-arm64-update.json
+    // from there.
+    baseUrl: "https://github.com/cbrwvy/forgeorbit/releases/latest/download",
     // Delta patches carry forward old-hash → new-hash diffs; turning them on
     // means scripts/upload-release.ts must also reupload previous releases'
     // .patch files into the new release (GitHub's "latest" URL only serves
@@ -28,7 +28,7 @@ export default {
     generatePatch: false,
   },
   runtime: {
-    // Don't quit the bun process when the user closes the window. Agetor
+    // Don't quit the bun process when the user closes the window. ForgeOrbit
     // hosts long-running claude/codex sessions in tmux that should survive
     // a dismissed window — the user can bring the window back via the Dock
     // icon (handled by the `reopen` event in src/bun/index.ts). Cmd+Q is
@@ -50,30 +50,28 @@ export default {
       // Lands at Contents/Resources/app/bin/ inside the .app, which is what
       // src/bun/tmux-resolution.ts:bundledTmuxPath() points to at runtime.
       "vendor/tmux/arm64": "bin",
-      // Our own native arm64 notifier helper (AgetorNotifier.app) — posts
+      // Our own native arm64 notifier helper (ForgeOrbitNotifier.app) — posts
       // deep-linkable notifications via UNUserNotificationCenter and opens
-      // agetor://task/<id> on click (built by scripts/build-notifier.ts from
+      // forgeorbit://task/<id> on click (built by scripts/build-notifier.ts from
       // native/notifier/). Lands at Contents/Resources/app/bin/
-      // AgetorNotifier.app; src/bun/notifier.ts:resolveNotifier() points at its
-      // inner executable. No third-party binary, no Rosetta. The agetor://
-      // scheme registered above is what the click routes back through.
+      // ForgeOrbitNotifier.app; src/bun/notifier.ts:resolveNotifier() points at its
+      // inner executable. No third-party binary, no Rosetta.
       "vendor/notifier": "bin",
       // Our own native arm64 "disclaim" helper — execs a spawned command as
-      // TCC-responsible for itself instead of inheriting Agetor's responsible
+      // TCC-responsible for itself instead of inheriting ForgeOrbit's responsible
       // process identity (built by scripts/build-disclaim.ts from
       // native/disclaim/). Lands at Contents/Resources/app/bin/disclaim;
-      // src/bun/disclaim.ts:bundledDisclaimPath() points at it. See
-      // docs/plans/stop-agetor-tcc-appdata-spam.md.
+      // src/bun/disclaim.ts:bundledDisclaimPath() points at it.
       "vendor/disclaim": "bin",
     },
     watchIgnore: ["dist/**", ".agetor/**", "vendor/**"],
     mac: {
       bundleCEF: false,
-      icons: "src/assets/agetor.iconset",
+      icons: "src/assets/forgeorbit.iconset",
       codesign: true,
       notarize: true,
     },
-    linux: { bundleCEF: false, icon: "src/assets/agetor-icon.png" },
-    win: { bundleCEF: false, icon: "src/assets/agetor-icon.ico" },
+    linux: { bundleCEF: false, icon: "src/assets/forgeorbit-icon.png" },
+    win: { bundleCEF: false, icon: "src/assets/forgeorbit-icon.ico" },
   },
 } satisfies ElectrobunConfig;

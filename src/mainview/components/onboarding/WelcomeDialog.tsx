@@ -32,16 +32,19 @@ export function WelcomeDialog({ open, onAcknowledge, onSkip }: Props) {
           <div className="rounded-md bg-primary/10 p-1.5 text-primary">
             <Sparkles className="size-4" />
           </div>
-          <h2 id="onboarding-welcome-title" className="text-base font-semibold">
-            Welcome to Agetor
-          </h2>
+          <div className="flex flex-col">
+            <h2 id="onboarding-welcome-title" className="text-base font-semibold leading-tight">
+              Welcome to ForgeOrbit
+            </h2>
+            <span className="text-xs text-muted-foreground">Your agents. One orbit.</span>
+          </div>
         </div>
 
         <div id="onboarding-welcome-desc" className="space-y-3 pt-4 text-sm text-muted-foreground">
           <p>
-            Agetor turns a kanban board into a control plane for AI coding agents. A{" "}
+            ForgeOrbit turns a kanban board into a local-first control plane for AI coding agents. A{" "}
             <span className="text-foreground">task</span> is just a prompt, a project folder,
-            and a coding agent — Claude Code, Codex, Cursor, or Gemini.
+            and a coding agent — Claude Code, Codex, Cursor, Gemini, or Antigravity.
           </p>
           <p>
             Run it and the card moves to <span className="text-foreground">Running</span> while

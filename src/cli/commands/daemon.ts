@@ -42,7 +42,7 @@ export async function cmdDaemon(args: string[], flags: Flags): Promise<void> {
         return printJson(core ? { running: true, ...publicCore(core) } : { running: false });
       }
       if (!core) {
-        out(`${c.gray("○")} no Agetor core running`);
+        out(`${c.gray("○")} no ForgeOrbit core running`);
         return;
       }
       out(

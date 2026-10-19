@@ -60,6 +60,20 @@ export function getUpdateSnapshot(): UpdaterSnapshot {
   return { ...snapshot };
 }
 
+export const ALLOWED_UPDATE_BASE_URL_PREFIX =
+  "https://github.com/cbrwvy/forgeorbit/releases/";
+
+/**
+ * Guard that ensures ForgeOrbit never checks, downloads, or applies updates
+ * from upstream `alamops/agetor` or any unverified update feed.
+ */
+export function isAllowedUpdateBaseUrl(baseUrl: string | null | undefined): boolean {
+  if (!baseUrl || typeof baseUrl !== "string") return false;
+  const normalized = baseUrl.trim().replace(/\/+$/, "") + "/";
+  if (normalized.includes("alamops/agetor")) return false;
+  return normalized.startsWith(ALLOWED_UPDATE_BASE_URL_PREFIX);
+}
+
 /**
  * Probe the update feed; if a newer hash is published, download the bundle
  * so it's staged for `applyUpdate()`. Coalesces concurrent callers onto a
@@ -67,12 +81,34 @@ export function getUpdateSnapshot(): UpdaterSnapshot {
  * race otherwise.
  */
 export async function checkForUpdate(): Promise<void> {
+  if (
+    process.env.FORGEORBIT_DISABLE_UPDATES === "1" ||
+    process.env.AGETOR_DISABLE_UPDATES === "1"
+  ) {
+    setStatus("idle");
+    return;
+  }
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
       setStatus("checking");
+      const baseUrl = await Updater.localInfo.baseUrl();
+      if (!isAllowedUpdateBaseUrl(baseUrl)) {
+        // Never contact upstream alamops/agetor or an unconfigured feed.
+        setStatus("idle");
+        return;
+      }
       const info = await Updater.checkForUpdate();
       if (info.error) {
+        // Before the first release is published on cbrwvy/forgeorbit, GitHub
+        // returns 404 for latest/download/*-update.json, which Electrobun
+        // surfaces as "Failed to fetch update info from ...". Treat an
+        // unpublished feed as idle ("no update available") rather than an
+        // alarming error banner.
+        if (info.error.startsWith("Failed to fetch update info from ")) {
+          setStatus("idle");
+          return;
+        }
         setStatus("error", { error: info.error, message: info.error });
         return;
       }
@@ -118,6 +154,12 @@ export async function checkForUpdate(): Promise<void> {
  * back to the client at that point.
  */
 export async function applyUpdate(): Promise<void> {
+  const baseUrl = await Updater.localInfo.baseUrl();
+  if (!isAllowedUpdateBaseUrl(baseUrl)) {
+    throw new Error(
+      `Refusing to apply update from untrusted baseUrl: ${baseUrl || "(empty)"}`,
+    );
+  }
   await Updater.applyUpdate();
 }
 

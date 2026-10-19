@@ -35,7 +35,7 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
     const ok = await confirm({
       title: snapshot.version
         ? `Restart and update to v${snapshot.version}?`
-        : "Restart and update Agetor?",
+        : "Restart and update ForgeOrbit?",
       description:
         "Any running agents will be interrupted. Their work is preserved in the task history — you can pick up from where they stopped after the restart.",
       confirmLabel: "Restart now",
@@ -52,7 +52,7 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
     try {
       await api.applyUpdate();
     } catch (e) {
-      console.error("[agetor] apply update failed", e);
+      console.error("[forgeorbit] apply update failed", e);
       setBusy(false);
       onChange();
     }
@@ -69,10 +69,10 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
       <span className="min-w-0 flex-1">
         <span className="font-medium text-foreground">
           {snapshot.version
-            ? `Agetor v${snapshot.version} is ready to install.`
+            ? `ForgeOrbit v${snapshot.version} is ready to install.`
             : "An update is ready to install."}
         </span>{" "}
-        <span className="text-muted-foreground">Restart Agetor to apply.</span>
+        <span className="text-muted-foreground">Restart ForgeOrbit to apply.</span>
       </span>
       <Button
         variant="outline"

@@ -167,15 +167,15 @@ describe("flag parsers", () => {
   });
 
   test("parseExportFlags: unknown flags, positionals and missing values throw", () => {
-    expect(() => parseExportFlags(["--nope"])).toThrow(/usage: agetor export/);
-    expect(() => parseExportFlags(["stray"])).toThrow(/usage: agetor export/);
+    expect(() => parseExportFlags(["--nope"])).toThrow(/usage: forgeorbit export/);
+    expect(() => parseExportFlags(["stray"])).toThrow(/usage: forgeorbit export/);
     expect(() => parseExportFlags(["--profile"])).toThrow(/needs a value/);
     // An empty value is no value: --out "" must not fall back to stdout.
     expect(() => parseExportFlags(["--all", "--out", ""])).toThrow("'--out' needs a value");
     expect(() => parseExportFlags(["--pipeline", " "])).toThrow("'--pipeline' needs a value");
     expect(() => parseExportFlags(["--profile", ""])).toThrow("'--profile' needs a value");
     expect(() => parseExportFlags(["--agent", " "])).toThrow("'--agent' needs a value");
-    expect(() => parseExportFlags(["--x"], "profile export")).toThrow(/usage: agetor profile export/);
+    expect(() => parseExportFlags(["--x"], "profile export")).toThrow(/usage: forgeorbit profile export/);
   });
 
   test("parseImportFlags: every flag, repeatable --harness-map", () => {
@@ -185,7 +185,7 @@ describe("flag parsers", () => {
     expect(parseImportFlags([])).toEqual({ dryRun: false, harnessMap: {}, enableHarnesses: false, yes: false });
     expect(parseImportFlags(["--yes"]).yes).toBe(true);
     expect(parseImportFlags(["-y"]).yes).toBe(true);
-    expect(() => parseImportFlags(["--force"])).toThrow(/usage: agetor import/);
+    expect(() => parseImportFlags(["--force"])).toThrow(/usage: forgeorbit import/);
     expect(() => parseImportFlags(["--name", ""])).toThrow("'--name' needs a value");
     expect(() => parseImportFlags(["--harness-map", "  "])).toThrow("'--harness-map' needs a value");
     // A file harness id may start with a dash; the printed hint pastes back.
@@ -626,7 +626,7 @@ describe("cmdExport", () => {
   });
 
   test("no selector is a usage error; --all with a selector is an error", async () => {
-    await expect(cmdExport([], flags)).rejects.toThrow(/usage: agetor export/);
+    await expect(cmdExport([], flags)).rejects.toThrow(/usage: forgeorbit export/);
     await expect(cmdExport(["--all", "--profile", "x"], flags)).rejects.toThrow(/can't be combined/);
   });
 
@@ -729,10 +729,10 @@ describe("cmdExport", () => {
       { agentIds: ["a1"], pipelineIds: [] },
       { agentIds: ["a1"], pipelineIds: [] },
     ]);
-    await expect(cmdExportOne("profile", ["--out", "-"], flags, client)).rejects.toThrow(/usage: agetor profile export/);
-    await expect(cmdExportOne("profile", [], flags, client)).rejects.toThrow(/usage: agetor profile export/);
+    await expect(cmdExportOne("profile", ["--out", "-"], flags, client)).rejects.toThrow(/usage: forgeorbit profile export/);
+    await expect(cmdExportOne("profile", [], flags, client)).rejects.toThrow(/usage: forgeorbit profile export/);
     await expect(cmdExportOne("profile", ["Worker", "--pipeline", "p"], flags, client)).rejects.toThrow(
-      /usage: agetor profile export/,
+      /usage: forgeorbit profile export/,
     );
   });
 });
@@ -935,8 +935,8 @@ describe("cmdImport", () => {
       expect(committed).toEqual([]);
       await cmdImport(["--yes", "--name", "Solo", file], flags);
       expect(committed).toEqual([{ singleName: "Solo" }]);
-      await expect(cmdImport(["--yes", file, "other.json"], flags)).rejects.toThrow(/usage: agetor import/);
-      await expect(cmdImport(["--yes"], flags)).rejects.toThrow(/usage: agetor import/);
+      await expect(cmdImport(["--yes", file, "other.json"], flags)).rejects.toThrow(/usage: forgeorbit import/);
+      await expect(cmdImport(["--yes"], flags)).rejects.toThrow(/usage: forgeorbit import/);
     });
   });
 
@@ -1006,7 +1006,7 @@ describe("cmdImport", () => {
 
   test("missing or oversized files fail before any network call", async () => {
     await inTempDir(async (dir) => {
-      await expect(cmdImport([], flags)).rejects.toThrow(/usage: agetor import/);
+      await expect(cmdImport([], flags)).rejects.toThrow(/usage: forgeorbit import/);
       await expect(cmdImport([path.join(dir, "nope.json")], flags)).rejects.toThrow(/no such file/);
       const big = path.join(dir, "big.json");
       writeFileSync(big, "x".repeat(2 * 1024 * 1024 + 1));
@@ -1097,7 +1097,7 @@ describe("cmdImport", () => {
       await cmdImportAs("profile", [file], flags, client);
       await cmdImportAs("pipeline", [file], flags, client);
       expect(calls).toBe(2);
-      await expect(cmdImportAs("profile", [file, "--bad"], flags, client)).rejects.toThrow(/usage: agetor profile import/);
+      await expect(cmdImportAs("profile", [file, "--bad"], flags, client)).rejects.toThrow(/usage: forgeorbit profile import/);
     });
   });
 });

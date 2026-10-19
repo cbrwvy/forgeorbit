@@ -231,7 +231,7 @@ describe("cmdCompact", () => {
 
   test("an unknown flag throws a usage error before any request", async () => {
     const { client, calls } = fakeClient();
-    await expect(cmdCompact(["--bogus"], flags, client)).rejects.toThrow(/usage: agetor compact/);
+    await expect(cmdCompact(["--bogus"], flags, client)).rejects.toThrow(/usage: forgeorbit compact/);
     expect(calls).toEqual([]);
   });
 });

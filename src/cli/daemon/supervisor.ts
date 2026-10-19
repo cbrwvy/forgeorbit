@@ -24,7 +24,7 @@ export async function ensureCore(opts: EnsureOptions = {}): Promise<CoreInfo> {
   if (existing) return existing;
   if (opts.noDaemon) {
     throw new Error(
-      "No Agetor core is running. Open the app, run `agetor daemon start`, or drop --no-daemon.",
+      "No ForgeOrbit core is running. Open the app, run `forgeorbit daemon start`, or drop --no-daemon.",
     );
   }
   return spawnDaemon(opts);
@@ -38,8 +38,15 @@ export async function spawnDaemon(opts: EnsureOptions = {}): Promise<CoreInfo> {
   // lines to, so a crash on boot leaves a trace the user can read.
   const logFd = openSync(path.join(dataDir, "daemon.log"), "a");
 
-  const env: Record<string, string> = { ...process.env, AGETOR_DATA_DIR: dataDir };
-  if (opts.port) env.AGETOR_API_PORT = String(opts.port);
+  const env: Record<string, string> = {
+    ...process.env,
+    FORGEORBIT_DATA_DIR: dataDir,
+    AGETOR_DATA_DIR: dataDir,
+  };
+  if (opts.port) {
+    env.FORGEORBIT_API_PORT = String(opts.port);
+    env.AGETOR_API_PORT = String(opts.port);
+  }
 
   const proc = Bun.spawn(daemonCommand(), {
     env,
@@ -56,7 +63,7 @@ export async function spawnDaemon(opts: EnsureOptions = {}): Promise<CoreInfo> {
   const core = await waitForCore(opts.dataDir, 15_000);
   if (!core) {
     throw new Error(
-      `Agetor daemon did not come up within 15s — see ${path.join(dataDir, "daemon.log")}`,
+      `ForgeOrbit daemon did not come up within 15s — see ${path.join(dataDir, "daemon.log")}`,
     );
   }
   return core;

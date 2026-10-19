@@ -77,7 +77,7 @@ import { reconcileById } from "@/lib/reconcile";
 import { parseStickyUserMessagesPreference, STICKY_USER_MESSAGES_PREF } from "@/lib/user-message-display";
 import { FX_AUTO_RESUME_DELAY_PREF, FX_AUTO_RESUME_PREF } from "@/lib/fx-auto-resume-prefs";
 import { parseFxAutoResumePrefs } from "../shared/fx-recovery.ts";
-import iconUrl from "../assets/agetor.iconset/icon_32x32@2x.png";
+import iconUrl from "../assets/forgeorbit.iconset/icon_32x32@2x.png";
 
 /** The `pipelineParentId` a `GlobalEvent` carries when it concerns a hidden
  *  pipeline STEP task — the orchestrator stamps it on the `run-status`/
@@ -1183,12 +1183,12 @@ function AppInner() {
           + (ev.runningTaskTitles.length > 3 ? ", …" : "")
         : null;
       void confirm({
-        title: "Quit Agetor?",
+        title: "Quit ForgeOrbit?",
         description: (
           <div className="space-y-2">
             <div>
               {n} {noun} still running. They will keep running in the background;
-              you can reconnect to them next time you open Agetor.
+              you can reconnect to them next time you open ForgeOrbit.
             </div>
             {titlesPreview && (
               <div className="font-mono text-foreground/80">{titlesPreview}</div>
@@ -2207,7 +2207,7 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <img src={iconUrl} alt="" className="block size-7 shrink-0 -translate-y-0.5 object-contain" />
-            <h1 className="font-geist text-base font-semibold leading-none tracking-tight">Agetor</h1>
+            <h1 className="font-geist text-base font-semibold leading-none tracking-tight">ForgeOrbit</h1>
           </div>
           <div className="electrobun-webkit-app-region-no-drag flex items-center gap-2 text-xs text-muted-foreground">
             {visibleTopbarAgents(agents, harnesses).map((a) => {

@@ -117,7 +117,7 @@ export async function cmdHarness(args: string[], flags: Flags): Promise<void> {
       const id = args[1];
       if (!id) throw usageError("harness shell");
       if (!isTTY) {
-        throw new Error("agetor harness shell needs an interactive terminal (TTY)");
+        throw new Error("forgeorbit harness shell needs an interactive terminal (TTY)");
       }
       const { env, binDir, launch, kind } = await client.harnessShellEnv(id);
       const shell = process.env.SHELL || "/bin/zsh";

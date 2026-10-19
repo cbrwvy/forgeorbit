@@ -62,7 +62,7 @@ export function compactStatsLines(stats: DbStats): string[] {
     `${c.bold("database")}     ${formatBytes(total)} on disk ` +
       c.dim(`(file ${formatBytes(stats.fileBytes)} + wal ${formatBytes(stats.walBytes)})`),
     `${c.bold("reclaimable")}  ${formatBytes(stats.reclaimableBytes)}`,
-    `${c.bold("estimate")}     ~${estimate} s ${c.dim("— Agetor won't respond while it compacts")}`,
+    `${c.bold("estimate")}     ~${estimate} s ${c.dim("— ForgeOrbit won't respond while it compacts")}`,
     `${c.bold("active runs")}  ${stats.activeRunCount}`,
   ];
   if (stats.activeRunCount > 0) {
@@ -110,7 +110,7 @@ export async function askCompact(stats: DbStats, io: AskCompactIo = defaultAskCo
   let answer: boolean | symbol;
   try {
     answer = await io.confirm({
-      message: `Compact the database (~${Math.max(1, Math.round(stats.compactEstimateSec))} s, Agetor won't respond meanwhile)?`,
+      message: `Compact the database (~${Math.max(1, Math.round(stats.compactEstimateSec))} s, ForgeOrbit won't respond meanwhile)?`,
       initialValue: false,
     });
   } finally {
@@ -140,7 +140,7 @@ export async function cmdCompact(
   // Consent is needed before anything is written: a terminal asks, a script
   // must say --yes. `--json` alone is the read-only report (never prompts).
   if (!f.yes && !flags.json && !interactive && !deps.confirm) {
-    throw new Error("compact needs confirmation — pass --yes to compact without asking (usage: agetor compact [--yes|-y] [--json])");
+    throw new Error("compact needs confirmation — pass --yes to compact without asking (usage: forgeorbit compact [--yes|-y] [--json])");
   }
   const api = client ?? (await getClient(flags));
 
@@ -149,7 +149,7 @@ export async function cmdCompact(
     stats = await api.dbStats();
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
-      throw new Error("the running agetor core is older than this CLI — update it to use `agetor compact`");
+      throw new Error("the running ForgeOrbit core is older than this CLI — update it to use `forgeorbit compact`");
     }
     throw e;
   }

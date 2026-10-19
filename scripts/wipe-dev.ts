@@ -27,7 +27,9 @@ const force = process.argv.includes("--force");
 // `package.json`'s `dev` / `dev:hmr` scripts embed the same value as a
 // literal in their `AGETOR_API_PORT=…` prefix; the `dev-defaults.test.ts`
 // suite enforces that the two sides agree, so we don't drift silently.
-const API_PORT = Number(process.env.AGETOR_API_PORT ?? DEV_API_PORT);
+const API_PORT = Number(
+  process.env.FORGEORBIT_API_PORT ?? process.env.AGETOR_API_PORT ?? DEV_API_PORT,
+);
 
 if (!DEV_DIR.endsWith(".agetor-dev")) {
   console.error(`[wipe-dev] refusing: resolved path doesn't end in .agetor-dev (${DEV_DIR})`);
@@ -85,13 +87,13 @@ if (!force) {
   const status = pidFileStatus();
   if (status.kind === "alive") {
     console.error(
-      `[wipe-dev] refusing: agetor is running with pid ${status.pid} on this data dir. `
+      `[wipe-dev] refusing: forgeorbit is running with pid ${status.pid} on this data dir. `
       + `Stop it first, or pass --force to wipe anyway.`,
     );
     process.exit(1);
   }
   // Fall back to the port probe whenever we *don't* have positive proof
-  // the agetor is dead. `kind: "dead"` is the only case where we know for
+  // the process is dead. `kind: "dead"` is the only case where we know for
   // sure (kill(pid, 0) returned ESRCH). Missing/unreadable/malformed pid
   // files all mean "uncertain" and deserve the safety-net check.
   if (status.kind !== "dead" && portInUse()) {
@@ -101,7 +103,7 @@ if (!force) {
       `pid file malformed (${status.raw})`;
     console.error(
       `[wipe-dev] refusing: ${why} but something is listening on 127.0.0.1:${API_PORT}. `
-      + `If that's a different process (or a prod agetor sharing the port), pass --force.`,
+      + `If that's a different process (or a prod forgeorbit sharing the port), pass --force.`,
     );
     process.exit(1);
   }

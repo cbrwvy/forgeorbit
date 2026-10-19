@@ -24,7 +24,7 @@ export async function cmdAgentProfile(args: string[], flags: Flags): Promise<voi
       const profiles = await client.listAgentProfiles();
       if (flags.json) return printJson(profiles);
       if (profiles.length === 0) {
-        out(c.dim("no profiles defined — create one: agetor profile add <name> --harness <id> --model <id>"));
+        out(c.dim("no profiles defined — create one: forgeorbit profile add <name> --harness <id> --model <id>"));
         return;
       }
       const rows = profiles.map((pr) => formatAgentProfileListRow(pr));
@@ -128,7 +128,7 @@ export async function cmdAgentProfile(args: string[], flags: Flags): Promise<voi
         else if (a === "--with-tasks") withTasks = true;
         else if (a.startsWith("-")) {
           throw new Error(
-            `profile duplicate does not accept '${safe(a)}' — duplicate first, then change the copy with 'agetor profile edit'`,
+            `profile duplicate does not accept '${safe(a)}' — duplicate first, then change the copy with 'forgeorbit profile edit'`,
           );
         } else throw usageError("profile duplicate");
       }

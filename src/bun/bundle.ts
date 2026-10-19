@@ -228,7 +228,7 @@ export function bundleSaveErrorMessage(err: unknown, target: "downloads" | "fold
       target === "downloads"
         ? "System Settings → Privacy & Security → Files and Folders"
         : "System Settings → Privacy & Security";
-    return `couldn't save the export: macOS didn't allow Agetor to write to ${where} — allow it in ${settings}, or use Copy JSON${target === "downloads" ? " or Choose folder" : ""} instead`;
+    return `couldn't save the export: macOS didn't allow ForgeOrbit to write to ${where} — allow it in ${settings}, or use Copy JSON${target === "downloads" ? " or Choose folder" : ""} instead`;
   }
   // Creating Downloads (or AGETOR_DOWNLOADS_DIR) when a file, or a dangling
   // symlink, sits at its path or above it: `writeBundleFile` numbers past a

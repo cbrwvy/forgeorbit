@@ -30,7 +30,7 @@ import { randomBytes } from "node:crypto";
  *     the published port.
  */
 export function getApiPort(): number {
-  return Number(process.env.AGETOR_API_PORT ?? 4317);
+  return Number(process.env.FORGEORBIT_API_PORT ?? process.env.AGETOR_API_PORT ?? 4317);
 }
 
 export const DEFAULT_API_HOST = "127.0.0.1";
@@ -43,10 +43,10 @@ export type ApiHostResolution =
   | { ok: false; error: string };
 
 /**
- * Resolve `AGETOR_API_HOST` to a bind address, or explain why it can't be
+ * Resolve `FORGEORBIT_API_HOST` / `AGETOR_API_HOST` to a bind address, or explain why it can't be
  * used. Accepted: unset/blank, `127.0.0.1` or `localhost` (all → `127.0.0.1`)
  * and the wildcards `0.0.0.0`, `::` / `[::]` (case and surrounding whitespace
- * ignored). Everything else is refused, because every Agetor client connects
+ * ignored). Everything else is refused, because every ForgeOrbit client connects
  * over `http://127.0.0.1:<port>`: `::1` — and `localhost`, which Bun resolves
  * to `::1` on macOS — binds IPv6-only, and a specific interface address (a
  * container IP, `127.0.0.2`…) never accepts `127.0.0.1`. Bun also reports an
@@ -54,7 +54,7 @@ export type ApiHostResolution =
  * typo from being misdiagnosed as a port conflict.
  */
 export function resolveApiHost(
-  raw: string | undefined = process.env.AGETOR_API_HOST,
+  raw: string | undefined = process.env.FORGEORBIT_API_HOST ?? process.env.AGETOR_API_HOST,
 ): ApiHostResolution {
   const value = raw?.trim() ?? "";
   const host = value.toLowerCase();
@@ -65,7 +65,7 @@ export function resolveApiHost(
   if (WILDCARD_API_HOSTS.has(host)) return { ok: true, host };
   return {
     ok: false,
-    error: `AGETOR_API_HOST=${JSON.stringify(value)} is not supported — use 127.0.0.1 (the default), 0.0.0.0 or ::. Agetor's own clients (CLI, agent hooks, MCP) connect over 127.0.0.1, which any other bind address would break.`,
+    error: `AGETOR_API_HOST=${JSON.stringify(value)} is not supported — use 127.0.0.1 (the default), 0.0.0.0 or ::. ForgeOrbit's own clients (CLI, agent hooks, MCP) connect over 127.0.0.1, which any other bind address would break.`,
   };
 }
 
@@ -77,7 +77,10 @@ export function formatHostForUrl(host: string): string {
 /** One-line startup warning for a non-loopback bind, or `null` on loopback. */
 export function nonLoopbackBindWarning(host: string, port: number | string): string | null {
   if (host === DEFAULT_API_HOST) return null;
-  return `[agetor] WARNING: API bound to ${formatHostForUrl(host)}:${port} (AGETOR_API_HOST) is reachable beyond loopback over plain HTTP — the bearer token is its only protection and travels in cleartext. Publish the port only to the host's loopback (e.g. -p 127.0.0.1:${port}:${port}); for remote access use an SSH tunnel or a TLS-terminating proxy.`;
+  return `[forgeorbit] WARNING: API bound to ${formatHostForUrl(host)}:${port} (FORGEORBIT_API_HOST / AGETOR_API_HOST) is reachable beyond loopback over plain HTTP — the bearer token is its only protection and travels in cleartext. Publish the port only to the host's loopback (e.g. -p 127.0.0.1:${port}:${port}); for remote access use an SSH tunnel or a TLS-terminating proxy.`;
 }
 
-export const API_TOKEN = process.env.AGETOR_API_TOKEN ?? randomBytes(32).toString("hex");
+export const API_TOKEN =
+  process.env.FORGEORBIT_API_TOKEN ??
+  process.env.AGETOR_API_TOKEN ??
+  randomBytes(32).toString("hex");

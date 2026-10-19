@@ -139,7 +139,7 @@ export async function cmdClone(args: string[], flags: Flags): Promise<void> {
     const providerName = resolvedProvider ? PROVIDER_CAPS[resolvedProvider]?.providerName : undefined;
     if (providerName) out(c.dim(`provider: ${providerName}`));
     if (eli5TaskId) {
-      out(`explainer task started: ${eli5TaskId} — agetor logs ${eli5TaskId}`);
+      out(`explainer task started: ${eli5TaskId} — forgeorbit logs ${eli5TaskId}`);
     }
     if (eli5Error) {
       out(c.yellow(`clone succeeded, but the explainer task failed: ${eli5Error}`));

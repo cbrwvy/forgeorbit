@@ -82,7 +82,7 @@ const TASK_ID = "abcdefgh12345678";
 
 test("resume: missing task-id argument throws the usage error", async () => {
   outputs.length = 0;
-  await expect(cmdResume([], flags)).rejects.toThrow(/usage: agetor resume/);
+  await expect(cmdResume([], flags)).rejects.toThrow(/usage: forgeorbit resume/);
 });
 
 test("resume: happy path resolves the task ref, calls resumeFxRecovery with the resolved id, and prints the confirmation line", async () => {
@@ -219,7 +219,7 @@ for (const bad of ["--cancle", "-c", "--Cancel"]) {
       },
     );
 
-    await expect(cmdResume([TASK_ID, bad], flags)).rejects.toThrow(/usage: agetor resume/);
+    await expect(cmdResume([TASK_ID, bad], flags)).rejects.toThrow(/usage: forgeorbit resume/);
 
     expect(resumeCalled).toBe(false);
     expect(cancelCalled).toBe(false);

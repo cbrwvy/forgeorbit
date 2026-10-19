@@ -90,7 +90,7 @@ test.describe("core busy banner", () => {
 
     await expect(banner).toBeVisible({ timeout: Math.max(1_000, BANNER_APPEAR_MS - (Date.now() - blockedAt)) });
     const appearedAfterMs = Date.now() - blockedAt;
-    await expect(banner).toContainText("Agetor is busy");
+    await expect(banner).toContainText("ForgeOrbit is busy");
 
     // The core answers again: the block call itself returns, then the strip
     // clears on its own — nothing for the user to click.

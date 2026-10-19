@@ -30,19 +30,19 @@ export async function cmdStart(args: string[], flags: Flags): Promise<void> {
     if (task.pipelineId) {
       throw new Error(
         `pipeline is already ${task.column === "blocked" ? "blocked" : "running"} — stop it with ` +
-          `'agetor cancel ${short}', or retry its blocked/cancelled step(s) with ` +
-          `'agetor pipeline retry ${short}'`,
+          `'forgeorbit cancel ${short}', or retry its blocked/cancelled step(s) with ` +
+          `'forgeorbit pipeline retry ${short}'`,
       );
     }
     throw new Error(
-      `task is already running — stop it with 'agetor cancel ${short}', ` +
-        `answer with 'agetor answer ${short}', or continue with 'agetor send ${short} <message>'`,
+      `task is already running — stop it with 'forgeorbit cancel ${short}', ` +
+        `answer with 'forgeorbit answer ${short}', or continue with 'forgeorbit send ${short} <message>'`,
     );
   }
   if (control === "open") {
     throw new Error(
-      `task already has a run — continue it with 'agetor send ${short} <message>'. ` +
-        "Agetor resumes the conversation rather than starting a fresh run, matching the app.",
+      `task already has a run — continue it with 'forgeorbit send ${short} <message>'. ` +
+        "ForgeOrbit resumes the conversation rather than starting a fresh run, matching the app.",
     );
   }
   const res = await client.startTask(task.id);
@@ -54,7 +54,7 @@ export async function cmdStart(args: string[], flags: Flags): Promise<void> {
       // A started task's prompt is whatever `task.prompt` already holds — for
       // an issue-seeded task that's the composed thread body, and the CLI has
       // no record here of any user-typed portion to `restrictTo` against the
-      // way `agetor add --issue` does (it captures `userTypedPrompt` before
+      // way `forgeorbit add --issue` does (it captures `userTypedPrompt` before
       // composition, at create time; by `start` time that distinction is
       // gone). Heuristic instead of a `restrictTo` restriction: a real
       // file/dir path virtually always carries a `/` or a `.` (extension)
@@ -73,7 +73,7 @@ export async function cmdStart(args: string[], flags: Flags): Promise<void> {
   if (res.pending) {
     out(
       `${c.yellow("▸")} starting ${c.dim(short)} — run ${res.runId.slice(0, 8)} ` +
-        c.dim("(agent launch still in progress; check `agetor logs " + short + "`)"),
+        c.dim("(agent launch still in progress; check `forgeorbit logs " + short + "`)"),
     );
   } else {
     out(`${c.cyan("▸")} started ${c.dim(short)} — run ${res.runId.slice(0, 8)}`);
@@ -104,7 +104,7 @@ export async function cmdSend(args: string[], flags: Flags): Promise<void> {
   }
   // Match the run panel: a pending question blocks sending — answer it first.
   if (task.pendingInteractionCount > 0) {
-    throw new Error(`task is waiting for an answer — respond first with 'agetor answer ${short}'`);
+    throw new Error(`task is waiting for an answer — respond first with 'forgeorbit answer ${short}'`);
   }
   // Resolve the run to send to the same way the app does: the live run, else
   // the most recent one so the backend can resume the session. Only fetch the
@@ -112,7 +112,7 @@ export async function cmdSend(args: string[], flags: Flags): Promise<void> {
   const runs = task.runId ? [] : await client.getRuns(task.id);
   const runId = resumableRunId(task, runs);
   if (!runId) {
-    throw new Error(`task has no run yet — start it first: agetor start ${short}`);
+    throw new Error(`task has no run yet — start it first: forgeorbit start ${short}`);
   }
   // Inline any --ref paths into the message (absolute, so the agent finds them);
   // claude attaches image paths. Same plumbing as the app's send box.

@@ -798,7 +798,7 @@ export async function getBitbucketPullDiff(repo: ProviderRepoInfo, number: numbe
   if (contentLength > BITBUCKET_DIFF_BODY_CAP_BYTES) {
     return {
       ok: false,
-      error: `Pull request diff is too large to display in Agetor (${Math.ceil(contentLength / 1_000_000)} MB).`,
+      error: `Pull request diff is too large to display in ForgeOrbit (${Math.ceil(contentLength / 1_000_000)} MB).`,
     };
   }
   const body = await res.text().catch(() => "");
@@ -814,7 +814,7 @@ export async function getBitbucketPullDiff(repo: ProviderRepoInfo, number: numbe
   if (bodyBytes > BITBUCKET_DIFF_BODY_CAP_BYTES) {
     return {
       ok: false,
-      error: `Pull request diff is too large to display in Agetor (${Math.ceil(bodyBytes / 1_000_000)} MB).`,
+      error: `Pull request diff is too large to display in ForgeOrbit (${Math.ceil(bodyBytes / 1_000_000)} MB).`,
     };
   }
   const files = parseGitDiff(body);

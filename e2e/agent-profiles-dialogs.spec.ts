@@ -337,7 +337,7 @@ async function openResolveConflictsDialog(page: Page): Promise<Locator> {
   await row.click();
   await expect(dialog.getByText(PR_TITLE, { exact: true })).toBeVisible({ timeout: CONVERGE_TIMEOUT });
 
-  const resolveButton = dialog.getByRole("button", { name: "Resolve with Agetor", exact: true });
+  const resolveButton = dialog.getByRole("button", { name: "Resolve with ForgeOrbit", exact: true });
   await expect(resolveButton).toBeVisible({ timeout: CONVERGE_TIMEOUT });
   await resolveButton.click();
 

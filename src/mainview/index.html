@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agetor</title>
+    <title>ForgeOrbit</title>
     <script>
       // Blocking + synchronous so the `dark` class (or its absence) and
       // `color-scheme` land on <html> before the browser paints anything —
@@ -117,7 +117,7 @@
         transition: opacity 300ms ease;
       }
       html.dark #splash {
-        background: #09090b;
+        background: radial-gradient(circle at 50% 48%, #151226 0%, #09090b 65%);
       }
       html:not(.dark) #splash {
         background: #ffffff;
@@ -127,6 +127,7 @@
         height: 128px;
         user-select: none;
         -webkit-user-drag: none;
+        filter: drop-shadow(0 8px 28px rgba(139, 92, 246, 0.25));
       }
       #splash.is-hidden {
         opacity: 0;
@@ -138,7 +139,7 @@
     </style>
   </head>
   <body class="bg-background text-foreground antialiased">
-    <div id="splash" role="status" aria-label="Loading Agetor"><img src="./splash-logo.png" alt="" /></div>
+    <div id="splash" role="status" aria-label="Loading ForgeOrbit"><img src="./splash-logo.png" alt="" /></div>
     <div id="root"></div>
     <script type="module" src="/main.tsx"></script>
   </body>

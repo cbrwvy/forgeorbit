@@ -35,7 +35,7 @@ import { countTerminals, terminalCountsByTask } from "./terminals.ts";
 // throwaway dir — guarantees we never touch ~/.agetor under tests even if
 // some test file forgot the top-level setup. Logged so the gap is visible
 // in CI output.
-if (process.env.NODE_ENV === "test" && !process.env.AGETOR_DATA_DIR) {
+if (process.env.NODE_ENV === "test" && !process.env.FORGEORBIT_DATA_DIR && !process.env.AGETOR_DATA_DIR) {
   process.env.AGETOR_DATA_DIR = mkdtempSync(path.join(tmpdir(), "agetor-test-auto-"));
   console.warn(
     `[agetor:db] NODE_ENV=test with no AGETOR_DATA_DIR — auto-allocated `
@@ -43,7 +43,8 @@ if (process.env.NODE_ENV === "test" && !process.env.AGETOR_DATA_DIR) {
     + `(not in beforeAll) to silence this warning.`,
   );
 }
-const DATA_DIR = process.env.AGETOR_DATA_DIR
+const DATA_DIR = process.env.FORGEORBIT_DATA_DIR
+  ?? process.env.AGETOR_DATA_DIR
   ?? path.join(homedir(), ".agetor");
 mkdirSync(DATA_DIR, { recursive: true });
 

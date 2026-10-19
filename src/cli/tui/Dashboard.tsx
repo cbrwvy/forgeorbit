@@ -408,7 +408,7 @@ export function Dashboard({
       } else if (ctrl === "stop") {
         setStatus("already running — press x to stop");
       } else {
-        setStatus(`finished — continue with: agetor send ${sid}`);
+        setStatus(`finished — continue with: forgeorbit send ${sid}`);
       }
     }
     if (input === "x" && selected && selected.pipelineId) {
@@ -482,7 +482,7 @@ export function Dashboard({
           overflow="hidden"
         >
           {sorted.length === 0 ? (
-            <Text dimColor>no tasks — run 'agetor add'</Text>
+            <Text dimColor>no tasks — run 'forgeorbit add'</Text>
           ) : (
             boardRows.map((r, i) => (
               <TaskRow
@@ -561,8 +561,8 @@ function Header({ core, count }: { core: CoreInfo; count: number }) {
   return (
     <Box justifyContent="space-between" paddingX={1}>
       <Text>
-        <Text color="cyan" bold>
-          Agetor
+        <Text color="magenta" bold>
+          ForgeOrbit
         </Text>
         <Text dimColor> · {count} task{count === 1 ? "" : "s"}</Text>
       </Text>

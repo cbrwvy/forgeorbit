@@ -39,14 +39,14 @@ export function notifyFor(
   if (eventPipelineParentId(e) !== null) return null;
   const short = taskId.slice(0, 8);
   if (e.kind === "run-status" && e.taskId === taskId) {
-    if (e.status === "succeeded") return { title: "Agetor — succeeded", body: short };
-    if (e.status === "failed") return { title: "Agetor — failed", body: short };
-    if (e.status === "orphaned") return { title: "Agetor — orphaned", body: short };
+    if (e.status === "succeeded") return { title: "ForgeOrbit — succeeded", body: short };
+    if (e.status === "failed") return { title: "ForgeOrbit — failed", body: short };
+    if (e.status === "orphaned") return { title: "ForgeOrbit — orphaned", body: short };
     return null; // cancelled: the user did it
   }
   if (e.kind === "column" && e.taskId === taskId && e.column === "blocked") {
     return {
-      title: "Agetor — needs you",
+      title: "ForgeOrbit — needs you",
       body: e.reason === "api-error" ? `${short} (API error)` : `${short} is waiting on you`,
     };
   }

@@ -272,7 +272,7 @@ test.describe("Resolve with Agetor dialog", () => {
 
     await expect(gitDialog.getByText(PR_TITLE, { exact: true })).toBeVisible({ timeout: CONVERGE_TIMEOUT });
 
-    const resolveButton = gitDialog.getByRole("button", { name: "Resolve with Agetor", exact: true });
+    const resolveButton = gitDialog.getByRole("button", { name: "Resolve with ForgeOrbit", exact: true });
     await expect(resolveButton).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     await resolveButton.click();
 

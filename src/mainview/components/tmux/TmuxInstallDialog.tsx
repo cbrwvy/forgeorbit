@@ -155,22 +155,22 @@ function ChoiceView({
   return (
     <div className="space-y-4 pt-4 text-sm">
       <p id="tmux-install-desc" className="text-muted-foreground">
-        Agetor drives the Claude Code REPL through a per-task{" "}
+        ForgeOrbit drives the Claude Code REPL through a per-task{" "}
         <span className="font-mono text-foreground/80">tmux</span> session, but we
         couldn't find <span className="font-mono text-foreground/80">tmux</span> on
         your <span className="font-mono">PATH</span>. Pick how you'd like to
-        resolve this — Agetor will remember your choice.
+        resolve this — ForgeOrbit will remember your choice.
       </p>
 
       <div className="space-y-2">
         <Option
           ref={useBundledRef}
           icon={<Package className="size-5" />}
-          title="Use Agetor's bundled tmux"
+          title="Use ForgeOrbit's bundled tmux"
           description={
             bundledAvailable === false
               ? "Not available in this build. Use the manual install option instead."
-              : "Runs the copy of tmux that ships inside Agetor. No extra installation, works offline."
+              : "Runs the copy of tmux that ships inside ForgeOrbit. No extra installation, works offline."
           }
           recommended
           disabled={bundledAvailable === false || busy}

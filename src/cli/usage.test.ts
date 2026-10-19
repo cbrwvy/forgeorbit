@@ -11,7 +11,7 @@ test("every dispatched command has a USAGE block whose first line is its usage l
   for (const cmd of COMMANDS) {
     const block = USAGE[cmd];
     expect(block, cmd).toBeDefined();
-    expect(block!.split("\n", 1)[0]!.startsWith(`usage: agetor ${cmd}`), cmd).toBe(true);
+    expect(block!.split("\n", 1)[0]!.startsWith(`usage: forgeorbit ${cmd}`), cmd).toBe(true);
   }
 });
 
@@ -42,15 +42,15 @@ test("the retired 'agent'/'agents' profile-subcommand spelling has no USAGE bloc
   expect(USAGE["profile"]).toBeDefined();
   expect(canonical("profiles")).toBe("profile");
   expect(USAGE["profile"]!.split("\n", 1)[0]).toBe(
-    "usage: agetor profile <ls | show <ref> | add <name> … | edit <ref> … | duplicate <ref> [--name <name>] [--with-tasks] | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […]>",
+    "usage: forgeorbit profile <ls | show <ref> | add <name> … | edit <ref> … | duplicate <ref> [--name <name>] [--with-tasks] | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […]>",
   );
 });
 
 test("usageError throws only the concise first line, resolving aliases", () => {
   const e = usageError("commit");
-  expect(e.message).toBe("usage: agetor commit <task-id>");
+  expect(e.message).toBe("usage: forgeorbit commit <task-id>");
   expect(e.message.includes("\n")).toBe(false);
-  expect(usageError("mv").message.startsWith("usage: agetor move")).toBe(true);
+  expect(usageError("mv").message.startsWith("usage: forgeorbit move")).toBe(true);
   expect(usageError("harness add").message).toBe(USAGE["harness add"]!.split("\n", 1)[0]!);
   expect(usageError("frobnicate").message).toContain("unknown command");
 });
@@ -71,7 +71,7 @@ test("pipeline: 'pipelines' aliases to 'pipeline', with export/import subcommand
   expect(canonical("pipelines")).toBe("pipeline");
   expect(USAGE["pipeline"]).toBeDefined();
   expect(USAGE["pipeline"]!.split("\n", 1)[0]).toBe(
-    "usage: agetor pipeline <ls | show <ref> | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […] | retry <task> [--from <task>] | advance <task> [--next <step>… | --finish] [--from <task>] | restart <task> | status <task>>",
+    "usage: forgeorbit pipeline <ls | show <ref> | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […] | retry <task> [--from <task>] | advance <task> [--next <step>… | --finish] [--from <task>] | restart <task> | status <task>>",
   );
   expect(helpFor("pipelines", "export")).toBe(USAGE["pipeline export"]);
   expect(helpFor("pipeline", "import")).toBe(USAGE["pipeline import"]);
@@ -87,13 +87,13 @@ test("pipeline: retry/advance/restart/status each have their own subcommand bloc
   for (const sub of ["retry", "advance", "restart", "status"]) {
     const block = USAGE[`pipeline ${sub}`];
     expect(block, sub).toBeDefined();
-    expect(block!.split("\n", 1)[0]!.startsWith(`usage: agetor pipeline ${sub} <task-id>`), sub).toBe(true);
+    expect(block!.split("\n", 1)[0]!.startsWith(`usage: forgeorbit pipeline ${sub} <task-id>`), sub).toBe(true);
     expect(helpFor("pipeline", sub)).toBe(block);
     expect(helpFor("pipelines", sub)).toBe(block); // alias resolves too
   }
 });
 
-// m7 review fix: `agetor cancel` routes a pipeline task through the pipeline
+// m7 review fix: `forgeorbit cancel` routes a pipeline task through the pipeline
 // cancel path instead of the generic "task is not running" error — pinned
 // end to end in `src/cli/lifecycle.test.ts` (cmdCancel: parent →
 // cancelPipeline, step/plain task → cancelRun). Documented here too.
@@ -126,15 +126,15 @@ test("ls usage mentions --steps; add usage mentions --pipeline", () => {
 // plus the profile/pipeline shortcuts, all over the same bundle.
 test("export/import: top-level blocks plus profile and pipeline shortcut blocks", () => {
   expect(USAGE["export"]!.split("\n", 1)[0]).toBe(
-    "usage: agetor export [--profile <ref>]… [--pipeline <ref>]… [--all] [--out <file|->] [--force]",
+    "usage: forgeorbit export [--profile <ref>]… [--pipeline <ref>]… [--all] [--out <file|->] [--force]",
   );
   expect(USAGE["export"]).toContain("'--agent' is an alias");
   expect(USAGE["import"]!.split("\n", 1)[0]).toBe(
-    "usage: agetor import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]",
+    "usage: forgeorbit import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]",
   );
   expect(helpFor("profile", "export")).toBe(USAGE["profile export"]);
   expect(helpFor("profiles", "import")).toBe(USAGE["profile import"]);
-  expect(usageError("profile export").message).toBe("usage: agetor profile export <ref> [--out <file|->] [--force]");
+  expect(usageError("profile export").message).toBe("usage: forgeorbit profile export <ref> [--out <file|->] [--force]");
   expect(USAGE["pipeline import"]!.split("\n", 1)[0]).toContain("--harness-map");
   expect(USAGE["pipeline import"]!.split("\n", 1)[0]).toContain("[--yes]");
   expect(USAGE["profile import"]!.split("\n", 1)[0]).toContain("[--yes]");

@@ -34,7 +34,7 @@ export const GITHUB_TOKENS_FILENAME = "github-tokens.json";
  * auto-allocate path (which sets the env var before any store call runs).
  */
 export function resolveDataDir(): string {
-  return process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
+  return process.env.FORGEORBIT_DATA_DIR ?? process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
 }
 
 export function githubTokensPath(dataDir: string = resolveDataDir()): string {

@@ -115,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
       let urlString = response.notification.request.content.userInfo["url"] as? String,
       let url = URL(string: urlString),
-      url.scheme == "agetor"  // defense in depth: only ever open our own deep links
+      (url.scheme == "forgeorbit" || url.scheme == "agetor")  // defense in depth: only ever open our own deep links
     else {
       unCompletionHandler()
       exit(0)
@@ -130,14 +130,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     activateMainAppAndOpen(url, ack: unCompletionHandler)
   }
 
-  // Opens the agetor:// deep link and brings the main app forward. Split out
+  // Opens the forgeorbit:// deep link and brings the main app forward. Split out
   // of didReceive because there are two distinct completion callbacks in play
   // here — UN's (`ack`) and NSWorkspace's (below) — and keeping them in one
   // function invites confusing them.
   private func activateMainAppAndOpen(_ url: URL, ack: @escaping () -> Void) {
-    let target = NSRunningApplication.runningApplications(
-      withBundleIdentifier: "sh.alamops.agetor"
-    ).first
+    let target =
+      NSRunningApplication.runningApplications(
+        withBundleIdentifier: "com.lunarianforge.forgeorbit"
+      ).first
+      ?? NSRunningApplication.runningApplications(
+        withBundleIdentifier: "sh.alamops.agetor"
+      ).first
 
     // macOS 14 (Sonoma) made activation cooperative: NSApplication.activate
     // and NSRunningApplication.activate(options: .activateIgnoringOtherApps)
@@ -172,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // is ignored on 14+ and the selector is deprecated.
         target?.activate(options: [.activateAllWindows])
         if let openError {
-          let msg = "AgetorNotifier: open agetor:// failed: \(openError)\n"
+          let msg = "ForgeOrbitNotifier: open forgeorbit:// failed: \(openError)\n"
           FileHandle.standardError.write(Data(msg.utf8))
         }
       }

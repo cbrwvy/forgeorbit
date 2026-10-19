@@ -60,7 +60,7 @@ export function setTmuxSource(source: TmuxSource): void {
  * the user would have seen, but from a deterministic codepath.
  */
 export function resolveTmuxBin(): string {
-  const override = process.env.AGETOR_TMUX_BIN;
+  const override = process.env.FORGEORBIT_TMUX_BIN ?? process.env.AGETOR_TMUX_BIN;
   if (override) return override;
   if (getTmuxSource() === "bundled") return bundledTmuxPath();
   return Bun.which("tmux", { PATH: process.env.PATH }) ?? "tmux";
@@ -115,7 +115,7 @@ export function deriveTmuxSocketName(dataDirPath: string): string {
  *
  * Precedence, read at CALL time (no module-level caching) so tests can
  * flip `AGETOR_TMUX_SOCKET`/`NODE_ENV` between cases without a restart:
- *   1. `AGETOR_TMUX_SOCKET` env override — explicit test/power-user escape
+ *   1. `FORGEORBIT_TMUX_SOCKET` / `AGETOR_TMUX_SOCKET` env override — explicit test/power-user escape
  *      hatch. The literal value `"default"` means "force tmux's own default
  *      socket even under test", so a test that genuinely needs the real
  *      socket (or a developer debugging against it) isn't stuck.
@@ -127,7 +127,7 @@ export function deriveTmuxSocketName(dataDirPath: string): string {
  *      `"agetor"` for the packaged app, `"agetor-dev"` under `bun run dev`).
  */
 export function tmuxSocketName(): string | null {
-  const override = process.env.AGETOR_TMUX_SOCKET;
+  const override = process.env.FORGEORBIT_TMUX_SOCKET ?? process.env.AGETOR_TMUX_SOCKET;
   if (override) return override === "default" ? null : override;
   if (process.env.NODE_ENV === "test") return "agetor-test";
   return deriveTmuxSocketName(dataDir);

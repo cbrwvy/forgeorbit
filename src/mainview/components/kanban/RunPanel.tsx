@@ -3995,7 +3995,7 @@ function RunPanelBody({
                     onClick={() => void rebuildFromJsonl()}
                     disabled={rebuildBusy}
                     className="rounded-md border border-border/60 bg-card px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-accent/40 disabled:opacity-50"
-                    title="Re-parse the latest run's events from claude's on-disk session JSONL. Useful when the stored events were truncated by an older agetor version."
+                    title="Re-parse the latest run's events from claude's on-disk session JSONL. Useful when the stored events were truncated by an older ForgeOrbit version."
                   >
                     {rebuildBusy
                       ? "Reloading…"
@@ -6171,7 +6171,7 @@ const StatusDivider = memo(function StatusDivider({ text }: { text: string }) {
  *  task, a turn typed in the attached terminal, Claude continuing on its own)
  *  isn't stored on the run row — it's named by the run's opening status line
  *  (`CONTINUATION_STATUS_TEXT`) — so the badge stays neutral. */
-const CONTINUATION_BADGE_TITLE = "a turn Agetor didn't send — its first status line says what started it";
+const CONTINUATION_BADGE_TITLE = "a turn ForgeOrbit didn't send — its first status line says what started it";
 
 const ThinkingBlock = memo(function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -7908,7 +7908,7 @@ function TmuxPromptCard({
       <div className="rounded-md border border-warning/60 bg-card p-3 ring-1 ring-warning/40">
         <div className="mb-2 flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-warning">
-            <Terminal className="size-3.5" aria-hidden /> Claude is asking something Agetor can’t read
+            <Terminal className="size-3.5" aria-hidden /> Claude is asking something ForgeOrbit can’t read
           </span>
         </div>
         <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/40 p-2 font-mono text-[11px] leading-snug">

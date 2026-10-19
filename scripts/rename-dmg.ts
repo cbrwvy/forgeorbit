@@ -2,7 +2,7 @@
 // Electrobun emits artifacts as <env>-<platform>-<arch>-<AppName>.dmg.
 // Rename to <AppName>-<arch>.dmg for end-user downloads — the unversioned
 // name lets the marketing site link at
-// github.com/<repo>/releases/latest/download/Agetor-arm64.dmg without
+// github.com/<repo>/releases/latest/download/ForgeOrbit-arm64.dmg without
 // rewriting it on every release.
 // The .app.tar.zst and update.json keep their structured names — they're
 // consumed by the auto-update flow, which expects the platform/arch suffix.
@@ -10,7 +10,7 @@
 import { readdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 
-const APP_NAME = "Agetor";
+const APP_NAME = "ForgeOrbit";
 
 let entries;
 try {
@@ -19,7 +19,7 @@ try {
   process.exit(0);
 }
 
-// Match e.g. "stable-macos-arm64-Agetor.dmg" → captures arch ("arm64").
+// Match e.g. "stable-macos-arm64-ForgeOrbit.dmg" → captures arch ("arm64").
 const re = new RegExp(`^[^-]+-(?:macos|darwin)-(arm64|x64)-${APP_NAME}\\.dmg$`);
 
 for (const name of entries) {

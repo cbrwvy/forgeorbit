@@ -46,7 +46,7 @@ export const CORE_CREDS_FILENAME = "agetor-core.json";
  * sets the env var before any creds call runs).
  */
 export function resolveDataDir(): string {
-  return process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
+  return process.env.FORGEORBIT_DATA_DIR ?? process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
 }
 
 export function coreCredsPath(dataDir: string = resolveDataDir()): string {

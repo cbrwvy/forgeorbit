@@ -266,10 +266,10 @@ function createEventFormatter(): (e: RunEvent) => string {
       case "interaction": {
         const r = tryJson(e.data) as { kind?: string } | null;
         if (r?.kind === "fx_permission") {
-          return c.yellow(`! fx is requesting permission — agetor answer ${e.taskId.slice(0, 8)}`);
+          return c.yellow(`! fx is requesting permission — forgeorbit answer ${e.taskId.slice(0, 8)}`);
         }
         return c.yellow(
-          `! needs answer (${r?.kind ?? "?"}) — agetor answer ${e.taskId.slice(0, 8)}`,
+          `! needs answer (${r?.kind ?? "?"}) — forgeorbit answer ${e.taskId.slice(0, 8)}`,
         );
       }
       case "interaction_resolved":
@@ -303,7 +303,7 @@ function tryJson(s: string): unknown {
 }
 
 /**
- * One dim hint line for `agetor logs <pipeline-parent-task>` — the parent
+ * One dim hint line for `forgeorbit logs <pipeline-parent-task>` — the parent
  * never runs an agent of its own, so its `/tasks/:id/events` stream is
  * always silent; this points the user at whichever hidden step task they
  * actually want to watch. Lists every step task launched so far (id + its
@@ -314,7 +314,7 @@ function tryJson(s: string): unknown {
  * route.
  */
 export async function pipelineLogsHint(client: AgetorClient, task: Task): Promise<string> {
-  const base = "pipeline task — use `agetor logs <stepTaskId>` for a step";
+  const base = "pipeline task — use `forgeorbit logs <stepTaskId>` for a step";
   try {
     const { steps } = await client.getPipelineRun(task.id);
     const list = steps.length > 0 ? steps.map((s) => `${escapeFreeText(s.title)} (${s.id.slice(0, 8)})`).join(", ") : "none yet";

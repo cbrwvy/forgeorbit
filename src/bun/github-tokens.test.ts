@@ -1,6 +1,6 @@
-import { test, expect, beforeEach, afterEach, afterAll } from "bun:test";
+import { test, expect, beforeEach, afterEach, afterAll, describe } from "bun:test";
 import { mkdtempSync, existsSync, writeFileSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import {
   listGitHubTokens,
@@ -8,29 +8,31 @@ import {
   deleteGitHubToken,
   tokenForHost,
   githubTokensPath,
+  resolveDataDir,
 } from "./github-tokens.ts";
 import { rmTestDataDir } from "./test-data-dir.ts";
 
-// github-tokens.ts resolves AGETOR_DATA_DIR lazily at call time (not at module
-// load), so — unlike db.ts/orchestrator.ts tests — it's safe to swap the env
-// var per-test rather than once in beforeAll. Each test gets its own mkdtemp
-// dir so parallel-file test isolation holds and nothing leaks into a real
-// ~/.agetor or ~/.agetor-dev store.
-const ORIGINAL_DATA_DIR = process.env.AGETOR_DATA_DIR;
+const ORIGINAL_AGETOR_DATA_DIR = process.env.AGETOR_DATA_DIR;
+const ORIGINAL_FORGEORBIT_DATA_DIR = process.env.FORGEORBIT_DATA_DIR;
 let dataDir: string;
 
 beforeEach(() => {
-  dataDir = mkdtempSync(path.join(tmpdir(), "agetor-gh-tokens-"));
+  delete process.env.FORGEORBIT_DATA_DIR;
+  dataDir = mkdtempSync(path.join(tmpdir(), "forgeorbit-gh-tokens-"));
   process.env.AGETOR_DATA_DIR = dataDir;
 });
 
 afterEach(() => {
   rmTestDataDir(dataDir);
+  delete process.env.FORGEORBIT_DATA_DIR;
 });
 
 afterAll(() => {
-  if (ORIGINAL_DATA_DIR === undefined) delete process.env.AGETOR_DATA_DIR;
-  else process.env.AGETOR_DATA_DIR = ORIGINAL_DATA_DIR;
+  if (ORIGINAL_AGETOR_DATA_DIR === undefined) delete process.env.AGETOR_DATA_DIR;
+  else process.env.AGETOR_DATA_DIR = ORIGINAL_AGETOR_DATA_DIR;
+
+  if (ORIGINAL_FORGEORBIT_DATA_DIR === undefined) delete process.env.FORGEORBIT_DATA_DIR;
+  else process.env.FORGEORBIT_DATA_DIR = ORIGINAL_FORGEORBIT_DATA_DIR;
 });
 
 test("setGitHubToken then listGitHubTokens round-trips, host lowercased/trimmed", () => {
@@ -120,4 +122,39 @@ test("token file is written with mode 0600", () => {
   setGitHubToken("github.com", "tok_1");
   const mode = statSync(githubTokensPath()).mode & 0o777;
   expect(mode).toBe(0o600);
+});
+
+describe("resolveDataDir priority", () => {
+  test("FORGEORBIT_DATA_DIR wins over AGETOR_DATA_DIR and default", () => {
+    process.env.FORGEORBIT_DATA_DIR = "/custom/forgeorbit";
+    process.env.AGETOR_DATA_DIR = "/custom/agetor";
+    expect(resolveDataDir()).toBe("/custom/forgeorbit");
+  });
+
+  test("AGETOR_DATA_DIR is used when FORGEORBIT_DATA_DIR is unset", () => {
+    delete process.env.FORGEORBIT_DATA_DIR;
+    process.env.AGETOR_DATA_DIR = "/custom/agetor";
+    expect(resolveDataDir()).toBe("/custom/agetor");
+  });
+
+  test("defaults to ~/.agetor when neither variable is set", () => {
+    delete process.env.FORGEORBIT_DATA_DIR;
+    delete process.env.AGETOR_DATA_DIR;
+    expect(resolveDataDir()).toBe(path.join(homedir(), ".agetor"));
+  });
+
+  test("saving token with FORGEORBIT_DATA_DIR writes to that directory", () => {
+    const orbitDir = mkdtempSync(path.join(tmpdir(), "forgeorbit-tokens-priority-"));
+    try {
+      process.env.FORGEORBIT_DATA_DIR = orbitDir;
+      setGitHubToken("github.com", "orbit-tok", "orbit-label");
+      expect(existsSync(githubTokensPath(orbitDir))).toBe(true);
+      expect(tokenForHost("github.com")).toBe("orbit-tok");
+      expect(listGitHubTokens()).toEqual([
+        { host: "github.com", token: "orbit-tok", label: "orbit-label" },
+      ]);
+    } finally {
+      rmTestDataDir(orbitDir);
+    }
+  });
 });

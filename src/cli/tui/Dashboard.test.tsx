@@ -1,4 +1,4 @@
-import { test, expect, mock, afterAll } from "bun:test";
+import { test, expect, mock, beforeAll, afterAll } from "bun:test";
 import { render } from "ink-testing-library";
 import { Dashboard, buildSentFilesLines, buildFxRecoveryLines, dashboardRows } from "./Dashboard.tsx";
 import type { PipelineRunState } from "../../shared/types.ts";
@@ -36,7 +36,29 @@ mock.module("../sse.ts", () => ({
   },
 }));
 
+// Dashboard.tsx computes `cols = process.stdout.columns || 90`. In a headless
+// CI runner, process.stdout.columns is undefined (giving cols=90, listWidth=34).
+// In a developer's interactive terminal / PTY, process.stdout.columns is defined
+// (typically 80), which shrinks listWidth to 30 and truncates the test hints.
+// Pinning columns to 90 ensures the suite is hermetic across both PTY and CI.
+const savedColumns = Object.getOwnPropertyDescriptor(process.stdout, "columns");
+const savedRows = Object.getOwnPropertyDescriptor(process.stdout, "rows");
+
+beforeAll(() => {
+  Object.defineProperty(process.stdout, "columns", { value: 90, configurable: true, writable: true });
+});
+
 afterAll(() => {
+  if (savedColumns) {
+    Object.defineProperty(process.stdout, "columns", savedColumns);
+  } else {
+    delete (process.stdout as unknown as Record<string, unknown>).columns;
+  }
+  if (savedRows) {
+    Object.defineProperty(process.stdout, "rows", savedRows);
+  } else {
+    delete (process.stdout as unknown as Record<string, unknown>).rows;
+  }
   mock.module("../sse.ts", () => realSseSnapshot);
 });
 
@@ -71,7 +93,7 @@ test("Dashboard mounts the header, empty state, and the new key hints", async ()
   );
   await wait();
   const frame = lastFrame() ?? "";
-  expect(frame).toContain("Agetor");
+  expect(frame).toContain("ForgeOrbit");
   expect(frame).toContain("no tasks");
   expect(frame).toContain("m msg");
   expect(frame).toContain("c commit");

@@ -41,7 +41,7 @@ export async function cmdPipeline(args: string[], flags: Flags): Promise<void> {
       if (pipelines.length === 0) {
         out(
           c.dim(
-            "no pipelines defined — build one in the app's Pipelines editor, or import one: agetor pipeline import <file>",
+            "no pipelines defined — build one in the app's Pipelines editor, or import one: forgeorbit pipeline import <file>",
           ),
         );
         return;

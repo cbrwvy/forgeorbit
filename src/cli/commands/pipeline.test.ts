@@ -367,7 +367,7 @@ test("cmdPipeline list: 'list' is an alias for 'ls'", async () => {
 
 test("cmdPipeline show: missing ref throws the usage error", async () => {
   currentClient = makeClient();
-  await expect(cmdPipeline(["show"], flags)).rejects.toThrow(/usage: agetor pipeline/);
+  await expect(cmdPipeline(["show"], flags)).rejects.toThrow(/usage: forgeorbit pipeline/);
 });
 
 test("cmdPipeline show: unknown ref throws matchPipelineRef's error", async () => {
@@ -400,7 +400,7 @@ test("cmdPipeline show --json: prints the raw pipeline object", async () => {
 
 test("cmdPipeline rm: missing ref throws the usage error", async () => {
   currentClient = makeClient();
-  await expect(cmdPipeline(["rm"], flags)).rejects.toThrow(/usage: agetor pipeline/);
+  await expect(cmdPipeline(["rm"], flags)).rejects.toThrow(/usage: forgeorbit pipeline/);
 });
 
 test("cmdPipeline rm: resolves the ref and calls deletePipeline with its id", async () => {
@@ -536,9 +536,9 @@ test("cmdPipeline export --out -: prints to stdout (symmetry with `import -`)", 
 
 test("cmdPipeline export: missing ref, selection flags and unknown flags throw the usage error", async () => {
   currentClient = makeClient();
-  await expect(cmdPipeline(["export"], flags)).rejects.toThrow(/usage: agetor pipeline export/);
-  await expect(cmdPipeline(["export", "p1", "--all"], flags)).rejects.toThrow(/usage: agetor pipeline export/);
-  await expect(cmdPipeline(["export", "p1", "--frobnicate"], flags)).rejects.toThrow(/usage: agetor pipeline export/);
+  await expect(cmdPipeline(["export"], flags)).rejects.toThrow(/usage: forgeorbit pipeline export/);
+  await expect(cmdPipeline(["export", "p1", "--all"], flags)).rejects.toThrow(/usage: forgeorbit pipeline export/);
+  await expect(cmdPipeline(["export", "p1", "--frobnicate"], flags)).rejects.toThrow(/usage: forgeorbit pipeline export/);
 });
 
 test("cmdPipeline export: a core without the bundle routes gets an explicit hint", async () => {
@@ -554,7 +554,7 @@ test("cmdPipeline export: a core without the bundle routes gets an explicit hint
 
 test("cmdPipeline import: missing file argument throws the usage error", async () => {
   currentClient = makeClient();
-  await expect(cmdPipeline(["import"], flags)).rejects.toThrow(/usage: agetor pipeline import/);
+  await expect(cmdPipeline(["import"], flags)).rejects.toThrow(/usage: forgeorbit pipeline import/);
 });
 
 test("cmdPipeline import: sends the file text with --name as singleName and prints the result", async () => {
@@ -693,7 +693,7 @@ test("cmdPipeline import: an invalid file throws without calling the core", asyn
 test("cmdPipeline import: an unknown flag throws the usage error", async () => {
   await withFile(VALID_BUNDLE, async (file) => {
     currentClient = makeClient();
-    await expect(cmdPipeline(["import", file, "--nmae", "x"], flags)).rejects.toThrow(/usage: agetor pipeline import/);
+    await expect(cmdPipeline(["import", file, "--nmae", "x"], flags)).rejects.toThrow(/usage: forgeorbit pipeline import/);
   });
 });
 
@@ -840,8 +840,8 @@ test("parseAdvanceFlags: no flags -> empty next, finish false, from undefined", 
 });
 
 test("parseAdvanceFlags: an unknown flag throws the pipeline-advance usage error, instead of being silently ignored", () => {
-  expect(() => parseAdvanceFlags(["--frmo", "step-task-1"])).toThrow(/usage: agetor pipeline advance/);
-  expect(() => parseAdvanceFlags(["--next", "Fix", "--bogus"])).toThrow(/usage: agetor pipeline advance/);
+  expect(() => parseAdvanceFlags(["--frmo", "step-task-1"])).toThrow(/usage: forgeorbit pipeline advance/);
+  expect(() => parseAdvanceFlags(["--next", "Fix", "--bogus"])).toThrow(/usage: forgeorbit pipeline advance/);
 });
 
 // ── parseRetryFlags ──────────────────────────────────────────────────────
@@ -855,7 +855,7 @@ test("parseRetryFlags: no flags -> from undefined", () => {
 });
 
 test("parseRetryFlags: an unknown flag throws the pipeline-retry usage error, instead of being silently ignored", () => {
-  expect(() => parseRetryFlags(["--bogus"])).toThrow(/usage: agetor pipeline retry/);
+  expect(() => parseRetryFlags(["--bogus"])).toThrow(/usage: forgeorbit pipeline retry/);
 });
 
 // ── pipelineStatusLines ──────────────────────────────────────────────────
@@ -975,7 +975,7 @@ test("pipelineStatusLines: a history row with no responseKind/reminder omits bot
 
 test("cmdPipeline retry: missing ref throws the usage error", async () => {
   currentClient = makeClient({ listTasks: async () => [] });
-  await expect(cmdPipeline(["retry"], flags)).rejects.toThrow(/usage: agetor pipeline retry/);
+  await expect(cmdPipeline(["retry"], flags)).rejects.toThrow(/usage: forgeorbit pipeline retry/);
 });
 
 test("cmdPipeline retry: a non-pipeline task throws", async () => {
@@ -991,7 +991,7 @@ test("cmdPipeline retry: a bad flag fails BEFORE any task lookup (no network rou
       return [task()];
     },
   });
-  await expect(cmdPipeline(["retry", "parent-1", "--bogus"], flags)).rejects.toThrow(/usage: agetor pipeline retry .*--from/);
+  await expect(cmdPipeline(["retry", "parent-1", "--bogus"], flags)).rejects.toThrow(/usage: forgeorbit pipeline retry .*--from/);
   expect(listed).toBe(false);
 });
 
@@ -1089,12 +1089,12 @@ test("cmdPipeline retry without --from omits targetTaskId (retries everything el
 
 test("cmdPipeline advance: missing ref throws the usage error", async () => {
   currentClient = makeClient({ listTasks: async () => [] });
-  await expect(cmdPipeline(["advance"], flags)).rejects.toThrow(/usage: agetor pipeline advance/);
+  await expect(cmdPipeline(["advance"], flags)).rejects.toThrow(/usage: forgeorbit pipeline advance/);
 });
 
 test("cmdPipeline advance: neither --next nor --finish throws the usage error", async () => {
   currentClient = makeClient({ listTasks: async () => [task({ pipelineRun: pipelineRun() })] });
-  await expect(cmdPipeline(["advance", "parent-1"], flags)).rejects.toThrow(/usage: agetor pipeline advance/);
+  await expect(cmdPipeline(["advance", "parent-1"], flags)).rejects.toThrow(/usage: forgeorbit pipeline advance/);
 });
 
 test("cmdPipeline advance: --next and --finish together throws", async () => {
@@ -1167,9 +1167,9 @@ test("cmdPipeline advance: a bad flag fails BEFORE any task lookup (no network r
       return [task({ pipelineRun: pipelineRun() })];
     },
   });
-  await expect(cmdPipeline(["advance", "parent-1", "--bogus"], flags)).rejects.toThrow(/usage: agetor pipeline advance/);
+  await expect(cmdPipeline(["advance", "parent-1", "--bogus"], flags)).rejects.toThrow(/usage: forgeorbit pipeline advance/);
   await expect(cmdPipeline(["advance", "parent-1", "--next", "Fix", "--finish"], flags)).rejects.toThrow(/mutually exclusive/);
-  await expect(cmdPipeline(["advance", "parent-1"], flags)).rejects.toThrow(/usage: agetor pipeline advance/);
+  await expect(cmdPipeline(["advance", "parent-1"], flags)).rejects.toThrow(/usage: forgeorbit pipeline advance/);
   expect(listed).toBe(false);
 });
 
@@ -1240,7 +1240,7 @@ test("cmdPipeline advance: --next before a first Run (no snapshot) throws", asyn
 
 test("cmdPipeline restart: missing ref throws the usage error", async () => {
   currentClient = makeClient({ listTasks: async () => [] });
-  await expect(cmdPipeline(["restart"], flags)).rejects.toThrow(/usage: agetor pipeline restart/);
+  await expect(cmdPipeline(["restart"], flags)).rejects.toThrow(/usage: forgeorbit pipeline restart/);
 });
 
 test("cmdPipeline restart: resolves the task and calls restartPipeline", async () => {
@@ -1279,7 +1279,7 @@ test("cmdPipeline restart --json: prints the raw { runId, pending? } response", 
 
 test("cmdPipeline status: missing ref throws the usage error", async () => {
   currentClient = makeClient({ listTasks: async () => [] });
-  await expect(cmdPipeline(["status"], flags)).rejects.toThrow(/usage: agetor pipeline status/);
+  await expect(cmdPipeline(["status"], flags)).rejects.toThrow(/usage: forgeorbit pipeline status/);
 });
 
 test("cmdPipeline status: resolves the task, fetches the pipeline run, and renders pipelineStatusLines", async () => {

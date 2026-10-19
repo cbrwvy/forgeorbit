@@ -691,7 +691,7 @@ export async function getGitLabPullDiff(repo: ProviderRepoInfo, number: number):
   if (!("status" in res)) return res;
   const contentLength = Number(res.headers.get("content-length") ?? 0);
   if (contentLength > GITLAB_DIFF_BODY_CAP_BYTES) {
-    return { ok: false, error: `Merge request diff is too large to display in Agetor (${Math.ceil(contentLength / 1_000_000)} MB).` };
+    return { ok: false, error: `Merge request diff is too large to display in ForgeOrbit (${Math.ceil(contentLength / 1_000_000)} MB).` };
   }
   const body = await res.text().catch(() => "");
   if (!res.ok) {
@@ -704,7 +704,7 @@ export async function getGitLabPullDiff(repo: ProviderRepoInfo, number: number):
   }
   const bodyBytes = Buffer.byteLength(body, "utf8");
   if (bodyBytes > GITLAB_DIFF_BODY_CAP_BYTES) {
-    return { ok: false, error: `Merge request diff is too large to display in Agetor (${Math.ceil(bodyBytes / 1_000_000)} MB).` };
+    return { ok: false, error: `Merge request diff is too large to display in ForgeOrbit (${Math.ceil(bodyBytes / 1_000_000)} MB).` };
   }
   const files = parseGitDiff(body);
   files.sort((a, b) => a.path.localeCompare(b.path));

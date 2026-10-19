@@ -28,7 +28,7 @@ export async function cmdShell(args: string[], flags: Flags): Promise<void> {
   }
   if (!isTTY) {
     throw new Error(
-      "agetor shell needs an interactive terminal (TTY) — use --print to just print the path",
+      "forgeorbit shell needs an interactive terminal (TTY) — use --print to just print the path",
     );
   }
 

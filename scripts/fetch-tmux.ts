@@ -129,7 +129,7 @@ async function main() {
     return;
   }
   if (process.arch !== "arm64") {
-    fail(`expected an arm64 build host (got ${process.arch}); Agetor only ships arm64`);
+    fail(`expected an arm64 build host (got ${process.arch}); ForgeOrbit only ships arm64`);
   }
 
   const tmuxBin = await which("tmux");

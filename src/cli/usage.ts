@@ -10,17 +10,17 @@ const COLUMN_IDS = COLUMNS.map((col) => col.id).join(", ");
  * Each entry's FIRST line is a complete, standalone `usage:` line.
  */
 export const USAGE: Record<string, string> = {
-  add: `usage: agetor add [flags]   (no flags → guided wizard)
+  add: `usage: forgeorbit add [flags]   (no flags → guided wizard)
 
   Create a task.
     --title <s>        task title          --prompt <s> | --prompt-file <p>
     --agent <id>       harness id          --workdir <path>   git repo to run in
     --isolation <m>    worktree | none     --base-ref <ref>   branch base (default HEAD)
     --model <id>   --mode <id>   --effort <id>
-    --profile <id|name>  launch from a saved agent profile (agetor profile ls) —
+    --profile <id|name>  launch from a saved agent profile (forgeorbit profile ls) —
                         cannot combine with --agent/--model/--mode/--effort/
                         --fast/--max-mode, the profile defines them
-    --pipeline <id|name> launch a pipeline (agetor pipeline ls) instead of a
+    --pipeline <id|name> launch a pipeline (forgeorbit pipeline ls) instead of a
                         single agent — cannot combine with --profile or any
                         of --agent/--model/--mode/--effort/--fast/--max-mode
     --type <t>         task | subtask | epic | feature | bug | spike
@@ -29,27 +29,27 @@ export const USAGE: Record<string, string> = {
                         (needs --workdir or cwd inside the repo; --title/--prompt optional)
     --start            run immediately (creates in 'ready', not 'backlog')`,
 
-  ls: `usage: agetor ls [filters]
+  ls: `usage: forgeorbit ls [filters]
 
   List tasks. Filters combine (substring match for --repo/--search):
     --column <c>   --agent <id>   --type <t>   --repo <s>   --search <s>
     --archived     archived only        --all   include archived
     --steps        also list hidden pipeline step tasks (hidden by default)`,
 
-  ps: `usage: agetor ps
+  ps: `usage: forgeorbit ps
 
   List running / blocked tasks only — the active subset of 'ls'.`,
 
-  show: `usage: agetor show <task-id>
+  show: `usage: forgeorbit show <task-id>
 
   Task details, run history (newest first), and any pending interactions.`,
 
-  start: `usage: agetor start <task-id>
+  start: `usage: forgeorbit start <task-id>
 
   Run a not-yet-run task. A finished task continues via 'send'; a running one
   stops via 'cancel'.`,
 
-  send: `usage: agetor send <task-id> <message…> [--ref <path> …]
+  send: `usage: forgeorbit send <task-id> <message…> [--ref <path> …]
 
   Message a task. Resumes a finished task's session, or folds into the live turn
   if one is running. Blocked while the task is waiting on an answer. --ref
@@ -60,20 +60,20 @@ export const USAGE: Record<string, string> = {
   launching) is a promise, not a delivery: if the delivery later fails the app
   reports it and tries to restore the message to the task's saved-messages
   backlog (it says when that fails too) — the CLI cannot report that failure
-  after it has exited. Check 'agetor show <id>' or the app if a reply never
+  after it has exited. Check 'forgeorbit show <id>' or the app if a reply never
   arrives.`,
 
-  commit: `usage: agetor commit <task-id>
+  commit: `usage: forgeorbit commit <task-id>
 
   Ask the agent to commit all changes and push the branch. Resumes the session
   like 'send'; refused while the task is still running.`,
 
-  answer: `usage: agetor answer <task-id>
+  answer: `usage: forgeorbit answer <task-id>
 
   Answer a task that needs input — an interactive picker for AskUserQuestion
   options or a tmux prompt.`,
 
-  resume: `usage: agetor resume <task-id> [--cancel]
+  resume: `usage: forgeorbit resume <task-id> [--cancel]
 
   Continue an fx response paused after repeated Vercel AI Gateway rate-limit
   (HTTP 429) retries. No new prompt is sent — fx resumes from its own
@@ -82,41 +82,41 @@ export const USAGE: Record<string, string> = {
     --cancel   call off a pending automatic resume without resuming now —
                the task stays paused`,
 
-  commands: `usage: agetor commands <task-id>
+  commands: `usage: forgeorbit commands <task-id>
 
   List the slash commands (/…) and MCP/skill extensions (@…) available to the
   task's agent in its workdir — the CLI view of the app composer's autocomplete.`,
 
-  logs: `usage: agetor logs <task-id> [--no-follow] [--notify] [--rebuild]
+  logs: `usage: forgeorbit logs <task-id> [--no-follow] [--notify] [--rebuild]
 
   Stream the task's live conversation. --no-follow prints the current scrollback
   and exits. --notify (while following) rings a desktop notification + bell when
   the task succeeds / fails / starts waiting on you (macOS). --rebuild prints the
   latest run reconstructed from the on-disk claude JSONL (recovery).`,
 
-  files: `usage: agetor files <task-id> [--json]
+  files: `usage: forgeorbit files <task-id> [--json]
 
   List files the agent has sent you (SendUserFile) — basename, size, sent time,
   and full path, newest first. --json prints the raw array (empty when none).`,
 
-  cancel: `usage: agetor cancel <task-id>
+  cancel: `usage: forgeorbit cancel <task-id>
 
   Stop the active run. The session stays alive for follow-ups (claude-code).
   On a pipeline task, stops every currently-active step execution instead.`,
 
-  attach: `usage: agetor attach <task-id>
+  attach: `usage: forgeorbit attach <task-id>
 
   Attach your terminal to the task's live tmux session (all agent kinds;
   for codex/gemini this only exists while a turn is in flight).
   Detach with Ctrl-b d.`,
 
-  shell: `usage: agetor shell <task-id> [--print]
+  shell: `usage: forgeorbit shell <task-id> [--print]
 
   Open a shell in the task's worktree (or its workdir when isolation is off) —
   the terminal version of the app's worktree terminal. --print / -p just echoes
-  the directory, e.g. cd "$(agetor shell -p <id>)".`,
+  the directory, e.g. cd "$(forgeorbit shell -p <id>)".`,
 
-  edit: `usage: agetor edit <task-id> [flags]   (at least one flag)
+  edit: `usage: forgeorbit edit <task-id> [flags]   (at least one flag)
 
   Patch a task. Changing model / mode / effort applies to a live session mid-run.
   A task bound to an agent profile refuses agent/mode/model/effort/fast/max-mode
@@ -125,31 +125,31 @@ export const USAGE: Record<string, string> = {
     --model <id>   --mode <id>   --effort <id>   --type <t>   --column <c>
     --detach-profile   unbind from the task's agent profile (keeps its values)`,
 
-  move: `usage: agetor move <task-id> <column>   (columns: ${COLUMN_IDS})
+  move: `usage: forgeorbit move <task-id> <column>   (columns: ${COLUMN_IDS})
 
   Move a task between columns (mark done = move <id> done).`,
 
-  archive: `usage: agetor archive <task-id>
+  archive: `usage: forgeorbit archive <task-id>
 
   Archive a done task (unarchive <id> to restore).`,
 
-  unarchive: `usage: agetor unarchive <task-id>
+  unarchive: `usage: forgeorbit unarchive <task-id>
 
   Restore an archived task.`,
 
-  diff: `usage: agetor diff <task-id>
+  diff: `usage: forgeorbit diff <task-id>
 
   Show the task's git diff (worktree vs its pinned base ref).`,
 
-  rm: `usage: agetor rm <task-id> [--yes]
+  rm: `usage: forgeorbit rm <task-id> [--yes]
 
   Delete a task, its worktree, and its branch. --yes skips the confirmation.`,
 
-  projects: `usage: agetor projects <ls | add <path> [--name <n>] | rm <path> | branches <path>>
+  projects: `usage: forgeorbit projects <ls | add <path> [--name <n>] | rm <path> | branches <path>>
 
   Manage the registered project folders shown in the new-task picker.`,
 
-  clone: `usage: agetor clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]
+  clone: `usage: forgeorbit clone <url> [--provider github|gitlab|bitbucket] [--dest <path>] [--no-eli5]
 
   Clone a repository and register it as a new project — the CLI view of the
   app's "Clone repository" dialog. <url> accepts https://…, git@host:owner/repo
@@ -164,21 +164,21 @@ export const USAGE: Record<string, string> = {
                        otherwise writes ELI5.md at the clone's root
   Ctrl+C cancels an in-flight clone (the partial checkout is removed).`,
 
-  harness: `usage: agetor harness <ls | add <id> … | edit <id> … | enable <id> | disable <id> | rm <id> | shell <id>>
+  harness: `usage: forgeorbit harness <ls | add <id> … | edit <id> … | enable <id> | disable <id> | rm <id> | shell <id>>
 
   Manage agent harnesses (aliases / parallel accounts).
-  Run 'agetor harness add --help' / 'edit --help' for their flags;
-  'agetor harness shell <id>' opens a shell with the harness env for login.`,
+  Run 'forgeorbit harness add --help' / 'edit --help' for their flags;
+  'forgeorbit harness shell <id>' opens a shell with the harness env for login.`,
 
-  profile: `usage: agetor profile <ls | show <ref> | add <name> … | edit <ref> … | duplicate <ref> [--name <name>] [--with-tasks] | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […]>
+  profile: `usage: forgeorbit profile <ls | show <ref> | add <name> … | edit <ref> … | duplicate <ref> [--name <name>] [--with-tasks] | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […]>
 
   Manage agent profiles — a reusable harness + model + effort + mode +
-  instructions + skills preset — pick one at launch with 'agetor add --profile'.
+  instructions + skills preset — pick one at launch with 'forgeorbit add --profile'.
   <ref> is a profile id or its (unique, case-insensitive) name.
-  Run 'agetor profile add --help' / 'edit --help' / 'duplicate --help' for their flags, and
+  Run 'forgeorbit profile add --help' / 'edit --help' / 'duplicate --help' for their flags, and
   'export --help' / 'import --help' for moving profiles between machines.`,
 
-  export: `usage: agetor export [--profile <ref>]… [--pipeline <ref>]… [--all] [--out <file|->] [--force]
+  export: `usage: forgeorbit export [--profile <ref>]… [--pipeline <ref>]… [--all] [--out <file|->] [--force]
 
   Write Agents (agent profiles) and/or Pipelines to one portable JSON bundle
   ("agetor-bundle", version 1). A Pipeline brings every Agent its steps use.
@@ -192,11 +192,11 @@ export const USAGE: Record<string, string> = {
     --force           overwrite an existing --out file (refused otherwise)
   Without --out, stdout is the bundle file itself; with --json it is
   { filename, counts, warnings, bundle } (or { written, counts, warnings }
-  with --out). Re-import with 'agetor import <file>'.`,
+  with --out). Re-import with 'forgeorbit import <file>'.`,
 
-  import: `usage: agetor import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
+  import: `usage: forgeorbit import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
 
-  Import a bundle written by 'agetor export' (or a legacy 'pipeline export'
+  Import a bundle written by 'forgeorbit export' (or a legacy 'pipeline export'
   file; '-' reads stdin). In a terminal it first prints what it will create
   — each Agent's harness, skills and instructions — and asks before
   importing (No or Esc imports nothing; Ctrl+C exits 130). Everything is
@@ -214,46 +214,46 @@ export const USAGE: Record<string, string> = {
     --yes, -y              import without asking (scripts, stdin and --json
                            never ask)`,
 
-  "profile export": `usage: agetor profile export <ref> [--out <file|->] [--force]
+  "profile export": `usage: forgeorbit profile export <ref> [--out <file|->] [--force]
 
-  Export one Agent as a bundle — same format and flags as 'agetor export --profile <ref>'.`,
+  Export one Agent as a bundle — same format and flags as 'forgeorbit export --profile <ref>'.`,
 
-  "profile import": `usage: agetor profile import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
+  "profile import": `usage: forgeorbit profile import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
 
-  Import a bundle — same as 'agetor import' (see 'agetor import --help').`,
+  Import a bundle — same as 'forgeorbit import' (see 'forgeorbit import --help').`,
 
-  // Subcommand-keyed blocks ("<cmd> <sub>") back both `agetor <cmd> <sub> --help`
+  // Subcommand-keyed blocks ("<cmd> <sub>") back both `forgeorbit <cmd> <sub> --help`
   // and that subcommand's bad-argument error. Trivial subcommands (harness
   // enable/disable/rm, projects rm/branches) fall back to the command block.
-  "projects add": `usage: agetor projects add <path> [--name <name>]
+  "projects add": `usage: forgeorbit projects add <path> [--name <name>]
 
   Register a project folder (shown in the new-task workdir picker).`,
 
-  "harness add": `usage: agetor harness add <id> --label <label> [--kind claude-code] [--home <abs>] [--bin <abs>] [--env KEY=VAL …]
+  "harness add": `usage: forgeorbit harness add <id> --label <label> [--kind claude-code] [--home <abs>] [--bin <abs>] [--env KEY=VAL …]
 
   Create an agent harness — an alias, or a parallel account via a per-harness $HOME.`,
 
-  "harness edit": `usage: agetor harness edit <id> [--label …] [--home <abs>|none] [--bin <abs>|none] [--env KEY=VAL …]
+  "harness edit": `usage: forgeorbit harness edit <id> [--label …] [--home <abs>|none] [--bin <abs>|none] [--env KEY=VAL …]
 
   Update a harness; pass 'none' to clear --home / --bin.`,
 
-  "harness shell": `usage: agetor harness shell <id>
+  "harness shell": `usage: forgeorbit harness shell <id>
 
   Open your shell with the harness's env applied (CLAUDE_CONFIG_DIR / HOME, custom
   env, bin on PATH). Run 'claude /login' (or 'codex login') here to authenticate a
   parallel account against its own config. Ctrl-D to exit.`,
 
-  "profile add": `usage: agetor profile add <name> --harness <id> --model <id> [--effort <id>] [--mode <id>] [--fast|--no-fast] [--max-mode|--no-max-mode] [--instructions <text> | --instructions-file <path|-> ] [--skill <name> …]
+  "profile add": `usage: forgeorbit profile add <name> --harness <id> --model <id> [--effort <id>] [--mode <id>] [--fast|--no-fast] [--max-mode|--no-max-mode] [--instructions <text> | --instructions-file <path|-> ] [--skill <name> …]
 
   Create a reusable agent profile. --harness and --model are required.
   --instructions-file - reads instructions from stdin. --skill is repeatable.`,
 
-  "profile edit": `usage: agetor profile edit <ref> [--name <new>] [--harness <id>] [--model <id>] [--effort <id>] [--mode <id>] [--fast|--no-fast] [--max-mode|--no-max-mode] [--instructions <text> | --instructions-file <path|-> ] [--skill <name> …] [--clear-skills]   (at least one flag)
+  "profile edit": `usage: forgeorbit profile edit <ref> [--name <new>] [--harness <id>] [--model <id>] [--effort <id>] [--mode <id>] [--fast|--no-fast] [--max-mode|--no-max-mode] [--instructions <text> | --instructions-file <path|-> ] [--skill <name> …] [--clear-skills]   (at least one flag)
 
   Update a profile. --skill appends to the existing skill list unless
   --clear-skills is also given (then the list is replaced).`,
 
-  "profile duplicate": `usage: agetor profile duplicate <ref> [--name <name>] [--with-tasks]
+  "profile duplicate": `usage: forgeorbit profile duplicate <ref> [--name <name>] [--with-tasks]
 
   Create a copy of an agent profile immediately. The copy is named
   "<name> (copy)" unless --name overrides it. --with-tasks also copies the
@@ -261,9 +261,9 @@ export const USAGE: Record<string, string> = {
   new agent. Runs and worktrees are not copied. A task checked out on an
   existing branch is left on the original and reported in the output. The
   original agent is unchanged.
-  Edit the copy afterwards with 'agetor profile edit'.`,
+  Edit the copy afterwards with 'forgeorbit profile edit'.`,
 
-  pipeline: `usage: agetor pipeline <ls | show <ref> | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […] | retry <task> [--from <task>] | advance <task> [--next <step>… | --finish] [--from <task>] | restart <task> | status <task>>
+  pipeline: `usage: forgeorbit pipeline <ls | show <ref> | rm <ref> | export <ref> [--out <file|->] [--force] | import <file|-> […] | retry <task> [--from <task>] | advance <task> [--next <step>… | --finish] [--from <task>] | restart <task> | status <task>>
 
   Manage pipelines — named graphs of agent-profile-bound steps launched as
   one board task (built in the app's Pipelines editor; the CLI moves them
@@ -275,19 +275,19 @@ export const USAGE: Record<string, string> = {
                                         task-targeting command; a hidden
                                         step task's id is refused — target
                                         its pipeline task instead)
-  Launch a pipeline with 'agetor add --pipeline <id|name>'.`,
+  Launch a pipeline with 'forgeorbit add --pipeline <id|name>'.`,
 
-  "pipeline export": `usage: agetor pipeline export <ref> [--out <file|->] [--force]
+  "pipeline export": `usage: forgeorbit pipeline export <ref> [--out <file|->] [--force]
 
-  Print (or write to --out; '-' is stdout) the pipeline as an agetor bundle:
+  Print (or write to --out; '-' is stdout) the pipeline as a forgeorbit / agetor bundle:
   the pipeline plus every Agent its steps and delegations use, each with its
-  harness id and kind — same format as 'agetor export --pipeline <ref>'.
-  Re-importable with 'pipeline import' or 'agetor import'. Refuses to
+  harness id and kind — same format as 'forgeorbit export --pipeline <ref>'.
+  Re-importable with 'pipeline import' or 'forgeorbit import'. Refuses to
   overwrite an existing --out file unless --force.`,
 
-  "pipeline import": `usage: agetor pipeline import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
+  "pipeline import": `usage: forgeorbit pipeline import <file|-> [--dry-run] [--harness-map <fileId>=<localId>]… [--name <n>] [--enable-harnesses] [--yes]
 
-  Import a bundle ('-' reads stdin) — same as 'agetor import' (see 'agetor
+  Import a bundle ('-' reads stdin) — same as 'forgeorbit import' (see 'forgeorbit
   import --help'): in a terminal it prints what it will create and asks
   first; --yes (-y) skips the question. --name names the file's only
   pipeline. A legacy pipeline file (from before bundles) still imports: a
@@ -295,15 +295,15 @@ export const USAGE: Record<string, string> = {
   profileName hint when exactly one local Agent has that name, else
   reported.`,
 
-  "pipeline retry": `usage: agetor pipeline retry <task-id> [--from <step-task-id-or-prefix>]
+  "pipeline retry": `usage: forgeorbit pipeline retry <task-id> [--from <step-task-id-or-prefix>]
 
   Retry the pipeline run's currently blocked (or cancelled) step
   execution(s). 409 unless the run is actually blocked or cancelled. --from
   narrows the retry to one specific active execution (its step task's id or
-  a unique prefix of it — 'agetor pipeline status' lists them); omitted,
+  a unique prefix of it — 'forgeorbit pipeline status' lists them); omitted,
   every eligible execution plus every pending run-level block is retried.`,
 
-  "pipeline advance": `usage: agetor pipeline advance <task-id> [--next <step-name-or-id> …] [--finish] [--from <step-task-id>]
+  "pipeline advance": `usage: forgeorbit pipeline advance <task-id> [--next <step-name-or-id> …] [--finish] [--from <step-task-id>]
 
   Manually resolve what a pipeline run is currently waiting on. --next
   (repeatable) names the step(s) to run next — matched against the run's
@@ -313,24 +313,24 @@ export const USAGE: Record<string, string> = {
   specific blocked/awaiting execution when more than one is in play (e.g. a
   fan-out); omitted, the sole such execution is used.`,
 
-  "pipeline restart": `usage: agetor pipeline restart <task-id>
+  "pipeline restart": `usage: forgeorbit pipeline restart <task-id>
 
   Restart the pipeline run from its start step, discarding current progress.`,
 
-  "pipeline status": `usage: agetor pipeline status <task-id>
+  "pipeline status": `usage: forgeorbit pipeline status <task-id>
 
   Print the pipeline task's run status, blocked entries, active step
   executions, and full step history.`,
 
-  daemon: `usage: agetor daemon <status | start | stop>
+  daemon: `usage: forgeorbit daemon <status | start | stop>
 
   Control the background headless core (used when the desktop app isn't open).`,
 
-  info: `usage: agetor info
+  info: `usage: forgeorbit info
 
   Print the connected core's version.`,
 
-  config: `usage: agetor config [<key> [value…]]
+  config: `usage: forgeorbit config [<key> [value…]]
 
   View or set cross-session preferences stored in the core (the same store the
   app's settings use). No args lists all; one arg gets; key + value sets.
@@ -338,14 +338,14 @@ export const USAGE: Record<string, string> = {
   fxAutoResume (on|off — default on), fxAutoResumeDelaySec (10..3600, default 120),
   archivedHistoryRetentionDays (off, or 1..3650 days — default 30): archived
   tasks older than that have their large tool_result payloads trimmed to 4 KB
-  by a background pass ('agetor compact' then returns the freed space to disk).
+  by a background pass ('forgeorbit compact' then returns the freed space to disk).
   0, false, no, none and disabled also mean off; any other value is refused.`,
 
-  compact: `usage: agetor compact [--yes|-y] [--json]
+  compact: `usage: forgeorbit compact [--yes|-y] [--json]
 
   Compact the core's SQLite database (VACUUM) to give freed pages back to the
   disk — the CLI view of Settings → General → "Compact database". It rewrites
-  the whole file on the core's main thread, so Agetor does not respond while it
+  the whole file on the core's main thread, so ForgeOrbit does not respond while it
   runs (roughly 7.5 s per GB). Prints the size on disk, what is reclaimable,
   the estimate and the running-task count first; refused (exit 1) while any
   task has a run in flight.

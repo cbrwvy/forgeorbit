@@ -15,7 +15,7 @@ export async function cmdAnswer(args: string[], flags: Flags): Promise<void> {
   const ref = args[0];
   if (!ref) throw usageError("answer");
   if (!isTTY) {
-    throw new Error("agetor answer needs an interactive terminal (TTY)");
+    throw new Error("forgeorbit answer needs an interactive terminal (TTY)");
   }
   const client = await getClient(flags);
   const task = await resolveTask(client, ref);

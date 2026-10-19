@@ -223,7 +223,7 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
           <div className="min-w-0">
             <div id="create-task-from-issue-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
               <Bot className="size-4 shrink-0 text-muted-foreground" />
-              Work on this with Agetor
+              Work on this with ForgeOrbit
             </div>
             {context && (
               <div className="mt-0.5 truncate text-xs text-muted-foreground">

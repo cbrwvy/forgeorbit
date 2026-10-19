@@ -70,7 +70,7 @@ for await (const dmg of walk("artifacts", (n) => n.endsWith(".dmg"))) {
     continue;
   }
 
-  const staging = await mkdtemp(join(tmpdir(), "agetor-dmg-"));
+  const staging = await mkdtemp(join(tmpdir(), "forgeorbit-dmg-"));
   try {
     await run(["cp", "-R", appPath, staging + "/"]);
     await run(["ln", "-s", "/Applications", join(staging, "Applications")]);

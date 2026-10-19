@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Agetor is a local desktop app that orchestrates CLI coding agents (Claude Code, OpenAI Codex, others) from a kanban board. Each task is a prompt + working directory + agent choice; running it spawns the agent as a child process, streams its stdout/stderr to the UI, and moves the card through columns based on exit status.
+**ForgeOrbit** (by **Lunarian Forge** — *"Your agents. One orbit."*, based on [Agetor](https://github.com/alamops/agetor)) is a local-first macOS desktop app and CLI (`forgeorbit`, with backward compatibility for `agetor`) that orchestrates CLI coding agents (Claude Code, OpenAI Codex, Cursor, Gemini CLI, fx, Antigravity) from a kanban board. Each task is a prompt + working directory + agent choice; running it spawns the agent as a child process, streams its stdout/stderr to the UI, and moves the card through columns based on exit status. Note: internal database filenames (`~/.agetor/agetor.sqlite`, `agetor-core.json`) and `AGETOR_*` env vars are intentionally preserved alongside `FORGEORBIT_*` for seamless backward compatibility with existing user data and test suites.
 
 It is **Electrobun** (not Electron) — native webviews driven by a Bun main process. Do not reach for Electron APIs, IPC patterns, or Node-only modules.
 

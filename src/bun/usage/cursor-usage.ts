@@ -37,7 +37,7 @@ const OAUTH_CLIENT_ID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB";
 /** Shown when the saved login can't be used (expired and unrefreshable, or
  *  rejected by `usage-summary`). Deliberately carries no URL. */
 export const CURSOR_LOGIN_EXPIRED_REASON =
-  "Cursor's saved login expired or was rejected. Open the Cursor app and sign in again, then click Refresh \u2014 Agetor reads Cursor's local login to fetch plan usage.";
+  "Cursor's saved login expired or was rejected. Open the Cursor app and sign in again, then click Refresh \u2014 ForgeOrbit reads Cursor's local login to fetch plan usage.";
 
 /**
  * Path to the Cursor IDE's VS Code-style global storage SQLite DB, where the
@@ -802,7 +802,7 @@ export async function fetchCursorQuota(
       reason:
         allowIdeRead || opts?.session
           ? "No Cursor session found. Open the Cursor desktop app and sign in, " +
-            "then Refresh here \u2014 Agetor reads Cursor's local login to fetch plan usage."
+            "then Refresh here \u2014 ForgeOrbit reads Cursor's local login to fetch plan usage."
           : "Cursor usage isn't read in the background. Click Refresh to read " +
             "Cursor's local login and show plan usage.",
     };

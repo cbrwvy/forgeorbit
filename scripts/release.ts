@@ -81,16 +81,20 @@ async function preflight(): Promise<void> {
   }
 
   // Default branch check is a guard rail, not a hard rule — override with
-  // AGETOR_RELEASE_ALLOW_ANY_BRANCH=1 for hotfix branches if you really mean it.
+  // FORGEORBIT_RELEASE_ALLOW_ANY_BRANCH=1 / AGETOR_RELEASE_ALLOW_ANY_BRANCH=1 for hotfix branches if you really mean it.
   const branch = await run(["git", "rev-parse", "--abbrev-ref", "HEAD"], { capture: true });
-  if (branch !== "main" && !process.env.AGETOR_RELEASE_ALLOW_ANY_BRANCH) {
-    fail(`not on main (current: ${branch}). Set AGETOR_RELEASE_ALLOW_ANY_BRANCH=1 to override.`);
+  if (
+    branch !== "main" &&
+    !process.env.FORGEORBIT_RELEASE_ALLOW_ANY_BRANCH &&
+    !process.env.AGETOR_RELEASE_ALLOW_ANY_BRANCH
+  ) {
+    fail(`not on main (current: ${branch}). Set FORGEORBIT_RELEASE_ALLOW_ANY_BRANCH=1 to override.`);
   }
 
   // GitHub upload needs a token. Same env var the upload script reads — pre-check
   // here so we fail before the ~3-min build/notarize, not after.
   if (!process.env.GITHUB_TOKEN) {
-    fail("GITHUB_TOKEN not set — add to .env.local (fine-grained PAT with contents:write on alamops/agetor).");
+    fail("GITHUB_TOKEN not set — add to .env.local (fine-grained PAT with contents:write on cbrwvy/forgeorbit).");
   }
 
   // Signing creds — electrobun build will fail without these, but a friendly
@@ -246,6 +250,7 @@ async function main() {
     }
   }
 
+  process.env.FORGEORBIT_RELEASE_NOTES = notes;
   process.env.AGETOR_RELEASE_NOTES = notes;
   console.log("[release] upload to GitHub…");
   await run(["bun", "scripts/upload-release.ts"]);
@@ -253,11 +258,11 @@ async function main() {
   // Sanity check: the artifacts the auto-updater serves must end up where it
   // looks for them. We don't fetch them back — just point the user at the
   // release URL so they can eyeball it.
-  if (!existsSync("artifacts/Agetor-arm64.dmg")) {
-    console.warn("[release] note: artifacts/Agetor-arm64.dmg missing post-build — check rename-dmg output");
+  if (!existsSync("artifacts/ForgeOrbit-arm64.dmg")) {
+    console.warn("[release] note: artifacts/ForgeOrbit-arm64.dmg missing post-build — check rename-dmg output");
   }
   console.log(`\n✓ release v${to} published`);
-  console.log(`  https://github.com/alamops/agetor/releases/tag/v${to}`);
+  console.log(`  https://github.com/cbrwvy/forgeorbit/releases/tag/v${to}`);
 }
 
 await main();

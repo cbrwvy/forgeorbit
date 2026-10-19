@@ -58,7 +58,7 @@ try {
 function installNativeMenu() {
   ApplicationMenu.setApplicationMenu([
     {
-      label: "Agetor",
+      label: "ForgeOrbit",
       submenu: [
         { role: "about" },
         { type: "separator" },
@@ -624,7 +624,7 @@ const windowLifecycle = makeWindowLifecycle({
     // height — keep `x` here in sync with the header's left padding (`pl-20`
     // in App.tsx).
     const mainWindow = new BrowserWindow({
-      title: "Agetor",
+      title: "ForgeOrbit",
       titleBarStyle: "hiddenInset",
       trafficLightOffset: { x: 8, y: 8 },
       url: isHttpUrl

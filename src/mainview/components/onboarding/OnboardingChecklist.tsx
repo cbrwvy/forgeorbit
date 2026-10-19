@@ -326,9 +326,9 @@ export function OnboardingChecklist({
   return (
     <Card data-testid="onboarding-checklist" className="mx-auto w-full max-w-md">
       <CardHeader>
-        <CardTitle>Welcome to Agetor</CardTitle>
+        <CardTitle>Welcome to ForgeOrbit</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Create your first task to run an agent on a project.
+          Your agents. One orbit. — Create your first task to run an agent on a project.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" fill="none">
+  <defs>
+    <!-- Deep graphite-cosmic background gradient -->
+    <linearGradient id="bg-grad" x1="160" y1="100" x2="864" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#181824" />
+      <stop offset="45%" stop-color="#11111A" />
+      <stop offset="100%" stop-color="#09090F" />
+    </linearGradient>
+
+    <!-- Ambient nebula glow behind the central node -->
+    <radialGradient id="nebula-glow" cx="512" cy="512" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.38" />
+      <stop offset="45%" stop-color="#4F46E5" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#09090F" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Subtle top-left rim light on the macOS squircle -->
+    <linearGradient id="rim-grad" x1="100" y1="100" x2="924" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA" stop-opacity="0.42" />
+      <stop offset="35%" stop-color="#6366F1" stop-opacity="0.16" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.05" />
+    </linearGradient>
+
+    <!-- Primary orbit gradient (violet to lavender) -->
+    <linearGradient id="orbit-primary" x1="200" y1="320" x2="824" y2="704" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#8B5CF6" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#4C1D95" stop-opacity="0.25" />
+    </linearGradient>
+
+    <!-- Secondary orbit gradient (indigo to cool slate) -->
+    <linearGradient id="orbit-secondary" x1="240" y1="740" x2="784" y2="284" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366F1" stop-opacity="0.2" />
+      <stop offset="50%" stop-color="#818CF8" stop-opacity="0.68" />
+      <stop offset="100%" stop-color="#DDD6FE" stop-opacity="0.9" />
+    </linearGradient>
+
+    <!-- Outer reference ring gradient -->
+    <linearGradient id="orbit-outer" x1="220" y1="220" x2="804" y2="804" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA" stop-opacity="0.28" />
+      <stop offset="50%" stop-color="#475569" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0.28" />
+    </linearGradient>
+
+    <!-- Central orchestrator core gradient -->
+    <radialGradient id="core-grad" cx="484" cy="480" r="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F5F3FF" />
+      <stop offset="32%" stop-color="#C4B5FD" />
+      <stop offset="70%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#5B21B6" />
+    </radialGradient>
+
+    <!-- Core outer halo -->
+    <radialGradient id="core-halo" cx="512" cy="512" r="145" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA" stop-opacity="0.55" />
+      <stop offset="65%" stop-color="#7C3AED" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#7C3AED" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Drop shadow for macOS squircle -->
+    <filter id="squircle-shadow" x="60" y="68" width="904" height="904" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.55" />
+    </filter>
+  </defs>
+
+  <!-- macOS Big Sur / Sequoia squircle base -->
+  <g filter="url(#squircle-shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg-grad)" />
+    <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#nebula-glow)" />
+    <rect x="102" y="102" width="820" height="820" rx="183" stroke="url(#rim-grad)" stroke-width="4" />
+  </g>
+
+  <!-- Subtle concentric cosmic coordinate ring -->
+  <circle cx="512" cy="512" r="296" stroke="url(#orbit-outer)" stroke-width="2.5" stroke-dasharray="8 12" />
+  <circle cx="512" cy="512" r="196" stroke="#A78BFA" stroke-opacity="0.14" stroke-width="2" />
+
+  <!-- Secondary tilted orbital path (+32 deg) -->
+  <g transform="rotate(32 512 512)">
+    <ellipse cx="512" cy="512" rx="318" ry="134" stroke="url(#orbit-secondary)" stroke-width="9" stroke-linecap="round" />
+    <!-- Agent node on secondary orbit (top-right) -->
+    <circle cx="786" cy="444" r="24" fill="#6366F1" fill-opacity="0.3" />
+    <circle cx="786" cy="444" r="14" fill="#E0E7FF" stroke="#818CF8" stroke-width="4" />
+    <!-- Agent node on secondary orbit (bottom-left) -->
+    <circle cx="238" cy="580" r="18" fill="#6366F1" fill-opacity="0.25" />
+    <circle cx="238" cy="580" r="10" fill="#C7D2FE" stroke="#6366F1" stroke-width="3" />
+  </g>
+
+  <!-- Primary tilted orbital path (-28 deg) -->
+  <g transform="rotate(-28 512 512)">
+    <ellipse cx="512" cy="512" rx="332" ry="144" stroke="url(#orbit-primary)" stroke-width="12" stroke-linecap="round" />
+    <!-- Primary agent satellite node (left-upper) -->
+    <circle cx="218" cy="445" r="30" fill="#8B5CF6" fill-opacity="0.32" />
+    <circle cx="218" cy="445" r="17" fill="#F5F3FF" stroke="#A78BFA" stroke-width="4" />
+    <!-- Secondary agent satellite node (right-lower) -->
+    <circle cx="804" cy="580" r="22" fill="#8B5CF6" fill-opacity="0.28" />
+    <circle cx="804" cy="580" r="12" fill="#DDD6FE" stroke="#8B5CF6" stroke-width="3.5" />
+  </g>
+
+  <!-- Central Orchestrator Node (Lunarian Forge Core) -->
+  <circle cx="512" cy="512" r="138" fill="url(#core-halo)" />
+  <circle cx="512" cy="512" r="88" fill="url(#core-grad)" />
+  <!-- Lunar crescent shadow carve inside the core for Lunarian Forge signature -->
+  <path d="M 542 440 A 72 72 0 1 0 542 584 A 58 64 0 1 1 542 440 Z" fill="#1E1B4B" fill-opacity="0.28" />
+  <!-- Crisp core specular highlight -->
+  <circle cx="486" cy="484" r="22" fill="#FFFFFF" fill-opacity="0.45" />
+  <circle cx="512" cy="512" r="88" stroke="#EDE9FE" stroke-opacity="0.65" stroke-width="3" />
+</svg>

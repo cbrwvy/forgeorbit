@@ -20,40 +20,29 @@ import path from "node:path";
  * `Contents/Resources/app/bin` at build time (electrobun.config.ts build.copy
  * maps `vendor/notifier` there, giving `bin/AgetorNotifier.app`).
  */
-function bundledNotifierExe(): string {
+const NOTIFIER_APPS = ["ForgeOrbitNotifier.app", "AgetorNotifier.app"] as const;
+
+function bundledNotifierCandidates(): string[] {
   const bin = path.join(path.dirname(process.execPath), "..", "Resources", "app", "bin");
-  return path.join(bin, "AgetorNotifier.app", "Contents", "MacOS", "notifier");
+  return NOTIFIER_APPS.map((app) => path.join(bin, app, "Contents", "MacOS", "notifier"));
 }
 
-/**
- * The locally-built helper, used when running from source (`bun run dev`)
- * rather than the packaged .app. Resolved relative to this module's location
- * inside the repo (src/bun/ -> repo root -> vendor/notifier/...).
- */
-function devNotifierExe(): string {
-  return path.join(
-    import.meta.dir, "..", "..",
-    "vendor", "notifier", "AgetorNotifier.app", "Contents", "MacOS", "notifier",
-  );
+function devNotifierCandidates(): string[] {
+  const vendor = path.join(import.meta.dir, "..", "..", "vendor", "notifier");
+  return NOTIFIER_APPS.map((app) => path.join(vendor, app, "Contents", "MacOS", "notifier"));
 }
 
 /**
  * Single source of truth for the notifier helper path. Precedence:
- *   1. AGETOR_NOTIFIER_BIN env override (tests + power users) — returned
- *      as-is, matching AGETOR_TMUX_BIN's contract.
+ *   1. FORGEORBIT_NOTIFIER_BIN or AGETOR_NOTIFIER_BIN env override (tests + power users)
  *   2. The helper bundled inside the packaged app.
  *   3. The locally-built helper under vendor/ (dev runs from source).
- *
- * Returns `null` if nothing resolves. The deep-link notification is an
- * enhancement, so callers treat `null` (and a non-zero exit — e.g. the user
- * denied notification permission) as "post a plain Utils.showNotification
- * instead" (see showTaskNotification in index.ts).
  */
 export function resolveNotifier(): string | null {
-  const override = process.env.AGETOR_NOTIFIER_BIN;
+  const override = process.env.FORGEORBIT_NOTIFIER_BIN ?? process.env.AGETOR_NOTIFIER_BIN;
   if (override) return override;
 
-  for (const candidate of [bundledNotifierExe(), devNotifierExe()]) {
+  for (const candidate of [...bundledNotifierCandidates(), ...devNotifierCandidates()]) {
     if (existsSync(candidate)) return candidate;
   }
   return null;
@@ -61,16 +50,15 @@ export function resolveNotifier(): string | null {
 
 /**
  * The resolved helper's `.app` bundle path (the parent of Contents/MacOS/…),
- * or null when the helper isn't a real bundle (e.g. an `AGETOR_NOTIFIER_BIN`
- * override pointing at a bare binary, or nothing resolved). Used to register
- * the bundle with LaunchServices so a notification click can relaunch it — we
- * spawn the inner Mach-O directly, which doesn't guarantee LS registration.
+ * or null when the helper isn't a real bundle.
  */
 export function resolveNotifierApp(): string | null {
   const exe = resolveNotifier();
   if (!exe) return null;
-  const suffix = path.join("AgetorNotifier.app", "Contents", "MacOS", "notifier");
-  if (!exe.endsWith(suffix)) return null;
+  const isNotifierBundle = NOTIFIER_APPS.some((app) =>
+    exe.endsWith(path.join(app, "Contents", "MacOS", "notifier")),
+  );
+  if (!isNotifierBundle) return null;
   // <app>/Contents/MacOS/notifier -> <app>
   return path.dirname(path.dirname(path.dirname(exe)));
 }

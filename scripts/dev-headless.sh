@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start/stop Agetor's backend + frontend without the Electrobun GUI shell.
+# Start/stop ForgeOrbit's backend + frontend without the Electrobun GUI shell.
 #
 # Use this on a box with no display (SSH/headless server) — access the UI
 # from your local machine through an SSH tunnel:
@@ -14,12 +14,12 @@
 #   --force          — with start/restart, kill whatever else holds the API
 #                       port even if this script didn't start it
 #
-# Env overrides: AGETOR_DATA_DIR, AGETOR_API_PORT, AGETOR_API_TOKEN.
+# Env overrides: FORGEORBIT_DATA_DIR (or AGETOR_DATA_DIR), FORGEORBIT_API_PORT (or AGETOR_API_PORT), FORGEORBIT_API_TOKEN (or AGETOR_API_TOKEN).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="${AGETOR_DATA_DIR:-$HOME/.agetor-dev}"
-API_PORT="${AGETOR_API_PORT:-4318}"
+DATA_DIR="${FORGEORBIT_DATA_DIR:-${AGETOR_DATA_DIR:-$HOME/.agetor-dev}}"
+API_PORT="${FORGEORBIT_API_PORT:-${AGETOR_API_PORT:-4318}}"
 VITE_PORT=5173
 RUN_DIR="$DATA_DIR/headless-dev"
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
@@ -145,7 +145,7 @@ print_access_info() {
   # byte-identical to the pre-font-size shape for the common case.
   [ "$fs" != "100" ] && font_size_param="&fontSize=$fs"
   echo
-  grn "agetor dev (headless) is up"
+  grn "forgeorbit dev (headless) is up"
   echo "  backend:  http://127.0.0.1:$API_PORT  (log: $BACKEND_LOG)"
   echo "  frontend: http://127.0.0.1:$VITE_PORT  (log: $VITE_LOG)"
   echo
@@ -202,7 +202,7 @@ do_start() {
     fi
   fi
 
-  local token="${AGETOR_API_TOKEN:-}"
+  local token="${FORGEORBIT_API_TOKEN:-${AGETOR_API_TOKEN:-}}"
   if [ -z "$token" ]; then
     if [ -f "$TOKEN_FILE" ]; then
       token="$(cat "$TOKEN_FILE")"
@@ -215,12 +215,14 @@ do_start() {
   cd "$REPO_ROOT"
 
   dim "starting vite on $VITE_PORT…"
-  AGETOR_DATA_DIR="$DATA_DIR" \
+  FORGEORBIT_DATA_DIR="$DATA_DIR" AGETOR_DATA_DIR="$DATA_DIR" \
     nohup bun run hmr > "$VITE_LOG" 2>&1 &
   echo $! > "$VITE_PID_FILE"
 
   dim "starting headless backend on $API_PORT…"
-  AGETOR_DATA_DIR="$DATA_DIR" AGETOR_API_PORT="$API_PORT" AGETOR_API_TOKEN="$token" \
+  FORGEORBIT_DATA_DIR="$DATA_DIR" AGETOR_DATA_DIR="$DATA_DIR" \
+  FORGEORBIT_API_PORT="$API_PORT" AGETOR_API_PORT="$API_PORT" \
+  FORGEORBIT_API_TOKEN="$token" AGETOR_API_TOKEN="$token" \
     nohup bun run src/bun/headless.ts > "$BACKEND_LOG" 2>&1 &
   echo $! > "$BACKEND_PID_FILE"
 

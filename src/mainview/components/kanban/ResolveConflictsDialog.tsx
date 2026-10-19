@@ -136,7 +136,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
           <div className="min-w-0">
             <div id="resolve-conflicts-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
               <GitMerge className="size-4 shrink-0 text-muted-foreground" />
-              Resolve with Agetor
+              Resolve with ForgeOrbit
             </div>
             {context && (
               <div className="mt-0.5 truncate text-xs text-muted-foreground">

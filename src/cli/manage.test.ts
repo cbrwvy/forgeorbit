@@ -319,7 +319,7 @@ test("cmdEdit: the server's 'bound to agent' 409 is reworded to 'profile' at the
     expect(threw).toBeInstanceOf(Error);
     expect((threw as Error).message).not.toContain("bound to agent");
     expect((threw as Error).message).toBe(
-      `task is bound to profile "P1" — detach it first (agetor edit ${t.id.slice(0, 8)} --detach-profile)`,
+      `task is bound to profile "P1" — detach it first (forgeorbit edit ${t.id.slice(0, 8)} --detach-profile)`,
     );
 
     // Combined with --detach-profile the edit should succeed — detach runs

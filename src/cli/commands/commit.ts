@@ -25,12 +25,12 @@ export async function cmdCommit(args: string[], flags: Flags): Promise<void> {
   // actually succeeded — column no longer implies a turn is in flight — so
   // there's no column-based guard here.
   if (task.pendingInteractionCount > 0) {
-    throw new Error(`task is waiting for an answer — respond first with 'agetor answer ${short}'`);
+    throw new Error(`task is waiting for an answer — respond first with 'forgeorbit answer ${short}'`);
   }
   const runs = task.runId ? [] : await client.getRuns(task.id);
   const runId = resumableRunId(task, runs);
   if (!runId) {
-    throw new Error(`task has no run yet — start it first: agetor start ${short}`);
+    throw new Error(`task has no run yet — start it first: forgeorbit start ${short}`);
   }
 
   // Best-effort heads-up so a no-op turn (clean tree) isn't a surprise.

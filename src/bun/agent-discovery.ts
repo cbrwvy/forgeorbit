@@ -404,7 +404,7 @@ async function discoverCodex(env?: Record<string, string>, bin?: string): Promis
 
   try {
     const initMsg = (await call("initialize", {
-      clientInfo: { name: "agetor", title: "Agetor", version: pkg.version },
+      clientInfo: { name: "forgeorbit", title: "ForgeOrbit", version: pkg.version },
     })) as { result?: unknown; error?: unknown } | undefined;
     if (!initMsg || initMsg.error) return [];
 

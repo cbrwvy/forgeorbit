@@ -15,7 +15,7 @@ import { usageError } from "../usage.ts";
  * precedence ever changes.
  */
 function cliTmuxSocketArgs(): string[] {
-  const override = process.env.AGETOR_TMUX_SOCKET;
+  const override = process.env.FORGEORBIT_TMUX_SOCKET ?? process.env.AGETOR_TMUX_SOCKET;
   const name = override ? (override === "default" ? null : override)
     : process.env.NODE_ENV === "test" ? "agetor-test"
     : null;
@@ -27,7 +27,7 @@ function cliTmuxSocketArgs(): string[] {
  * in-terminal equivalent of the app's "Open in tmux". All three agent kinds
  * (claude-code, codex, gemini) run in a per-task tmux session, though for
  * codex/gemini it exists only while a turn is in flight (each turn is a
- * fresh one-shot session). Agetor creates sessions on tmux's default socket
+ * fresh one-shot session). ForgeOrbit creates sessions on tmux's default socket
  * (no -L/-S) in production, named `agetor-<id>`, so a plain `tmux attach`
  * finds them; under an active non-default socket (test isolation)
  * `cliTmuxSocketArgs()` threads the matching `-L <name>` through. Detach
@@ -36,7 +36,7 @@ function cliTmuxSocketArgs(): string[] {
 export async function cmdAttach(args: string[], flags: Flags): Promise<void> {
   const ref = args[0];
   if (!ref) throw usageError("attach");
-  if (!isTTY) throw new Error("agetor attach needs an interactive terminal (TTY)");
+  if (!isTTY) throw new Error("forgeorbit attach needs an interactive terminal (TTY)");
 
   const client = await getClient(flags);
   const task = await resolveTask(client, ref);
@@ -44,12 +44,12 @@ export async function cmdAttach(args: string[], flags: Flags): Promise<void> {
   const session = runs.find((r) => r.tmuxSession)?.tmuxSession ?? null;
   if (!session) {
     throw new Error(
-      "no tmux session — attach needs a task that has run (try 'agetor start' first); " +
+      "no tmux session — attach needs a task that has run (try 'forgeorbit start' first); " +
         "for codex/gemini this only exists while a turn is in flight",
     );
   }
 
-  const tmuxBin = process.env.AGETOR_TMUX_BIN ?? "tmux";
+  const tmuxBin = process.env.FORGEORBIT_TMUX_BIN ?? process.env.AGETOR_TMUX_BIN ?? "tmux";
   const socketArgs = cliTmuxSocketArgs();
   const alive = Bun.spawnSync([tmuxBin, ...socketArgs, "has-session", "-t", session], {
     stdout: "ignore",
@@ -58,8 +58,8 @@ export async function cmdAttach(args: string[], flags: Flags): Promise<void> {
   if (alive.exitCode !== 0) {
     throw new Error(
       `tmux session '${session}' is unreachable via '${tmuxBin}' — if the app uses bundled ` +
-        `tmux, set AGETOR_TMUX_BIN to match; otherwise respawn it with ` +
-        `'agetor send ${task.id.slice(0, 8)} <message>'`,
+        `tmux, set FORGEORBIT_TMUX_BIN / AGETOR_TMUX_BIN to match; otherwise respawn it with ` +
+        `'forgeorbit send ${task.id.slice(0, 8)} <message>'`,
     );
   }
 

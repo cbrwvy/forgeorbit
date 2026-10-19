@@ -88,7 +88,7 @@ const GITLAB_CREATE_STEPS: GuideStep[] = [
     detail: "Give the token a name and expiration, then select the \"api\" scope.",
   },
   {
-    title: "Create and save it in Agetor",
+    title: "Create and save it in ForgeOrbit",
     detail:
       "Click \"Create personal access token\" and copy it — it's shown only once. Back in " +
       "the Git host tokens section, enter the host (gitlab.com, or your ssh alias host) and " +
@@ -100,7 +100,7 @@ const BITBUCKET_TOKENS_URL = "https://id.atlassian.com/manage-profile/security/a
 const GITLAB_TOKENS_URL = "https://gitlab.com/-/user_settings/personal_access_tokens";
 
 /**
- * "Connect Agetor to a git host" instructions modal, opened from
+ * "Connect ForgeOrbit to a git host" instructions modal, opened from
  * `GitHubTokensSection` (the header button and the empty-state link). Purely
  * informational — it does not embed the token form itself, which lives
  * directly behind it in the same Settings section. GitHub copy is sourced
@@ -120,7 +120,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
     >
       <div className="flex items-center justify-between border-b border-border/60 pb-3">
         <h2 id="github-setup-dialog-title" className="text-base font-semibold">
-          Connect Agetor to a git host
+          Connect ForgeOrbit to a git host
         </h2>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
           <X className="size-4" />
@@ -130,7 +130,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
       <div className="max-h-[70vh] space-y-5 overflow-y-auto pt-3 text-sm">
         <section className="space-y-1">
           <p id="github-setup-dialog-desc" className="text-[11px] leading-snug text-muted-foreground">
-            Agetor talks to GitHub, GitLab, and Bitbucket using a token or credential that you
+            ForgeOrbit talks to GitHub, GitLab, and Bitbucket using a token or credential that you
             create and paste into the Git host tokens Settings section. For GitHub, the
             integration covers pull requests, issues, reviews, checks, Actions, releases,
             Projects, Discussions, and notifications — how much of that works depends on which
@@ -139,7 +139,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
           </p>
         </section>
 
-        <GuideSection heading="GitHub: how Agetor finds a token">
+        <GuideSection heading="GitHub: how ForgeOrbit finds a token">
           <StepList steps={AUTH_RESOLUTION_STEPS} />
           <p className="text-[11px] leading-snug text-muted-foreground">
             Bitbucket and GitLab resolve the same way minus the CLI-login step: Bitbucket tries a
@@ -248,7 +248,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
           </div>
         </GuideSection>
 
-        <GuideSection heading="Save the credential in Agetor">
+        <GuideSection heading="Save the credential in ForgeOrbit">
           <p className="text-[11px] leading-snug text-muted-foreground">
             Back in this Settings section, paste the host (github.com, gitlab.com,
             bitbucket.org, or your ssh alias host), an optional label, and the token — or, for

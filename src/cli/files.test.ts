@@ -146,5 +146,5 @@ test("files: an unknown task id throws a friendly resolve error", async () => {
 test("files: missing task-id argument throws the usage error", async () => {
   outputs.length = 0;
   currentClient = makeClient(task([]));
-  await expect(cmdFiles([], flags)).rejects.toThrow(/usage: agetor files/);
+  await expect(cmdFiles([], flags)).rejects.toThrow(/usage: forgeorbit files/);
 });

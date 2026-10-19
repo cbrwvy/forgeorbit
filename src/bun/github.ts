@@ -1684,7 +1684,7 @@ export async function getGitHubPullDiff(input: GetGitHubPullDiffInput): Promise<
   if (contentLength > GITHUB_DIFF_BODY_CAP_BYTES) {
     return {
       ok: false,
-      error: `Pull request diff is too large to display in Agetor (${Math.ceil(contentLength / 1_000_000)} MB).`,
+      error: `Pull request diff is too large to display in ForgeOrbit (${Math.ceil(contentLength / 1_000_000)} MB).`,
     };
   }
   const body = await res.text().catch(() => "");
@@ -1701,7 +1701,7 @@ export async function getGitHubPullDiff(input: GetGitHubPullDiffInput): Promise<
   if (bodyBytes > GITHUB_DIFF_BODY_CAP_BYTES) {
     return {
       ok: false,
-      error: `Pull request diff is too large to display in Agetor (${Math.ceil(bodyBytes / 1_000_000)} MB).`,
+      error: `Pull request diff is too large to display in ForgeOrbit (${Math.ceil(bodyBytes / 1_000_000)} MB).`,
     };
   }
   const files = parseGitDiff(body);
@@ -2297,7 +2297,7 @@ export async function applyGitHubSuggestion(input: ApplyGitHubSuggestionInput): 
   try {
     decoded = Buffer.from(encodedContent, "base64").toString("utf8");
   } catch {
-    return { ok: false, error: "GitHub returned file contents Agetor couldn't decode" };
+    return { ok: false, error: "GitHub returned file contents ForgeOrbit couldn't decode" };
   }
   const spliced = spliceSuggestionLines(decoded, range.startLine, range.endLine, parsed.suggestion);
   if (spliced === null) {

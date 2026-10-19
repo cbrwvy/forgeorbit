@@ -340,7 +340,7 @@ test("cmdAdd --start: a failed start prints '! start failed: <reason>' in plain 
   expect(rendered).toContain("✓ created");
   expect(rendered).not.toContain("▸ started");
   expect(rendered).toContain('! start failed: pipeline graph is invalid: step "Fix" has no agent profile');
-  expect(rendered).toContain("start it: agetor start");
+  expect(rendered).toContain("start it: forgeorbit start");
 });
 
 test("cmdAdd --start --json: a failed start folds 'start failed: <reason>' into warnings with started: false", async () => {
