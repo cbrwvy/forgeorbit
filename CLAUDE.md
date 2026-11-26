@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **No private data in Git:** Never commit secrets, personal paths, real AI account profiles, commercial infrastructure configs, Owner Trust receipts/certificates, SQLite databases, or local QA artifacts (`docs/qa/` and `.forgeorbit-local/` are gitignored). Inspect staged files before every commit and audit diffs before any Owner-requested `git push origin main`.
 - **No private history import:** Never merge, rebase, or import Git history from any local private archive into public `main`.
 - **Local personal builds:** Official releases, App Store, Developer ID, and notarization are not required. Personal macOS builds use `bun run build:local` and local `ForgeOrbit Local Owner` signing; personal integration overrides live outside Git (see [`docs/personal-configuration.md`](./docs/personal-configuration.md)).
+- **Build artifact hygiene:** Do not accumulate obsolete builds in `build/` — after verifying an installed update, remove temporary candidates and unnecessary `build/*.retained-*` folders while preserving signed rollback backups in `~/ForgeOrbit-Recovery/`, the installed app, working profile, `vendor/` caches, and Owner Trust data. Never publish builds, private QA evidence, personal configs, or secrets, and audit diffs before every `git push`.
 
 ## What this is
 

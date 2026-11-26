@@ -51,3 +51,19 @@ ForgeOrbit is a personal, single-developer macOS project developed directly in
   `ForgeOrbit Local Owner` certificate and local Owner Trust (pinned outside the
   repository). Keep the separate stable signing/notarization gates intact;
   personal builds must not consume stable identities or claim notarization.
+
+## Build artifact hygiene and recovery retention
+
+- Do not accumulate unnecessary historical build outputs in `build/`.
+- After a personal macOS app installation is verified, delete temporary build
+  candidates and obsolete `build/*.retained-*` directories that are no longer
+  needed for recovery.
+- Retain required signed rollback backups and profile snapshots in
+  `~/ForgeOrbit-Recovery/` (and provenance receipts in
+  `~/Applications/ForgeOrbit.receipts/`).
+- Never delete the installed working app (`~/Applications/ForgeOrbit.app`),
+  working profile (`~/Library/Application Support/ForgeOrbit`), `vendor/`
+  caches, or Owner Trust / Keychain data during cleanup.
+- Never commit or publish build artifacts, private QA materials, personal
+  configurations, or secrets; audit outgoing changes for private data before
+  every `git push`.
