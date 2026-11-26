@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Public repository workflow & privacy rules
+
+- **Repository policy:** ForgeOrbit is developed directly on `main` in the public repository (`https://github.com/cbrwvy/forgeorbit`). See [`AGENTS.md`](./AGENTS.md) for the full normative rules.
+- **No private data in Git:** Never commit secrets, personal paths, real AI account profiles, commercial infrastructure configs, Owner Trust receipts/certificates, SQLite databases, or local QA artifacts (`docs/qa/` and `.forgeorbit-local/` are gitignored). Inspect staged files before every commit and audit diffs before any Owner-requested `git push origin main`.
+- **No private history import:** Never merge, rebase, or import Git history from any local private archive into public `main`.
+- **Local personal builds:** Official releases, App Store, Developer ID, and notarization are not required. Personal macOS builds use `bun run build:local` and local `ForgeOrbit Local Owner` signing; personal integration overrides live outside Git (see [`docs/personal-configuration.md`](./docs/personal-configuration.md)).
+
 ## What this is
 
 **ForgeOrbit** (*"Your agents. One orbit."*, based on [Agetor](https://github.com/alamops/agetor)) is a local-first macOS desktop app and CLI (`forgeorbit`, with backward compatibility for `agetor`) that orchestrates CLI coding agents (Claude Code, OpenAI Codex, Cursor, Gemini CLI, fx, Antigravity) from a kanban board. Each task is a prompt + working directory + agent choice; running it spawns the agent as a child process, streams its stdout/stderr to the UI, and moves the card through columns based on exit status. Note: internal database filenames (`~/.agetor/agetor.sqlite`, `agetor-core.json`) and `AGETOR_*` env vars are intentionally preserved alongside `FORGEORBIT_*` for seamless backward compatibility with existing user data and test suites.
