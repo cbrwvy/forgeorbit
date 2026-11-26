@@ -134,12 +134,11 @@ test("a version below the model's minimum blocks, naming the executable that was
   expect(find(out.checks, "cli-too-old")!.message).toContain("0.159.0");
 });
 
-test("an unreadable version blocks a real driver when the model needs a minimum, and is only shown for the recorded fixture", async () => {
+test("an unreadable version does not block launch (fail-open per FO-PROVIDERS-SIMPLIFY01)", async () => {
   for (const bin of [blankBin, junkBin]) {
     process.env.AGETOR_CODEX_BIN = bin;
     const real = await checksFor("codex");
-    expect(real.resolved.launchTarget).toMatchObject({ verdict: "blocked", code: "version-unreadable", version: { state: "unreadable" } });
-    expect(find(real.checks, "cli-version-unreadable")).toMatchObject({ level: "error" });
+    expect(find(real.checks, "cli-version-unreadable")).toBeUndefined();
     expect(find(real.checks, "cli-too-old")).toBeUndefined();
   }
   process.env.AGETOR_CODEX_BIN = junkBin;
@@ -256,7 +255,7 @@ test("the employee launch review shows the executable, and a refused target crea
   expect(ok.attempt!.review.launchTarget).toMatchObject({ code: "compatible", executable: { path: okBin } });
   expect(ok.attempt!.status).toBe("awaiting-approval");
   expect(store.runs.listForTask(ok.attempt!.taskId).length).toBe(0);
-  for (const [bin, code] of [[oldBin, "cli-too-old"], [junkBin, "cli-version-unreadable"]] as const) {
+  for (const [bin, code] of [[oldBin, "cli-too-old"]] as const) {
     process.env.AGETOR_CODEX_BIN = bin;
     const taskId = await reviewScenario();
     const refused = await run.reviewEmployeeExecution({ taskId, harnessId: "codex" }, {});
@@ -267,16 +266,12 @@ test("the employee launch review shows the executable, and a refused target crea
   expect(existsSync(log)).toBe(true);
 });
 
-test("the board's Run refuses an executable that printed no version, before any run row or process", async () => {
+test("the board's Run allows an executable whose version cannot be parsed (fail-open)", async () => {
   for (const bin of [blankBin, junkBin]) {
     process.env.AGETOR_CODEX_BIN = bin;
-    const taskId = await newTask(project("board"));
-    const before = invocations().filter((line) => line.includes("exec")).length;
-    const started = await orchestrator.startTask(taskId);
-    expect("error" in started).toBe(true);
-    if ("error" in started) expect(started.error).toContain("could not be read");
-    expect(store.runs.listForTask(taskId).length).toBe(0);
-    expect(invocations().filter((line) => line.includes("exec")).length).toBe(before);
+    const codex = store.harnesses.get("codex")!;
+    const st = await status.checkHarness(codex, { freshAuth: true });
+    expect(await orchestrator.minCliVersionError(codex, "gpt-6.1-sol", st)).toBeNull();
   }
 });
 
@@ -288,18 +283,17 @@ test("the board's Run still refuses a version below the minimum with the existin
   expect(store.runs.listForTask(taskId).length).toBe(0);
 });
 
-test("a task bound to Cursor is refused by the real spawn before any process, and the legacy force argv is never reached", async () => {
+test("an isolated outer-Seatbelt Cursor run stays refused while manual Cursor buildCommand works", async () => {
   const cursor = addHarness("cursor-spawn", "cursor", cursorBin, "Cursor (spawn fixture)");
   const before = invocations().length;
   const chunks: string[] = [];
   await expect(agents.spawnAgent({
     taskId: "task-cursor-d9", runId: "run-cursor-d9", harness: cursor, prompt: "hello", cwd: isolated,
     onChunk: (chunk: { data?: string }) => { chunks.push(String(chunk.data ?? "")); },
-    opts: { model: "grok-4.7", mode: "auto" },
+    opts: { model: "grok-4.7", mode: "auto", cursorRuntime: {} as never },
   } as never)).rejects.toThrow(/Cursor is not executable/);
   expect(invocations().length).toBe(before);
   expect(chunks).toEqual([]);
-  // The legacy argv still names the flags; the block above is what keeps it from ever being executed.
   expect(agents.buildCommand(cursor, "hello", { model: "grok-4.7", mode: "auto" }).cmd).toContain("--force");
 });
 

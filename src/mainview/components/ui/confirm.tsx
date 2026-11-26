@@ -79,7 +79,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {createPortal(
+      {typeof document !== "undefined" && createPortal(
         <Dialog
           open={!!pending}
           onClose={() => settle(false)}

@@ -16,6 +16,7 @@ export const ACCOUNT_SOURCE_CAPABILITIES: Record<AgentKind | "deepseek-dsh", Acc
   codex: { ...manual, tokens: "run-telemetry", storedUsage: "supported-safe", note: "Reads stored meters only. Existing undocumented API and auth-file fallback are not approved identity mechanisms." },
   cursor: { ...manual, storedUsage: "supported-safe", note: "Reads stored meters only. Cookie extraction and undocumented endpoints are excluded." },
   gemini: { ...manual }, fx: { ...manual, tokens: "run-telemetry", requests: "upstream-report" }, antigravity: { ...manual },
+  custom: { ...manual },
   "deepseek-dsh": { ...manual },
 };
 export function accountSourceCapabilities(kind: string): AccountSourceCapabilities {
@@ -25,7 +26,7 @@ export function accountSourceCapabilities(kind: string): AccountSourceCapabiliti
 
 export const PROVIDER_FOR_HARNESS: Record<AgentKind | "deepseek-dsh", string> = {
   codex: "openai", "claude-code": "anthropic", gemini: "google", antigravity: "google",
-  fx: "fx", cursor: "cursor", "deepseek-dsh": "deepseek",
+  fx: "fx", cursor: "cursor", custom: "custom", "deepseek-dsh": "deepseek",
 };
 
 export function providerCapability(kind: string) {

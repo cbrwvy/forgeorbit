@@ -1,12 +1,13 @@
 import { useLocale as useUILocale } from "@/i18n/react";
-import { Antigravity, ClaudeCode, Codex, Cursor, DeepSeek, GeminiCLI, Vercel } from "@lobehub/icons";
+import { Antigravity, ClaudeCode, Codex, Cursor, DeepSeek, GeminiCLI, GithubCopilot, OpenCode, Vercel } from "@lobehub/icons";
+import { Terminal } from "lucide-react";
 import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentKind } from "../../../shared/types.ts";
 
 type IconProps = { size?: number | string; className?: string; "aria-hidden"?: boolean };
 
-const ICONS: Record<AgentKind | "deepseek" | "deepseek-dsh", ComponentType<IconProps>> = {
+const ICONS: Record<AgentKind | "deepseek" | "deepseek-dsh" | "opencode" | "copilot", ComponentType<IconProps>> = {
   "claude-code": ClaudeCode.Color,
   "codex": Codex.Color,
   // @lobehub/icons ships no `.Color` variant for Cursor (its mark is
@@ -21,16 +22,18 @@ const ICONS: Record<AgentKind | "deepseek" | "deepseek-dsh", ComponentType<IconP
   // for Vercel (fx's maker), so the plain (Mono) triangle glyph is the
   // closest equivalent.
   "fx": Vercel,
+  "opencode": OpenCode,
+  "copilot": GithubCopilot,
+  "custom": Terminal,
 };
 
 /**
- * Renders the brand glyph for a CLI kind. Accepts any string so callers can
- * pass an unresolved harness id directly — anything other than a known
- * kind renders the claude-code glyph as a neutral default, which is
- * safer than throwing on an unknown alias mid-render.
+ * Renders the brand glyph for a CLI kind or known service id. Accepts any string
+ * so callers can pass an unresolved harness/service id directly — unknown custom
+ * CLIs render a clean Terminal icon.
  */
 export function AgentIcon({ kind, className }: { kind: AgentKind | string; className?: string }) {
   useUILocale();
-  const Icon = ICONS[kind as keyof typeof ICONS] ?? ICONS["claude-code"];
+  const Icon = ICONS[kind as keyof typeof ICONS] ?? ICONS["custom"];
   return <Icon size="1em" className={cn("size-3.5", className)} aria-hidden />;
 }

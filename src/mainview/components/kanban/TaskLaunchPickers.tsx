@@ -3,6 +3,7 @@ import { t as tr } from "@/i18n/core";
 import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -287,7 +288,7 @@ export function useTaskLaunch(
         // the Model picker gets — rule 8 stays a single source.
         const nextLoggedIn = payload.statuses.find((a) => a.harnessId === nextAgent)?.loggedIn ?? null;
         const nextDiscovered = (harnessModelPayload.byHarness[nextAgent] ?? models[nextKind] ?? [])
-          .filter((m) => nextKind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
+          .filter((m: { id: string }) => nextKind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
         const nextModelRows = mergeModelOptions({
           curated: AGENT_OPTIONS[nextKind].models,
           discovered: nextDiscovered,
@@ -326,7 +327,7 @@ export function useTaskLaunch(
   // fallback for an older daemon predating `GET /agent-models/harnesses`.
   const models = useMemo(() => {
     const discoveredForAgent = (harnessModels[agent] ?? agentModels[kind] ?? [])
-      .filter((m) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
+      .filter((m: { id: string }) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
     return mergeModelOptions({
       curated: staticModels,
       discovered: discoveredForAgent,
@@ -480,6 +481,7 @@ export function TaskLaunchPickers({
 }) {
   useUILocale();
   const fieldId = useId();
+  const [customModelMode, setCustomModelMode] = useState(false);
   const {
     harnesses,
     availableHarnesses,
@@ -610,12 +612,32 @@ export function TaskLaunchPickers({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="min-w-0 space-y-1">
-              <label htmlFor={`${fieldId}-model`} className="text-muted-foreground"><I18nText id="common.model" /></label>
-              <Select id={`${fieldId}-model`} value={model} onChange={(e) => setModel(e.target.value)} className="h-8">
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
-                ))}
-              </Select>
+              <div className="flex items-center justify-between gap-1">
+                <label htmlFor={`${fieldId}-model`} className="text-muted-foreground"><I18nText id="common.model" /></label>
+                <button
+                  type="button"
+                  onClick={() => setCustomModelMode((v) => !v)}
+                  className="text-[10px] text-muted-foreground underline hover:text-foreground"
+                >
+                  {customModelMode ? tr("providersUi.model.list_toggle") : tr("providersUi.model.custom_toggle")}
+                </button>
+              </div>
+              {customModelMode || kind === "custom" ? (
+                <Input
+                  id={`${fieldId}-model`}
+                  value={model === "default" ? "" : model}
+                  onChange={(e) => setModel(e.target.value.trim() || "default")}
+                  placeholder={tr("providersUi.model.custom_placeholder")}
+                  className="h-8 text-xs"
+                  data-testid="launch-custom-model-input"
+                />
+              ) : (
+                <Select id={`${fieldId}-model`} value={model} onChange={(e) => setModel(e.target.value)} className="h-8">
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
+                  ))}
+                </Select>
+              )}
             </div>
             <div className="min-w-0 space-y-1">
               <label htmlFor={`${fieldId}-effort`} className="text-muted-foreground"><I18nText id="common.effort" /></label>

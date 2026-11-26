@@ -105,6 +105,7 @@ export function modeAccessLevel(kind: AgentKind, mode: string): number {
     gemini: { ask: 0, auto: 3 },
     fx: { ask: 1, auto: 3, yolo: 4 },
     antigravity: { plan: 0, ask: 2, auto: 3 },
+    custom: { manual: 3, automated: 3 },
   };
   return table[kind]?.[mode] ?? 3;
 }
@@ -616,6 +617,7 @@ export const PAID_API_ENV: Record<AgentKind, string[]> = {
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"],
   fx: ["AI_GATEWAY_API_KEY"],
   antigravity: [],
+  custom: [],
 };
 
 /**

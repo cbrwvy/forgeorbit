@@ -852,6 +852,9 @@ async function runRefreshKind(kind: AgentKind): Promise<void> {
       case "antigravity":
         models = await discoverAntigravity();
         break;
+      case "custom":
+        models = [];
+        break;
     }
   } catch {
     models = [];

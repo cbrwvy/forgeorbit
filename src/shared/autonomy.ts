@@ -133,6 +133,10 @@ const MODE_POLICY: Record<AgentKind, Record<string, string | null>> = {
     ask: null,
     auto: "Auto passes --dangerously-skip-permissions: no permission checks at all.",
   },
+  custom: {
+    manual: "Custom CLIs run with ordinary macOS user permissions and are not admitted for unattended autonomous runs.",
+    automated: "Custom CLIs are not admitted for unattended autonomous runs.",
+  },
 };
 
 /**

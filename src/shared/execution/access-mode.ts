@@ -82,6 +82,7 @@ const KNOWN_HARNESS_KINDS = new Set([
   "gemini",
   "antigravity",
   "fx",
+  "custom",
 ]);
 
 export function normalizeAccessMode(value: unknown): AccessMode | null {

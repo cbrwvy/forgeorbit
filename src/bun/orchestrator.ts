@@ -2237,7 +2237,10 @@ async function startTaskInner(
       // exception — it's driven over ACP/stdio, not tmux — but it still
       // gets a `tmuxSession` name here for symmetry with the run row shape;
       // `spawnFxViaAcp` simply doesn't use it.
-      tmuxSession: harness.kind === "claude-code" && task.mode === "bounded-print" ? null : sessionNameFor(taskId),
+      tmuxSession:
+        (harness.kind === "claude-code" && task.mode === "bounded-print") || harness.kind === "custom"
+          ? null
+          : sessionNameFor(taskId),
       // Filled in by spawnAgent's onSessionId callback once the session id is
       // known: claude's JSONL uuid → claudeSessionId, codex's thread_id →
       // codexSessionId, cursor's session_id → cursorSessionId, gemini's
@@ -2304,6 +2307,7 @@ async function startTaskInner(
     cwd: prepared.cwd,
     onChunk: computerPlan?.onChunk ?? onChunk,
     onSessionId: (sessionId) => {
+      if (harness.kind === "custom") return;
       runs.update(runId, harness.kind === "claude-code"
         ? { claudeSessionId: sessionId }
         : harness.kind === "codex"
@@ -4637,6 +4641,12 @@ async function sendInputInner(
           reason: "another message is already starting a new turn for this task — try again in a moment",
         };
   }
+  if (kind === "custom") {
+    return {
+      delivered: false,
+      reason: "Custom CLIs run one-shot per task launch. Re-run the task or open this CLI in Terminal for interactive follow-ups.",
+    };
+  }
   return { delivered: false, reason: `unknown agent kind for "${row.agent}"` };
 }
 
@@ -4753,6 +4763,7 @@ export async function minCliVersionError(
   status?: HarnessStatus,
 ): Promise<string | null> {
   try {
+    if (harness.kind === "custom") return null;
     const skip = process.env[SKIP_CLI_VERSION_FLOOR_ENV]?.trim().toLowerCase();
     if (skip === "1" || skip === "true" || skip === "on" || skip === "yes") return null;
     const floor = MODEL_MIN_CLI_VERSION[harness.kind]?.[modelId];
@@ -4763,13 +4774,7 @@ export async function minCliVersionError(
     // A real binary keeps the floor, including one that prints the same text.
     if (process.env.AGETOR_CODEX_DRIVER === "fake" && isInertQaStub(probed.path)) return null;
     const satisfied = cliVersionSatisfies(probed.version, floor);
-    if (satisfied === null && parseCliVersion(probed.version) === null && !agentDriverIsFake(harness.kind)) {
-      // Direction 9: a model that needs a minimum CLI version is not launched on an executable that printed
-      // no version at all. Not for the recorded fixture driver (it queries no CLI catalog), and an
-      // at-floor pre-release still parses, so it is not caught here.
-      const modelName = AGENT_OPTIONS[harness.kind]?.models.find((m) => m.id === modelId)?.label ?? modelId;
-      return formatUnreadableVersionError({ harnessLabel: harness.label, where: probed.path ?? probed.bin, model: modelName, kind: harness.kind, min: floor });
-    }
+    // Fail-open when version cannot be parsed (unknown/unreadable version never blocks launch).
     if (satisfied !== false) return null;
     const modelLabel = AGENT_OPTIONS[harness.kind]?.models.find((m) => m.id === modelId)?.label ?? modelId;
     return formatMinCliVersionError({

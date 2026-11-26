@@ -410,11 +410,13 @@ function AppInner() {
   // M4: the Settings panel to scroll to, and the exact mission/task an Owner-confirmation
   // review was opened for. Both are cleared on every close so a plain open lands on General.
   const [settingsInitialAnchor, setSettingsInitialAnchor] = useState<SubsectionId | null>(null);
+  const [settingsInitialFocusHarnessId, setSettingsInitialFocusHarnessId] = useState<string | null>(null);
   const [settingsOwnerContext, setSettingsOwnerContext] = useState<OwnerReviewContext | null>(null);
   const resetSettingsEntry = useCallback(() => {
     setSettingsInitialSection(undefined);
     setSettingsInitialAgentId(null);
     setSettingsInitialAnchor(null);
+    setSettingsInitialFocusHarnessId(null);
     setSettingsOwnerContext(null);
   }, []);
   /** A link from Missions into Settings. It only opens a section: nothing is saved, confirmed or started. */
@@ -2840,8 +2842,10 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
             usage={usage}
             installations={harnessInstallations}
             onOpenAccounts={(harnessId) => {
-              setSettingsInitialSection("accounts");
-              setSettingsInitialAgentId(harnessId ?? null);
+              setSettingsInitialSection("providers");
+              setSettingsInitialAgentId(null);
+              setSettingsInitialAnchor("harnesses");
+              setSettingsInitialFocusHarnessId(harnessId ?? null);
               setSettingsOpen(true);
             }}
           />
@@ -3802,6 +3806,7 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         initialSection={settingsInitialSection}
         initialAgentProfileId={settingsInitialAgentId}
         initialAnchor={settingsInitialAnchor}
+        initialFocusHarnessId={settingsInitialFocusHarnessId}
         ownerContext={settingsOwnerContext}
         onOpenPortfolio={() => { setSettingsOpen(false); resetSettingsEntry(); openPortfolio(); }}
         onOpenTool={(tool) => { setSettingsOpen(false); resetSettingsEntry(); if (tool === "browser") openBrowser(); else openNativeComputer(); }}

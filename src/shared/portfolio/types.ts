@@ -52,7 +52,7 @@ export const BATCH_STATUSES = ["draft", "approved", "running", "paused", "comple
 export const PIPELINE_STATUSES = ["idle", "running", "blocked", "done", "cancelled"] as const;
 export const ENVIRONMENT_PHASES = ["stopped", "starting", "running", "degraded", "stopping", "error", "unknown"] as const;
 export const TASK_PRIORITY_IDS = ["critical", "high", "normal", "low"] as const;
-export const AGENT_KINDS = ["claude-code", "codex", "cursor", "gemini", "fx", "antigravity"] as const;
+export const AGENT_KINDS = ["claude-code", "codex", "cursor", "gemini", "fx", "antigravity", "custom"] as const;
 export const DATA_ORIGINS = ["known", "user-provided", "observed", "estimated", "unknown"] as const;
 
 type AssertNever<T extends never> = T;

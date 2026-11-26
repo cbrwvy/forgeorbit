@@ -46,6 +46,8 @@ import { fakeManagerReply, isManagerPrompt } from "./project-manager-fake.ts";
 import { fakePortfolioReply, fakeTurnLog, isPortfolioManagerPrompt } from "./portfolio-manager-fake.ts";
 import { assertBoundedClaudeAuthentication, assertClaudeQaHomeExecutionAccepted, configuredClaudeQaDirectory } from "./claude-auth-compat.ts";
 import { boundedClaudeEnvironment, boundedClaudeCommand, spawnBoundedClaude } from "./claude-bounded-print.ts";
+import { buildCustomCliCommand, effectiveCustomCliConfig, resolveCustomCliBin, spawnCustomCli } from "./custom-cli.ts";
+import { buildMacSearchPath } from "./cli-discovery.ts";
 
 export type { SpawnedAgent };
 
@@ -326,6 +328,13 @@ export function resolveBin(harness: Harness): string {
  * The PATH lookup uses the core's current PATH (see `resolveBinPath` in agent-status.ts).
  */
 export function resolveBinDetailed(harness: Harness): { bin: string; source: "harness-executable" | "environment-override" | "path-lookup" | "default-name" } {
+  if (harness.kind === "custom") {
+    const raw = harness.bin?.trim() || "";
+    if (!raw) return { bin: harness.id, source: "default-name" };
+    if (path.isAbsolute(raw)) return { bin: raw, source: "harness-executable" };
+    const found = Bun.which(raw, { PATH: buildMacSearchPath() });
+    return found ? { bin: found, source: "path-lookup" } : { bin: raw, source: "harness-executable" };
+  }
   if (harness.bin) return { bin: harness.bin, source: "harness-executable" };
   let fallback: string;
   let override: string | undefined;
@@ -356,7 +365,7 @@ export function resolveBinDetailed(harness: Harness): { bin: string; source: "ha
       break;
   }
   if (override) return { bin: override, source: "environment-override" };
-  const found = Bun.which(fallback, { PATH: process.env.PATH });
+  const found = Bun.which(fallback, { PATH: buildMacSearchPath() });
   return found ? { bin: found, source: "path-lookup" } : { bin: fallback, source: "default-name" };
 }
 
@@ -375,6 +384,7 @@ export function agentDriverIsFake(kind: AgentKind): boolean {
     gemini: "AGETOR_GEMINI_DRIVER",
     fx: "AGETOR_FX_DRIVER",
     antigravity: "AGETOR_ANTIGRAVITY_DRIVER",
+    custom: "AGETOR_CUSTOM_DRIVER",
   };
   return process.env[variable[kind]] === "fake";
 }
@@ -419,6 +429,13 @@ export function harnessEnv(harness: Harness): Record<string, string> {
       env.HOME = harness.home;
     } else if (harness.kind === "antigravity") {
       env.HOME = harness.home;
+    } else if (harness.kind === "custom") {
+      const envVar = harness.cliConfig?.homeEnvVar;
+      if (envVar && isValidEnvKey(envVar)) {
+        env[envVar] = harness.home;
+      } else {
+        env.HOME = harness.home;
+      }
     } else {
       // gemini: GEMINI_CLI_HOME is a dedicated home-override env var (verified
       // in the bundled CLI source — `homedir()` returns
@@ -479,13 +496,7 @@ export function buildHarnessTerminalCommand(harness: Harness): string {
   const env = harnessEnv(harness);
   const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
-  // Inline `VAR=val … cmd` prefix: the agent launches with its config applied,
-  // but the user's shell isn't permanently re-homed.
   const prefix: string[] = [];
-  // Only an explicit `bin` override needs a PATH tweak so the bare agent name
-  // resolves to it. The default and config-dir-only aliases already find the
-  // agent on the inherited PATH, which keeps the command as clean as `claude`
-  // / `CLAUDE_CONFIG_DIR=… claude` rather than dragging in an absolute path.
   if (harness.bin && path.isAbsolute(harness.bin)) {
     prefix.push(`PATH=${sq(path.dirname(harness.bin))}:$PATH`);
   }
@@ -494,6 +505,14 @@ export function buildHarnessTerminalCommand(harness: Harness): string {
     prefix.push(`${k}=${sq(v)}`);
   }
   if (isCodexProfile(harness)) return [...prefix, ...profileCodexCommand(harness, bin).map(sq)].join(" ");
+  if (harness.kind === "custom") {
+    const config = effectiveCustomCliConfig(harness);
+    const resolvedBin = resolveCustomCliBin(harness);
+    const executable = path.isAbsolute(resolvedBin) ? sq(resolvedBin) : sq(launch);
+    const extraArgs = (config.terminalArgs && config.terminalArgs.length > 0 ? config.terminalArgs : []).map(sq);
+    const cdPrefix = config.workdir && path.isAbsolute(config.workdir) ? `cd ${sq(config.workdir)} && ` : "";
+    return `${cdPrefix}${[...prefix, executable, ...extraArgs].join(" ")}`;
+  }
   return [...prefix, launch].join(" ");
 }
 
@@ -789,6 +808,19 @@ export function buildCommand(
     args.push("-p");
 
     return { cmd: args, env: Object.keys(env).length ? env : undefined };
+  }
+
+  if (harness.kind === "custom") {
+    const built = buildCustomCliCommand(harness, prompt, {
+      model: opts.model,
+      effort: opts.effort,
+      env,
+    });
+    return {
+      cmd: built.argv,
+      env: Object.keys(built.env).length ? built.env : undefined,
+      ...(built.stdinPrompt !== null ? { stdinPrompt: built.stdinPrompt } : {}),
+    };
   }
 
   if (harness.kind === "fx") {
@@ -3132,8 +3164,12 @@ async function spawnAgentImpl(args: SpawnAgentArgs): Promise<SpawnedAgent> {
       authorizeDelivery();
       return makeFakeAgent(taskId, prompt, onChunk, { runId, mode: opts.mode ?? defaultModeFor(harness.kind), cwd });
     }
-    const cursorBlock = cursorRealExecutionBlock();
-    if (cursorBlock) throw new Error(cursorBlock);
+    if (opts.cursorRuntime) {
+      // Isolated outer-Seatbelt autonomous manager turns stay blocked while
+      // Cursor's internal sandbox conflicts with macOS nested Seatbelt.
+      const cursorBlock = cursorRealExecutionBlock();
+      if (cursorBlock) throw new Error(cursorBlock);
+    }
     const built = buildCommand(harness, prompt, opts);
     const argv = opts.cursorRuntime ? wrapCursorArgv(opts.cursorRuntime, built.cmd) : built.cmd;
     const env = opts.cursorRuntime ? opts.cursorRuntime.env : (built.env ?? {});
@@ -3205,6 +3241,24 @@ async function spawnAgentImpl(args: SpawnAgentArgs): Promise<SpawnedAgent> {
       promptText: prompt,
       onChunk,
       onSessionId,
+    });
+  }
+
+  if (harness.kind === "custom") {
+    if (process.env.AGETOR_CUSTOM_DRIVER === "fake") {
+      buildCommand(harness, prompt, opts);
+      authorizeDelivery();
+      return makeFakeAgent(taskId, prompt, onChunk, { runId, mode: opts.mode ?? defaultModeFor(harness.kind), cwd });
+    }
+    authorizeDelivery();
+    return spawnCustomCli({
+      harness,
+      prompt,
+      cwd,
+      env: harnessEnv(harness),
+      model: opts.model,
+      effort: opts.effort,
+      onChunk,
     });
   }
 

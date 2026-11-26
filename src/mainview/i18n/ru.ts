@@ -34,12 +34,14 @@ import { kanbanScheduleRu } from "./kanban-schedule";
 import { kanbanSmartQueueRu } from "./kanban-smart-queue";
 import { kanbanRecurringRu } from "./kanban-recurring";
 import { topbarServicesRu } from "./topbar-services";
+import { providersSimplifyRu } from "./providers-simplify";
 export const ru = {
   ...managerRu,
   ...usageRu,
   ...kanbanSmartQueueRu,
   ...kanbanRecurringRu,
   ...topbarServicesRu,
+  ...providersSimplifyRu,
   "routing02.reason.manager-read-only-required": "Для менеджера требуется существующий ограниченный режим только чтения.",
   "routing02.file_modification": "Изменение файлов",
   "routing02.read_only": "Только чтение",

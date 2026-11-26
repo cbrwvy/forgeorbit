@@ -316,6 +316,7 @@ export function NewTaskForm({ presentation = "panel", sheetOpen = false, onSheet
   // Spins the Model label's ↻ button while a manual `onRefreshModels` probe
   // is in flight for the currently-selected harness.
   const [refreshingModels, setRefreshingModels] = useState(false);
+  const [customModelMode, setCustomModelMode] = useState(false);
   // Auto-select the default harness once it (and the harness list) loads.
   // We only force-switch when the *current* selection isn't valid for the
   // loaded list — so a user mid-edit doesn't get their pick stolen. The
@@ -375,6 +376,7 @@ export function NewTaskForm({ presentation = "panel", sheetOpen = false, onSheet
     "gemini": { mode: initialMode("gemini"), model: DEFAULT_MODEL["gemini"], effort: DEFAULT_EFFORT["gemini"], fast: false, maxMode: false },
     "antigravity": { mode: initialMode("antigravity"), model: DEFAULT_MODEL["antigravity"], effort: DEFAULT_EFFORT["antigravity"], fast: false, maxMode: false },
     "fx": { mode: initialMode("fx"), model: DEFAULT_MODEL["fx"], effort: DEFAULT_EFFORT["fx"], fast: false, maxMode: false },
+    "custom": { mode: initialMode("custom"), model: DEFAULT_MODEL["custom"], effort: null, fast: false, maxMode: false },
   });
 
   // Seed mode + model + effort defaults from the last submitted picks,
@@ -475,7 +477,7 @@ export function NewTaskForm({ presentation = "panel", sheetOpen = false, onSheet
   // built-in fx harness) over the kind-level map, which only exists as a
   // fallback for an older daemon predating `GET /agent-models/harnesses`.
   const discoveredForAgent = (harnessModels[agent] ?? agentModels[kind] ?? [])
-    .filter((m) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
+    .filter((m: { id: string }) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
   const models = mergeModelOptions({
     curated: staticModels,
     discovered: discoveredForAgent,
@@ -1218,16 +1220,34 @@ export function NewTaskForm({ presentation = "panel", sheetOpen = false, onSheet
                     >
                       <RefreshCw className="size-3" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomModelMode((v) => !v)}
+                      className="ml-auto text-[10px] text-muted-foreground underline hover:text-foreground"
+                      data-testid="new-task-custom-model-toggle"
+                    >
+                      {customModelMode ? tr("providersUi.model.list_toggle") : tr("providersUi.model.custom_toggle")}
+                    </button>
                   </div>
-                  <Select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="h-8"
-                  >
-                    {models.map((m) => (
-                      <option key={m.id} value={m.id} title={m.unlisted ? m.hint : undefined}>{staticLabel(m.label)}</option>
-                    ))}
-                  </Select>
+                  {customModelMode || kind === "custom" ? (
+                    <Input
+                      value={model === "default" ? "" : model}
+                      onChange={(e) => setModel(e.target.value.trim() || "default")}
+                      placeholder={tr("providersUi.model.custom_placeholder")}
+                      className="h-8 text-xs"
+                      data-testid="new-task-custom-model-input"
+                    />
+                  ) : (
+                    <Select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="h-8"
+                    >
+                      {models.map((m) => (
+                        <option key={m.id} value={m.id} title={m.unlisted ? m.hint : undefined}>{staticLabel(m.label)}</option>
+                      ))}
+                    </Select>
+                  )}
                 </div>
                 <div className="min-w-0 space-y-1">
                   <label className="text-muted-foreground"><I18nText id="common.effort" /></label>

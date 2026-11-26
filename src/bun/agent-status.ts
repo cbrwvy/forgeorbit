@@ -4,6 +4,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { TMUX_MISSING_REASON, type AgentKind, type ClaudeAccount, type Harness, type HarnessStatus } from "../shared/types.ts";
 import { resolveBin, harnessEnv } from "./agents.ts";
+import { buildMacSearchPath } from "./cli-discovery.ts";
 import { accountUsageSummary } from "./account-usage.ts";
 import { harnesses } from "./db.ts";
 import { effectiveClaudeConfigDir, readClaudeAccount } from "./harness-discovery.ts";
@@ -23,6 +24,7 @@ export const INSTALL_HINTS: Record<AgentKind, string> = {
   "gemini": "npm i -g @google/gemini-cli",
   "fx": "curl -fsSL https://fx.sh/setup.sh | bash",
   "antigravity": "brew install --cask antigravity-cli",
+  "custom": "",
 };
 
 /**
@@ -430,7 +432,7 @@ const FX_WRONG_BINARY_HINT =
 export function resolveBinPath(bin: string): string | null {
   if (!bin) return null;
   if (isAbsolute(bin)) return existsSync(bin) ? bin : null;
-  return Bun.which(bin, { PATH: process.env.PATH });
+  return Bun.which(bin, { PATH: buildMacSearchPath(process.env.PATH) });
 }
 
 /**
@@ -671,9 +673,18 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
  * each probe times out independently after VERSION_PROBE_TIMEOUT_MS.
  */
 export function checkAllHarnesses(): Promise<HarnessStatus[]> {
-  // Passive dashboard reads must not launch Codex, including --version.
+  // Passive dashboard reads must not launch Codex, Claude profiles, or arbitrary custom CLIs.
   // Filesystem binary presence is distinct from auth and execution readiness.
-  return Promise.all(harnesses.list().map((h) => checkHarness(h, h.kind === "codex" || isClaudeProfile(h) ? { probeVersion: false } : undefined)));
+  return Promise.all(
+    harnesses.list().map((h) =>
+      checkHarness(
+        h,
+        h.kind === "codex" || h.kind === "custom" || isClaudeProfile(h)
+          ? { probeVersion: false }
+          : undefined,
+      ),
+    ),
+  );
 }
 
 // Exposed for tests: clears the fx auth-status memoization (see

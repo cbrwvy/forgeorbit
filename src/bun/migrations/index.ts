@@ -190,6 +190,7 @@ import m087 from "./087_employee_professional_profiles.sql" with { type: "text" 
 import m088 from "./088_employee_hiring_proposals.sql" with { type: "text" };
 import { professionalRuntimeMigration } from "./090_professional_runtime.ts";
 import m089 from "./089_hiring_proposal_dedup.sql" with { type: "text" };
+import m155 from "./155_custom_cli_harnesses.sql" with { type: "text" };
 
 
 import type { Migration } from "../migrate.ts";
@@ -355,4 +356,5 @@ export const migrations: Migration[] = [
   { id: "152_task_urgency_order", sql: m152 },
   { id: "153_task_available_from", sql: m153 },
   { id: "154_recurring_tasks", sql: m154 },
+  { id: "155_custom_cli_harnesses", sql: m155 },
 ];

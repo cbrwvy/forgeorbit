@@ -24,6 +24,16 @@ import { AgentProfileForm } from "@/components/kanban/AgentProfileFormDialog";
 import { AgentProfilesSection } from "@/components/settings/AgentProfilesSection";
 import { AccountsDashboard } from "@/components/accounts/AccountsDashboard";
 import { ProviderRuntimeMatrix } from "@/components/settings/ProviderRuntimeMatrix";
+import { ProvidersSection } from "@/components/settings/ProvidersSection";
+import { AddCliView } from "@/components/settings/AddCliView";
+import {
+  formatArgString,
+  isValidCustomBin,
+  parseArgString,
+  slugifyHarnessId,
+  type DiscoveredCli,
+} from "../../../shared/custom-cli.ts";
+import type { ProviderServiceGroup } from "@/lib/provider-services";
 import { AiRouterDashboard } from "@/components/router/AiRouterDashboard";
 import { GitHubTokensSection } from "@/components/settings/GitHubTokensSection";
 import { PipelinesSection } from "@/components/settings/PipelinesSection";
@@ -147,6 +157,8 @@ interface Props {
   onOpenTool?: (tool: "browser" | "native-computer") => void;
   /** Subsection to scroll to on open (M4); the legacy section ids already imply one. */
   initialAnchor?: SubsectionId | null;
+  /** Optional service or harness id to focus/expand in Providers (e.g. from topbar). */
+  initialFocusHarnessId?: string | null;
   /** The exact mission (and task) the Owner-confirmation panel was opened for (M4). */
   ownerContext?: OwnerReviewContext | null;
   /** Hand-offs to the pages that own the work. The caller closes this dialog. */
@@ -254,6 +266,11 @@ const HARNESS_HOME_COPY: Record<AgentKind, { label: string; slug: string; help: 
     slug: "fx-2",
     get help() { return tr("common.home_override_fx_has_no_dedicated_config_dir"); },
   },
+  custom: {
+    get label() { return tr("providersUi.add.config_dir"); },
+    slug: "custom-2",
+    get help() { return tr("providersUi.add.use_existing_login_hint"); },
+  },
 };
 
 function uniqueHarnessId(base: string, existing: Set<string>): string {
@@ -341,7 +358,7 @@ const FALLBACK_APP_INFO: AppBuildInfo = {
   updatesEnabled: false,
 };
 
-export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUserMessagesChange, fxAutoResume, onFxAutoResumeChange, onChange, homeDir, dataDir, initialSection, initialAgentProfileId, onOpenPipelines, onOpenPortfolio, onOpenTool, initialAnchor, ownerContext = null, onOpenWorktrees, onOpenProjectPage, onOpenTask, onOpenMissionSettings }: Props) {
+export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUserMessagesChange, fxAutoResume, onFxAutoResumeChange, onChange, homeDir, dataDir, initialSection, initialAgentProfileId, onOpenPipelines, onOpenPortfolio, onOpenTool, initialAnchor, initialFocusHarnessId, ownerContext = null, onOpenWorktrees, onOpenProjectPage, onOpenTask, onOpenMissionSettings }: Props) {
   const { locale: uiLocale } = useUILocale();
   const [appInfo, setAppInfo] = useState<AppBuildInfo>({ ...FALLBACK_APP_INFO, version: "" });
   const version = appInfo.version;
@@ -714,6 +731,56 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
     setJumpNonce((n) => n + 1);
   });
 
+  const onQuickConnectCli = async (cli: DiscoveredCli) => {
+    const existing = payload.harnesses.find(
+      (h) =>
+        cli.registeredHarnessIds.includes(h.id) ||
+        (cli.kind !== "custom" && h.kind === cli.kind && h.isBuiltin),
+    );
+    if (existing) {
+      if (!existing.enabled) {
+        await api.setHarnessEnabled(existing.id, true);
+        await refresh();
+        onChange?.();
+      }
+      return;
+    }
+    const existingIds = new Set(payload.harnesses.map((h) => h.id));
+    const baseId = slugifyHarnessId(cli.suggestedHarnessId || cli.serviceId);
+    const id = uniqueHarnessId(baseId, existingIds);
+    await api.createHarness({
+      id,
+      kind: cli.kind,
+      label: cli.label,
+      home: null,
+      bin: cli.kind === "custom" ? (cli.resolvedPath ?? cli.command) : null,
+      env: {},
+      cliConfig: cli.kind === "custom" ? (cli.defaultCliConfig ?? null) : null,
+    });
+    await refresh();
+    onChange?.();
+  };
+
+  const onAddAccountForService = (group: ProviderServiceGroup) => {
+    const knownTemplate = HARNESS_TEMPLATES.find((t) => t.kind === group.primaryKind);
+    if (knownTemplate) {
+      showEditor(null, resolveTemplate(knownTemplate, dataDir));
+      return;
+    }
+    const base = group.primaryHarness;
+    showEditor(null, {
+      id: `__account:${group.serviceId}`,
+      label: `${group.label} (2)`,
+      description: "",
+      kind: group.primaryKind,
+      suggestedHarnessId: `${group.serviceId}-2`,
+      home: dataDir ? `${dataDir}/harnesses/${group.serviceId}-2` : null,
+      bin: base?.bin ?? group.discoveredCli?.resolvedPath ?? group.discoveredCli?.command ?? null,
+      env: base?.env ?? {},
+      cliConfig: base?.cliConfig ?? group.discoveredCli?.defaultCliConfig ?? null,
+    });
+  };
+
   const renderSection = (id: PrimarySectionId) => {
     switch (id) {
       case "general":
@@ -729,43 +796,39 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
         );
       case "providers":
         return (
-          <>
-            <SettingsSubsection id="harnesses" title={tr("common.harnesses")}>
-              <HarnessesSection
-                payload={payload}
-                statusByHarness={statusByHarness}
-                homeDir={homeDir}
-                canAdd={!!dataDir}
-                onAdd={() => setView(openTemplates())}
-                onEdit={(h) =>
-                  showEditor(h.id, {
-                    id: "__edit",
-                    label: h.label,
-                    description: "",
-                    kind: h.kind,
-                    suggestedHarnessId: h.id,
-                    home: h.home,
-                    bin: h.bin,
-                    env: h.env,
-                  })
-                }
-                onDelete={onDeleteHarness}
-                onToggleEnabled={onToggleEnabled}
-                onOpenTerminal={onOpenTerminal}
-                pendingToggle={pendingToggle}
-              />
-            </SettingsSubsection>
-            <SettingsSubsection id="accounts" title={tr("common.accounts_resources_d23794")} titleHidden>
-              <AccountsDashboard harnesses={payload.harnesses} onOpenPortfolio={onOpenPortfolio} onResourcesChanged={async () => { await refresh(); onChange?.(); }} />
-              <div className="rounded-md border border-border/60 p-3" data-testid="settings-link-analytics">
-                <p className="text-sm font-medium">{tr("settings.link.analytics")}</p>
-                <p className="text-xs text-muted-foreground">{tr("settings.link.analytics_hint")}</p>
-              </div>
-            </SettingsSubsection>
-            <SettingsSubsection id="ai_router" title={tr("routing_v2.title")} titleHidden>
-              <AiRouterDashboard onOpenAccount={openAnchor("accounts")} />
-            </SettingsSubsection>
-          </>
+          <SettingsSubsection id="harnesses" title={tr("providersUi.title")} titleHidden>
+            <ProvidersSection
+              payload={payload}
+              homeDir={homeDir}
+              canAdd={!!dataDir}
+              focusServiceOrHarnessId={initialFocusHarnessId}
+              pendingToggle={pendingToggle}
+              onAddCli={() => setView(openTemplates())}
+              onQuickConnect={onQuickConnectCli}
+              onAddAccountForService={onAddAccountForService}
+              onEditHarness={(h) =>
+                showEditor(h.id, {
+                  id: "__edit",
+                  label: h.label,
+                  description: "",
+                  kind: h.kind,
+                  suggestedHarnessId: h.id,
+                  home: h.home,
+                  bin: h.bin,
+                  env: h.env,
+                  cliConfig: h.cliConfig ?? null,
+                })
+              }
+              onDeleteHarness={onDeleteHarness}
+              onToggleHarness={onToggleEnabled}
+              onOpenTerminal={onOpenTerminal}
+              onRefresh={async () => {
+                await refresh();
+                onChange?.();
+              }}
+              onOpenPortfolio={onOpenPortfolio}
+            />
+          </SettingsSubsection>
         );
       case "plans":
         return (
@@ -989,8 +1052,23 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
           })}
 
           {view.kind === "templates" && (
-            <TemplatePicker
-              onPick={(t) => showEditor(null, resolveTemplate(t, dataDir))}
+            <AddCliView
+              discoveredClis={payload.discoveredClis ?? []}
+              existingHarnesses={payload.harnesses}
+              homeDir={homeDir}
+              dataDir={dataDir}
+              onQuickConnect={async (cli) => {
+                await onQuickConnectCli(cli);
+                setView(backFromSubview(viewRef.current));
+              }}
+              onPickTemplate={(t) => showEditor(null, resolveTemplate(t, dataDir))}
+              onCreateCustom={async (input) => {
+                await api.createHarness(input);
+                await refresh();
+                onChange?.();
+                setView(backFromSubview(viewRef.current));
+              }}
+              onCancel={() => setView(backFromSubview(viewRef.current))}
             />
           )}
 
@@ -1059,6 +1137,7 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
                       home: input.home,
                       bin: input.bin,
                       env: input.env,
+                      ...(input.cliConfig !== undefined ? { cliConfig: input.cliConfig } : {}),
                     });
                   } else {
                     await api.createHarness(input);
@@ -2041,6 +2120,13 @@ function Editor({
   const [home, setHome] = useState(initialState.home);
   const [bin, setBin] = useState(template.bin ?? "");
   const [envText, setEnvText] = useState(stringifyEnv(template.env));
+  const [cliArgsText, setCliArgsText] = useState(formatArgString(template.cliConfig?.args));
+  const [cliDefaultModel, setCliDefaultModel] = useState(template.cliConfig?.defaultModel ?? "");
+  const [cliModelFlag, setCliModelFlag] = useState(template.cliConfig?.modelFlag ?? "--model");
+  const [cliPromptDelivery, setCliPromptDelivery] = useState<"arg" | "stdin" | "interactive">(
+    template.cliConfig?.promptDelivery ?? "arg",
+  );
+  const [cliPromptFlag, setCliPromptFlag] = useState(template.cliConfig?.promptFlag ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
 
   // Dirty = any field differs from what the state above was seeded with. All
@@ -2090,7 +2176,12 @@ function Editor({
       return;
     }
     const binTrim = bin.trim();
-    if (binTrim && !binTrim.startsWith("/")) {
+    if (kind === "custom") {
+      if (!binTrim || !isValidCustomBin(binTrim)) {
+        setLocalError(tr("providersUi.add.err_command"));
+        return;
+      }
+    } else if (binTrim && !binTrim.startsWith("/")) {
       setLocalError("bin must be an absolute path");
       return;
     }
@@ -2101,6 +2192,23 @@ function Editor({
       home: homeAbs,
       bin: binTrim || null,
       env: parsedEnv.env,
+      ...(kind === "custom"
+        ? {
+            cliConfig: {
+              args: parseArgString(cliArgsText),
+              promptDelivery: cliPromptDelivery,
+              promptFlag: cliPromptFlag.trim() || null,
+              interactionMode: template.cliConfig?.interactionMode ?? "manual",
+              workdir: template.cliConfig?.workdir ?? null,
+              defaultModel: cliDefaultModel.trim() || null,
+              modelFlag: cliModelFlag.trim() || null,
+              effortFlag: template.cliConfig?.effortFlag ?? null,
+              serviceId: template.cliConfig?.serviceId ?? trimmedId,
+              homeEnvVar: template.cliConfig?.homeEnvVar ?? null,
+              terminalArgs: template.cliConfig?.terminalArgs ?? null,
+            },
+          }
+        : {}),
     });
   };
 
@@ -2171,7 +2279,9 @@ function Editor({
           {" "}<I18nText id="settings.leave_empty_to_share_the_default_account" />{" "}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground"><I18nText id="settings.bin_override_absolute_path_optional" /></label>
+        <label className="text-xs text-muted-foreground">
+          {kind === "custom" ? tr("providersUi.add.command") : tr("settings.bin_override_absolute_path_optional")}
+        </label>
         <Input
           {...IDENTIFIER_INPUT_PROPS}
           value={bin}
@@ -2180,6 +2290,66 @@ function Editor({
           placeholder="/opt/homebrew/bin/claude"
         />
       </div>
+      {kind === "custom" && (
+        <div className="space-y-3 rounded-lg border border-border/60 bg-muted/15 p-3">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">{tr("providersUi.add.args")}</label>
+            <Input
+              {...IDENTIFIER_INPUT_PROPS}
+              value={cliArgsText}
+              onChange={(e) => setCliArgsText(e.target.value)}
+              disabled={busy}
+              placeholder={tr("providersUi.add.args_placeholder")}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">{tr("providersUi.add.prompt_delivery")}</label>
+              <Select
+                value={cliPromptDelivery}
+                onChange={(e) => setCliPromptDelivery(e.target.value as "arg" | "stdin" | "interactive")}
+                disabled={busy}
+              >
+                <option value="arg">{tr("providersUi.add.delivery.arg")}</option>
+                <option value="stdin">{tr("providersUi.add.delivery.stdin")}</option>
+                <option value="interactive">{tr("providersUi.add.delivery.interactive")}</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">{tr("providersUi.add.prompt_flag")}</label>
+              <Input
+                {...IDENTIFIER_INPUT_PROPS}
+                value={cliPromptFlag}
+                onChange={(e) => setCliPromptFlag(e.target.value)}
+                disabled={busy}
+                placeholder={tr("providersUi.add.prompt_flag_placeholder")}
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">{tr("providersUi.add.default_model")}</label>
+              <Input
+                {...IDENTIFIER_INPUT_PROPS}
+                value={cliDefaultModel}
+                onChange={(e) => setCliDefaultModel(e.target.value)}
+                disabled={busy}
+                placeholder={tr("providersUi.add.default_model_placeholder")}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">{tr("providersUi.add.model_flag")}</label>
+              <Input
+                {...IDENTIFIER_INPUT_PROPS}
+                value={cliModelFlag}
+                onChange={(e) => setCliModelFlag(e.target.value)}
+                disabled={busy}
+                placeholder={tr("providersUi.add.model_flag_placeholder")}
+              />
+            </div>
+          </div>
+        </div>
+      )}
       <div className="space-y-1">
         <label className="text-xs text-muted-foreground"><I18nText id="settings.env_vars_one_key_value_per_line" /></label>
         <Textarea

@@ -1,4 +1,6 @@
 import { providerRefusalsForRuns } from "./provider-refusals.ts";
+import { discoverInstalledClis } from "./cli-discovery.ts";
+import { isValidCustomBin, normalizeCustomCliConfig } from "../shared/custom-cli.ts";
 import { normalizeAccessMode } from "../shared/execution/access-mode.ts";
 import { diagnoseDraftLaunch, diagnoseTaskLaunch } from "./launch-diagnostics.ts";
 import { runTerminations } from "./run-terminations.ts";
@@ -146,7 +148,7 @@ import {
 } from "./retention.ts";
 import { advancePipeline, cancelPipelineRun, isPipelineStepTask, retryPipelineStep, startPipelineRun } from "./pipeline-runner.ts";
 import { approvePlan, effectiveContent, planSlug, setEditedContent } from "./task-plans.ts";
-import { checkAllHarnesses } from "./agent-status.ts";
+import { checkAllHarnesses, checkHarness } from "./agent-status.ts";
 import { discoverDeepSeekInstallation } from "./deepseek-installation.ts";
 import { cursorProviderDiagnostic, deepseekProviderDiagnostic } from "../shared/provider-readiness.ts";
 import { readinessMatrix } from "../shared/provider-runtime/readiness.ts";
@@ -5559,10 +5561,13 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
               authentication: "unknown",
             },
           });
+          const list = harnesses.list();
+          const discoveredClis = discoverInstalledClis(list);
           return json(
             {
-              harnesses: harnesses.list(),
+              harnesses: list,
               statuses,
+              discoveredClis,
               installations,
               runtimeReadiness,
               providerDiagnostics: [
@@ -5588,6 +5593,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
             home?: unknown;
             bin?: unknown;
             env?: unknown;
+            cliConfig?: unknown;
           };
           if (typeof body.id !== "string" || !body.id.trim()) {
             return json({ error: "id required" }, { status: 400, headers: corsHeaders(req) });
@@ -5595,25 +5601,22 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
           if (
             body.kind !== "claude-code" && body.kind !== "codex" &&
             body.kind !== "cursor" && body.kind !== "gemini" && body.kind !== "fx" &&
-            body.kind !== "antigravity"
+            body.kind !== "antigravity" && body.kind !== "custom"
           ) {
             return json(
-              { error: "kind must be 'claude-code', 'codex', 'cursor', 'gemini', 'fx', or 'antigravity'" },
+              { error: "kind must be 'claude-code', 'codex', 'cursor', 'gemini', 'fx', 'antigravity', or 'custom'" },
               { status: 400, headers: corsHeaders(req) },
             );
           }
           if (typeof body.label !== "string" || !body.label.trim()) {
             return json({ error: "label required" }, { status: 400, headers: corsHeaders(req) });
           }
-          // Reject paths that aren't absolute — relative paths would resolve
-          // against the agetor process cwd, which is rarely what the user
-          // intends and is a footgun.
           const home = body.home == null || body.home === ""
             ? null
             : typeof body.home === "string" ? body.home : undefined;
           const bin = body.bin == null || body.bin === ""
             ? null
-            : typeof body.bin === "string" ? body.bin : undefined;
+            : typeof body.bin === "string" ? body.bin.trim() : undefined;
           if (home === undefined) {
             return json({ error: "home must be a string or null" }, { status: 400, headers: corsHeaders(req) });
           }
@@ -5623,7 +5626,11 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
           if (home && !path.isAbsolute(home)) {
             return json({ error: "home must be an absolute path" }, { status: 400, headers: corsHeaders(req) });
           }
-          if (bin && !path.isAbsolute(bin)) {
+          if (body.kind === "custom") {
+            if (!bin || !isValidCustomBin(bin)) {
+              return json({ error: "bin must be a command name or absolute path for a custom CLI" }, { status: 400, headers: corsHeaders(req) });
+            }
+          } else if (bin && !path.isAbsolute(bin)) {
             return json({ error: "bin must be an absolute path" }, { status: 400, headers: corsHeaders(req) });
           }
           const env: Record<string, string> = {};
@@ -5639,6 +5646,10 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
               env[k] = v;
             }
           }
+          const cliConfig = body.kind === "custom" ? normalizeCustomCliConfig(body.cliConfig) : null;
+          if (cliConfig?.workdir && !path.isAbsolute(cliConfig.workdir)) {
+            return json({ error: "working directory must be an absolute path" }, { status: 400, headers: corsHeaders(req) });
+          }
           if (harnesses.get(body.id)) {
             return json({ error: `harness "${body.id}" already exists` }, { status: 409, headers: corsHeaders(req) });
           }
@@ -5650,17 +5661,27 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
               home,
               bin,
               env,
+              cliConfig,
             });
             // A brand-new harness (fx or otherwise) has no discovered
             // catalog yet — probe it now instead of waiting for the next
             // periodic sweep. Fire-and-forget: never blocks the response,
             // never throws (see model-discovery.ts's contract).
-            void refreshHarnessModels(created.id);
+            if (created.kind !== "custom") void refreshHarnessModels(created.id);
             return json(created, { headers: corsHeaders(req) });
           } catch (e) {
             return json({ error: (e as Error).message }, { status: 400, headers: corsHeaders(req) });
           }
         }),
+      },
+
+      // Read-only discovery of installed AI CLIs on this Mac (PATH + Homebrew + user dirs).
+      "/cli-discovery": {
+        GET: authed((req) =>
+          json(
+            { discovered: discoverInstalledClis(harnesses.list()) },
+            { headers: corsHeaders(req) },
+          )),
       },
 
       // Existing Claude config dirs (`~/.claude*` + CLAUDE_CONFIG_DIR) with a
@@ -5701,6 +5722,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
             typeof body.label === "string" ||
             "home" in body ||
             "bin" in body ||
+            "cliConfig" in body ||
             (body.env && typeof body.env === "object" && !Array.isArray(body.env));
           if (hasConfigPatch && current.isBuiltin) {
             return json(
@@ -5710,14 +5732,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
           }
           if (typeof body.enabled === "boolean") {
             harnesses.setEnabled(req.params.id, body.enabled);
-            // Re-enabling a harness that was previously excluded from every
-            // discovery sweep (disabled harnesses are skipped — see
-            // model-discovery.ts's discoveryTargets) needs its own probe now
-            // rather than waiting up to 15 minutes for the periodic sweep.
-            // Disabling needs no such trigger: getHarnessModelMap already
-            // skips disabled harnesses, so it drops out of the picker
-            // immediately with no probe required.
-            if (body.enabled) void refreshHarnessModels(req.params.id);
+            if (body.enabled && current.kind !== "custom") void refreshHarnessModels(req.params.id);
           }
           if (!hasConfigPatch) {
             return json(harnesses.get(req.params.id), { headers: corsHeaders(req) });
@@ -5730,9 +5745,26 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
             else return json({ error: "home must be absolute or null" }, { status: 400, headers: corsHeaders(req) });
           }
           if ("bin" in body) {
-            if (body.bin == null || body.bin === "") patch.bin = null;
-            else if (typeof body.bin === "string" && path.isAbsolute(body.bin)) patch.bin = body.bin;
-            else return json({ error: "bin must be absolute or null" }, { status: 400, headers: corsHeaders(req) });
+            if (body.bin == null || body.bin === "") {
+              if (current.kind === "custom") {
+                return json({ error: "bin is required for a custom CLI" }, { status: 400, headers: corsHeaders(req) });
+              }
+              patch.bin = null;
+            } else if (current.kind === "custom") {
+              if (typeof body.bin === "string" && isValidCustomBin(body.bin)) patch.bin = body.bin.trim();
+              else return json({ error: "bin must be a command name or absolute path" }, { status: 400, headers: corsHeaders(req) });
+            } else if (typeof body.bin === "string" && path.isAbsolute(body.bin)) {
+              patch.bin = body.bin;
+            } else {
+              return json({ error: "bin must be absolute or null" }, { status: 400, headers: corsHeaders(req) });
+            }
+          }
+          if ("cliConfig" in body && current.kind === "custom") {
+            const normalizedCli = normalizeCustomCliConfig(body.cliConfig);
+            if (normalizedCli?.workdir && !path.isAbsolute(normalizedCli.workdir)) {
+              return json({ error: "working directory must be an absolute path" }, { status: 400, headers: corsHeaders(req) });
+            }
+            patch.cliConfig = normalizedCli;
           }
           if (body.env && typeof body.env === "object" && !Array.isArray(body.env)) {
             const env: Record<string, string> = {};
@@ -6780,6 +6812,17 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
       // writes credentials against the alias's own config dir, exactly as a
       // real run would. macOS-only (osascript + Terminal.app), same as
       // `/tasks/:id/open-tmux`.
+      "/harnesses/:id/check": {
+        POST: authed(async (req) => {
+          const harness = harnesses.getByIdOrKind(req.params.id);
+          if (!harness) {
+            return json({ error: "harness not found" }, { status: 404, headers: corsHeaders(req) });
+          }
+          const status = await checkHarness(harness, { freshAuth: true, probeVersion: true });
+          return json(status, { headers: corsHeaders(req) });
+        }),
+      },
+
       "/harnesses/:id/open-terminal": {
         POST: authed(async (req) => {
           const harness = harnesses.getByIdOrKind(req.params.id);

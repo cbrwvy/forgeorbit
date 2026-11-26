@@ -17,8 +17,10 @@ import { clampPercent } from "@/lib/usage";
 import type { AgentKind, AgentStatus, Harness, HarnessQuota, QuotaMeter } from "../../../shared/types.ts";
 import type { ExecutionProfile } from "../../../shared/accounts/execution-profile.ts";
 import type { HarnessInstallation } from "../../../shared/harness-installation.ts";
+import { serviceIdForHarness } from "@/lib/provider-services";
 
-export type TopbarServiceId = "codex" | "claude" | "cursor" | "antigravity" | "deepseek";
+export type BuiltinTopbarServiceId = "codex" | "claude" | "cursor" | "antigravity" | "deepseek";
+export type TopbarServiceId = BuiltinTopbarServiceId | (string & {});
 
 export type ServiceLight = "green" | "yellow" | "red";
 
@@ -487,7 +489,7 @@ export function buildTopbarServiceSummary(
   const nowMs = input.nowMs ?? Date.now();
   const matchingProfiles = input.profiles.filter((p) => matchesServiceProfile(def, p, input.harnesses));
 
-  // Dedicated path for DeepSeek installation (detected via /harnesses `installations`, not a built-in AgentKind).
+  // Dedicated path for DeepSeek installation (detected via /harnesses `installations` OR connected as custom CLI).
   if (def.id === "deepseek") {
     const installation =
       input.installations?.find((item) => item.id === "deepseek-dsh" || item.provider === "deepseek") ??
@@ -495,13 +497,22 @@ export function buildTopbarServiceSummary(
     const detected = Boolean(
       installation && installation.status !== "missing" && installation.status !== "unidentified",
     );
+    const deepseekHarnesses = input.harnesses.filter(
+      (h) => h.kind === "custom" && serviceIdForHarness(h) === "deepseek",
+    );
+    const harnessUnits = deepseekHarnesses.map((h) => {
+      const ag = input.agents.find((a) => a.harnessId === h.id) ?? null;
+      const quota = input.usage[h.id] ?? null;
+      return evaluateBuiltinHarnessUnit(def, h, ag, quota, nowMs);
+    });
     const profileUnits = matchingProfiles.map((profile) => {
       const profileQuota = input.usage[profile.harnessId] ?? null;
       return evaluateProfileUnit(def, profile, null, profileQuota, nowMs);
     });
-    const anyEnabledProfile = profileUnits.some((u) => u.enabled);
-    const connected = detected || anyEnabledProfile;
-    const primary = profileUnits.length > 0 ? pickBestUnit(profileUnits) : null;
+    const allUnits = [...profileUnits, ...harnessUnits];
+    const anyEnabledUnit = allUnits.some((u) => u.enabled);
+    const connected = detected || anyEnabledUnit;
+    const primary = allUnits.length > 0 ? pickBestUnit(allUnits) : null;
     const light: ServiceLight = primary ? primary.light : "red";
     const reason: ServiceReasonCode = primary
       ? primary.reason
@@ -645,5 +656,78 @@ export function buildAllTopbarServices(input: {
   installations?: readonly HarnessInstallation[];
   nowMs?: number;
 }): TopbarServiceSummary[] {
-  return TOPBAR_SERVICES.map((def) => buildTopbarServiceSummary(def, input));
+  const nowMs = input.nowMs ?? Date.now();
+  const base = TOPBAR_SERVICES.map((def) => buildTopbarServiceSummary(def, input));
+  const coveredServiceIds = new Set<string>(["codex", "claude-code", "claude", "cursor", "antigravity", "deepseek"]);
+
+  // Group any additional connected services (gemini, fx, opencode, copilot, or user-added custom CLIs)
+  // strictly ONE icon per service regardless of how many accounts/harnesses exist for it.
+  const extraByService = new Map<string, Harness[]>();
+  for (const h of input.harnesses) {
+    if (!h.enabled) continue;
+    const sid = serviceIdForHarness(h);
+    if (coveredServiceIds.has(sid)) continue;
+    const list = extraByService.get(sid) ?? [];
+    list.push(h);
+    extraByService.set(sid, list);
+  }
+
+  for (const [sid, list] of extraByService.entries()) {
+    const primaryHarness = list.find((h) => h.isBuiltin) ?? list[0]!;
+    const def: TopbarServiceDefinition = {
+      id: sid,
+      label: primaryHarness.label,
+      agentKind: primaryHarness.kind,
+      builtinHarnessId: primaryHarness.id,
+      profileKind: null,
+    };
+    const units = list.map((h) => {
+      const ag = input.agents.find((a) => a.harnessId === h.id) ?? null;
+      const quota = input.usage[h.id] ?? null;
+      return evaluateBuiltinHarnessUnit(def, h, ag, quota, nowMs);
+    });
+    const best = pickBestUnit(units);
+    const profiles: ServiceProfileSummary[] =
+      list.length > 1
+        ? list.map((h, idx) => {
+            const u = units[idx]!;
+            return {
+              id: `harness:${h.id}`,
+              harnessId: h.id,
+              displayName: h.label,
+              light: u.light,
+              reason: u.reason,
+              retryHint: u.retryHint,
+              resetsAtMs: u.nextResetAtMs,
+              verifiedQuota: u.verifiedQuota,
+            };
+          })
+        : [];
+    base.push({
+      id: sid,
+      label: primaryHarness.label,
+      agentKind: primaryHarness.kind === "custom" ? (sid as AgentKind) : primaryHarness.kind,
+      connected: true,
+      light: best.light,
+      reason: best.reason,
+      availability: best.available ? "available" : "unavailable",
+      auth: best.auth,
+      planType: best.planType,
+      meters: best.meters,
+      quotaStale: best.quotaStale,
+      verifiedQuota: best.verifiedQuota,
+      nextResetAtMs: best.nextResetAtMs,
+      retryHint: best.retryHint,
+      profiles,
+      accountsTargetHarnessId: primaryHarness.id,
+      technicalNotes: {
+        version: input.agents.find((a) => a.harnessId === primaryHarness.id)?.version ?? null,
+        cliReason: !best.available ? (input.agents.find((a) => a.harnessId === primaryHarness.id)?.reason ?? null) : null,
+        hasClaudePartialNote: false,
+        hasDeepSeekBlockedNote: false,
+      },
+    });
+  }
+
+  return base;
 }

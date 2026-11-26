@@ -7737,7 +7737,7 @@ function mergedModels(
   loggedIn: boolean | null,
 ) {
   const discovered = (harnessModels[harnessId] ?? agentModels[kind] ?? [])
-    .filter((m) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
+    .filter((m: { id: string }) => kind !== "cursor" || !cursorModelIdCoveredByCatalog(m.id));
   return mergeModelOptions({
     curated: AGENT_OPTIONS[kind].models,
     discovered,

@@ -216,6 +216,7 @@ export const UNKNOWN_BILLING_ENV: Record<AgentKind, string[]> = {
   gemini: ["GOOGLE_GEMINI_BASE_URL", "GOOGLE_CLOUD_PROJECT"],
   fx: [],
   antigravity: [],
+  custom: [],
 };
 
 const CREDENTIAL_LIKE = /(API_KEY|_TOKEN|_SECRET|BASE_URL|ENDPOINT)$/i;

@@ -269,6 +269,7 @@ export interface AgentModelMap {
   "gemini": { id: string; label?: string; efforts?: string[] }[];
   "antigravity": { id: string; label?: string; efforts?: string[] }[];
   "fx": { id: string; label?: string; efforts?: string[] }[];
+  "custom"?: { id: string; label?: string; efforts?: string[] }[];
 }
 
 /** Per-harness model id list from `GET /agent-models/harnesses` — one entry
@@ -584,6 +585,7 @@ export interface SentMessageItem {
 export interface HarnessesPayload {
   harnesses: Harness[];
   statuses: HarnessStatus[];
+  discoveredClis?: import("../../shared/custom-cli").DiscoveredCli[];
   installations?: import("../../shared/harness-installation").HarnessInstallation[];
   providerDiagnostics?: import("../../shared/provider-readiness").ProviderDiagnostic[];
   runtimeReadiness?: import("../../shared/provider-runtime/readiness").RuntimeReadiness[];
@@ -606,6 +608,7 @@ export interface HarnessInput {
   home: string | null;
   bin: string | null;
   env: Record<string, string>;
+  cliConfig?: import("../../shared/types").CustomCliConfig | null;
 }
 
 /** Body shape for `POST /agent-profiles` / `PATCH /agent-profiles/:id` — see
@@ -978,6 +981,9 @@ export const api = {
   applyUpdate: () => j<{ ok: true }>("/updates/apply", { method: "POST" }),
   listAgents: () => j<AgentStatus[]>("/agents"),
   listHarnesses: () => j<HarnessesPayload>("/harnesses"),
+  discoverClis: () => j<import("../../shared/custom-cli").CliDiscoveryResponse>("/cli-discovery"),
+  checkHarnessConnection: (id: string) =>
+    j<HarnessStatus>(`/harnesses/${encodeURIComponent(id)}/check`, { method: "POST" }),
   createHarness: (input: HarnessInput) =>
     j<Harness>("/harnesses", { method: "POST", body: JSON.stringify(input) }),
   updateHarness: (id: string, patch: Partial<Omit<HarnessInput, "id" | "kind">>) =>

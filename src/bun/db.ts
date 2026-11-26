@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { normalizeCustomCliConfig } from "../shared/custom-cli.ts";
 import { DEEPSEEK_INSTALLATION_ID } from "../shared/harness-installation.ts";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -2597,6 +2598,7 @@ type HarnessRow = {
   enabled: number;
   created_at: number;
   updated_at: number;
+  cli_config_json?: string | null;
 };
 
 const toHarness = (r: HarnessRow): Harness => {
@@ -2609,6 +2611,12 @@ const toHarness = (r: HarnessRow): Harness => {
       }
     }
   } catch { /* malformed env_json → empty */ }
+  let cliConfig: Harness["cliConfig"] = null;
+  if (typeof r.cli_config_json === "string" && r.cli_config_json.trim()) {
+    try {
+      cliConfig = normalizeCustomCliConfig(JSON.parse(r.cli_config_json));
+    } catch { /* malformed cli_config_json → null */ }
+  }
   return {
     id: r.id,
     kind: r.kind as AgentKind,
@@ -2618,6 +2626,7 @@ const toHarness = (r: HarnessRow): Harness => {
     bin: r.bin,
     env,
     enabled: r.enabled === 1,
+    ...(cliConfig ? { cliConfig } : {}),
   };
 };
 
@@ -2654,6 +2663,7 @@ export interface HarnessInsertInput {
   home?: string | null;
   bin?: string | null;
   env?: Record<string, string>;
+  cliConfig?: Harness["cliConfig"];
 }
 
 export interface HarnessPatch {
@@ -2661,6 +2671,7 @@ export interface HarnessPatch {
   home?: string | null;
   bin?: string | null;
   env?: Record<string, string>;
+  cliConfig?: Harness["cliConfig"];
 }
 
 export const harnesses = {
@@ -2712,7 +2723,7 @@ export const harnesses = {
     return null;
   },
   insert(input: HarnessInsertInput): Harness {
-    if (input.id === DEEPSEEK_INSTALLATION_ID) {
+    if (input.id === DEEPSEEK_INSTALLATION_ID && input.kind !== "custom") {
       throw new Error("DeepSeek DSH execution is unsupported; its diagnostic identity cannot alias another harness.");
     }
     if (!HARNESS_ID_RE.test(input.id)) {
@@ -2723,15 +2734,18 @@ export const harnesses = {
     if (
       input.kind !== "claude-code" && input.kind !== "codex" &&
       input.kind !== "cursor" && input.kind !== "gemini" &&
-      input.kind !== "antigravity" && input.kind !== "fx"
+      input.kind !== "antigravity" && input.kind !== "fx" &&
+      input.kind !== "custom"
     ) {
       throw new Error(`unknown harness kind: ${input.kind}`);
     }
     const now = Date.now();
     const envJson = JSON.stringify(input.env ?? {});
+    const normalizedCli = input.kind === "custom" ? normalizeCustomCliConfig(input.cliConfig) : null;
+    const cliConfigJson = normalizedCli ? JSON.stringify(normalizedCli) : null;
     db.run(
-      `INSERT INTO harnesses (id, kind, label, is_builtin, home, bin, env_json, created_at, updated_at)
-       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+      `INSERT INTO harnesses (id, kind, label, is_builtin, home, bin, env_json, created_at, updated_at, cli_config_json)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
       [
         input.id,
         input.kind,
@@ -2741,6 +2755,7 @@ export const harnesses = {
         envJson,
         now,
         now,
+        cliConfigJson,
       ],
     );
     return this.get(input.id) as Harness;
@@ -2749,21 +2764,29 @@ export const harnesses = {
     const current = this.get(id);
     if (!current) throw new Error(`harness not found: ${id}`);
     if (current.isBuiltin) throw new HarnessBuiltinError("edit");
+    const nextCliConfig =
+      patch.cliConfig === undefined
+        ? current.cliConfig ?? null
+        : current.kind === "custom"
+          ? normalizeCustomCliConfig(patch.cliConfig)
+          : null;
     const next = {
       label: patch.label ?? current.label,
       home: patch.home === undefined ? current.home : patch.home,
       bin: patch.bin === undefined ? current.bin : patch.bin,
       env: patch.env ?? current.env,
+      cliConfig: nextCliConfig,
     };
     db.run(
       `UPDATE harnesses
-         SET label = ?, home = ?, bin = ?, env_json = ?, updated_at = ?
+         SET label = ?, home = ?, bin = ?, env_json = ?, cli_config_json = ?, updated_at = ?
        WHERE id = ?`,
       [
         next.label,
         next.home,
         next.bin,
         JSON.stringify(next.env),
+        next.cliConfig ? JSON.stringify(next.cliConfig) : null,
         Date.now(),
         id,
       ],

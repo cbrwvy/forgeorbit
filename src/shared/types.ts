@@ -288,7 +288,41 @@ export function isApprovalPrompt(text: string): boolean {
   return APPROVAL_PROMPT_PATTERNS.some((re) => re.test(text));
 }
 
-export type AgentKind = "claude-code" | "codex" | "cursor" | "gemini" | "fx" | "antigravity";
+export type AgentKind = "claude-code" | "codex" | "cursor" | "gemini" | "fx" | "antigravity" | "custom";
+
+export type CustomPromptDelivery = "arg" | "stdin" | "interactive";
+
+export type CustomInteractionMode = "manual" | "automated";
+
+/**
+ * Structured execution config for a custom/generic CLI harness (`kind === "custom"`).
+ * Passed as a structured argument vector to `Bun.spawn` — never concatenated
+ * through shell `eval`.
+ */
+export interface CustomCliConfig {
+  /** Structured argument vector passed before model/prompt args. */
+  args: string[];
+  /** How the prompt is delivered to the process. */
+  promptDelivery: CustomPromptDelivery;
+  /** Optional flag placed directly before the prompt when `promptDelivery === "arg"` (e.g. `-p`). */
+  promptFlag?: string | null;
+  /** Default execution posture (`manual` = user-initiated; `automated` = capture stdout/stderr). */
+  interactionMode: CustomInteractionMode;
+  /** Optional default working directory override for standalone terminal/runs. */
+  workdir?: string | null;
+  /** Optional default model id (empty/null = let the CLI use its own default). */
+  defaultModel?: string | null;
+  /** Optional CLI flag for passing a model id (e.g. `--model`). */
+  modelFlag?: string | null;
+  /** Optional CLI flag for passing reasoning effort (e.g. `--effort`). */
+  effortFlag?: string | null;
+  /** Optional service group key for UI deduplication (e.g. `deepseek`, `opencode`, `copilot`). */
+  serviceId?: string | null;
+  /** Optional env var name used when `home` is set (e.g. `DSH_HOME`). Defaults to `HOME` when unset. */
+  homeEnvVar?: string | null;
+  /** Optional args used when opening an interactive Terminal.app window (e.g. `["tui"]` for `dsh`). */
+  terminalArgs?: string[] | null;
+}
 
 /**
  * A "harness" is the user-facing name for an agent configuration. Built-in
@@ -347,6 +381,8 @@ export interface Harness {
    *  toggleable too — this is the one carve-out from the built-in
    *  immutability rule. */
   enabled: boolean;
+  /** Structured launch configuration for `kind === "custom"` CLIs. */
+  cliConfig?: CustomCliConfig | null;
 }
 
 /** A user-global reusable prompt snippet — not tied to any task or project. */
@@ -948,6 +984,7 @@ export interface HarnessTemplate {
   home: string | null;
   bin: string | null;
   env: Record<string, string>;
+  cliConfig?: CustomCliConfig | null;
 }
 
 export const HARNESS_TEMPLATES: HarnessTemplate[] = [
@@ -2584,6 +2621,7 @@ export const DEFAULT_MODEL: Record<AgentKind, string> = {
   // still present; signed-in 158-id account still unverifiable.
   "fx": "zai/glm-5.3-flash",
   "antigravity": "gemini-3.8-flash-high",
+  "custom": "default",
 };
 
 /**
@@ -2627,6 +2665,7 @@ export const DEFAULT_EFFORT: Record<AgentKind, string> = {
   // Unused, kept for symmetry: effort rides in the antigravity model id and
   // every MODEL_EFFORT_SUPPORT.antigravity set is empty.
   "antigravity": "high",
+  "custom": "auto",
 };
 
 /**
@@ -3142,6 +3181,7 @@ export const CODE_PLAN_MODE: Record<AgentKind, { code: string; plan: string }> =
   // pre-approved rules run; everything else surfaces as an approval card).
   "fx": { code: "yolo", plan: "ask" },
   "antigravity": { code: "auto", plan: "plan" },
+  "custom": { code: "manual", plan: "manual" },
 };
 
 /**
@@ -3438,6 +3478,7 @@ export const MODEL_EFFORT_SUPPORT: Record<AgentKind, Record<string, string[]>> =
     "claude-sonnet-5-5-low": [],
     "gpt-oss-120b-medium": [],
   },
+  custom: {},
 };
 
 /**
@@ -3564,6 +3605,7 @@ const MODEL_MODE_DENY: Record<AgentKind, Record<string, string[]>> = {
   gemini: {},
   fx: {},
   antigravity: {},
+  custom: {},
 };
 
 export function supportedModes(agent: AgentKind, model: string | null): AgentOption[] {
@@ -3872,6 +3914,16 @@ export const AGENT_OPTIONS: Record<AgentKind, AgentOptions> = {
       { id: "auto", label: "Auto", hint: "Hands-off — auto-approves all tool permissions (--dangerously-skip-permissions)." },
       { id: "plan", label: "Plan only", hint: "Plan without making changes (--mode plan)." },
       { id: "ask", label: "Auto-accept file edits", hint: "Automatically accepts file edits in the workspace (--mode accept-edits). ForgeOrbit does not ask you to confirm each file change." },
+    ],
+    efforts: EFFORT_OPTIONS,
+  },
+  custom: {
+    models: [
+      { id: "default", label: "CLI default", hint: "Use whatever default model the CLI itself selects." },
+    ],
+    modes: [
+      { id: "manual", label: "Manual", hint: "Run this CLI with your normal macOS user permissions (not an isolated autonomous Developer/Reviewer)." },
+      { id: "automated", label: "Captured output", hint: "Run non-interactively and stream stdout/stderr into ForgeOrbit." },
     ],
     efforts: EFFORT_OPTIONS,
   },

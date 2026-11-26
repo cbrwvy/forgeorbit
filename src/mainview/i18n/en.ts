@@ -33,12 +33,14 @@ import { kanbanScheduleEn } from "./kanban-schedule";
 import { kanbanSmartQueueEn } from "./kanban-smart-queue";
 import { kanbanRecurringEn } from "./kanban-recurring";
 import { topbarServicesEn } from "./topbar-services";
+import { providersSimplifyEn } from "./providers-simplify";
 export const en = {
   ...managerEn,
   ...usageEn,
   ...kanbanSmartQueueEn,
   ...kanbanRecurringEn,
   ...topbarServicesEn,
+  ...providersSimplifyEn,
   "routing02.reason.manager-read-only-required": "Manager execution requires the existing restricted read-only mode.",
   "routing02.file_modification": "File modification",
   "routing02.read_only": "Read-only",
