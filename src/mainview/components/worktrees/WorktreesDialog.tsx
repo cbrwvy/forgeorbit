@@ -1,3 +1,7 @@
+import { columnLabel } from "@/lib/status-presenters";
+import { countLabel, englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowDown, ArrowUp, FolderGit2, Loader2, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -49,8 +53,8 @@ const basename = (p: string) => {
 
 const STALE_REASON_LABEL: Record<WorktreeStaleReason, string> = {
   orphaned: "orphaned",
-  archived: "archived, not cleaned up",
-  inactive: "inactive > 7 days",
+  get archived() { return tr("common.archived_not_cleaned_up"); },
+  get inactive() { return tr("common.inactive_7_days"); },
 };
 
 /** "5m ago" / "3h ago" / "2d ago" — coarse relative age for the Updated
@@ -60,13 +64,13 @@ const STALE_REASON_LABEL: Record<WorktreeStaleReason, string> = {
 function formatAge(ms: number | null): string {
   if (ms == null) return "—";
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "just now";
+  if (diff < 60_000) return tr("common.just_now");
   const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return tr("common.m_ago", { p0: String(mins) });
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return tr("common.h_ago", { p0: String(hours) });
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return tr("common.d_ago", { p0: String(days) });
 }
 
 /** `Project.name || basename(p.path)` chain (KanbanFilters.tsx:58-62),
@@ -87,13 +91,14 @@ function statusValue(w: WorktreeInfo): string {
 
 function statusLabel(w: WorktreeInfo): string {
   if (w.column == null) return "";
-  return COLUMNS.find((c) => c.id === w.column)?.label ?? w.column;
+  return columnLabel(w.column);
 }
 
 type SortField = "updated" | "project" | "status" | "branch";
 type StaleFilter = "all" | "stale" | "fresh";
 
 export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, homeDir }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const confirm = useConfirm();
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
   const [loading, setLoading] = useState(false);
@@ -209,11 +214,11 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
       if (!seen.has(v)) seen.set(v, projectLabel(w));
     }
     return Array.from(seen, ([value, label]) => ({ value, label }));
-  }, [worktrees, projectValue, projectLabel]);
+  }, [worktrees, projectValue, projectLabel, uiLocale]);
 
   const statusItems = useMemo(
-    () => [...COLUMNS.map((c) => ({ value: c.id as string, label: c.label })), { value: "archived", label: "Archived" }],
-    [],
+    () => [...COLUMNS.map((c) => ({ value: c.id as string, label: columnLabel(c.id) })), { value: "archived", label: tr("common.archived_bdb865") }],
+    [uiLocale],
   );
 
   const filtered = useMemo(() => {
@@ -229,7 +234,7 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
       if (staleFilter === "fresh" && w.stale) return false;
       return true;
     });
-  }, [worktrees, query, projectFilter, statusFilter, staleFilter, projectLabel, projectValue]);
+  }, [worktrees, query, projectFilter, statusFilter, staleFilter, projectLabel, projectValue, uiLocale]);
 
   const sorted = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
@@ -249,7 +254,7 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
       }
     });
     return arr;
-  }, [filtered, sortField, sortDir, projectLabel]);
+  }, [filtered, sortField, sortDir, projectLabel, uiLocale]);
 
   const anyFilterActive =
     query !== "" || projectFilter.length > 0 || statusFilter.length > 0 || staleFilter !== "all";
@@ -287,41 +292,27 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
         status = null;
       }
       const copy = buildDeleteConfirmCopy(w, status);
-      const ok = await confirm({
+      const ok = await confirm(() => ({
         title: copy.title,
         description: (
           <>
             {copy.alreadyArchived ? (
-              <>
-                The ticket "<span className="font-medium text-foreground/80">{w.taskTitle}</span>" is
-                already <strong>archived</strong>; its worktree directory will be removed. The git
-                branch and full AI history are preserved.
-              </>
+              <><I18nText id="projects.the_ticket" /><span className="font-medium text-foreground/80">{w.taskTitle}</span><I18nText id="projects.is_already" />{" "}<strong><I18nText id="common.archived" /></strong><I18nText id="projects.its_worktree_directory_will_be_removed_the_git" />{" "}</>
             ) : (
-              <>
-                The ticket "<span className="font-medium text-foreground/80">{w.taskTitle}</span>" will
-                be <strong>archived</strong> (hidden from the board, restorable via Unarchive) and its
-                worktree directory removed. The git branch and full AI history are preserved.
-              </>
+              <><I18nText id="projects.the_ticket" /><span className="font-medium text-foreground/80">{w.taskTitle}</span><I18nText id="projects.will_be" />{" "}<strong><I18nText id="common.archived" /></strong>{" "}<I18nText id="projects.hidden_from_the_board_restorable_via_unarchive_and" />{" "}</>
             )}
             {copy.showDirtyWarning && (
-              <div className="mt-2 font-medium text-danger">
-                This worktree has uncommitted changes — they will be permanently discarded.
-              </div>
+              <div className="mt-2 font-medium text-danger"><I18nText id="projects.this_worktree_has_uncommitted_changes_they_will_be" />{" "}</div>
             )}
             {copy.unknown && (
-              <div className="mt-2 font-medium text-danger">
-                agetor couldn't check this worktree for uncommitted changes — its git
-                registration may be broken. Anything uncommitted will be permanently
-                discarded.
-              </div>
+              <div className="mt-2 font-medium text-danger"><I18nText id="projects.agetor_couldn_t_check_this_worktree_for_uncommitted" />{" "}</div>
             )}
-            {(w.runActive || w.heldByBackgroundAgents) && " An agent is still working on this task — archiving will stop it."}
+            {(w.runActive || w.heldByBackgroundAgents) && tr("common.an_agent_is_still_working_on_this_task_33a2c7")}
           </>
         ),
         confirmLabel: copy.confirmLabel,
         variant: "destructive",
-      });
+      }));
       if (!ok) return;
       try {
         const result = await api.archiveTask(taskId, {
@@ -344,12 +335,12 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
   };
 
   const deleteOrphan = async (w: WorktreeInfo) => {
-    const ok = await confirm({
-      title: "Delete orphaned worktree?",
-      description: "No ticket owns this directory; it will be permanently removed.",
-      confirmLabel: "Delete",
+    const ok = await confirm(() => ({
+      title: tr("common.delete_orphaned_worktree"),
+      description: tr("common.no_ticket_owns_this_directory_it_will_be"),
+      confirmLabel: tr("common.delete"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     await withBusy(w.id, async () => {
       try {
@@ -371,27 +362,25 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
       <header className="flex items-center justify-between gap-3 border-b border-border/60 p-3">
         <div className="min-w-0">
           <div id="worktrees-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
-            <FolderGit2 className="size-4 shrink-0 text-muted-foreground" />
-            Worktrees
-          </div>
+            <FolderGit2 className="size-4 shrink-0 text-muted-foreground" /><I18nText id="common.worktrees" />{" "}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {worktrees.length === sorted.length
-              ? `${worktrees.length} worktree${worktrees.length === 1 ? "" : "s"}`
-              : `${sorted.length} of ${worktrees.length} worktrees`}
+              ? tr("common.worktree", { p0: String(worktrees.length), p1: String(worktrees.length === 1 ? "" : englishPluralSuffix()) })
+              : tr("common.of_worktrees", { p0: String(sorted.length), p1: String(worktrees.length) })}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button
             size="icon"
             variant="ghost"
-            title="Refresh"
-            aria-label="Refresh"
+            title={tr("common.refresh")}
+            aria-label={tr("common.refresh")}
             disabled={refreshing}
             onClick={() => { void refresh(true, true); }}
           >
             {refreshing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
           </Button>
-          <Button variant="ghost" size="icon" title="Close" aria-label="Close" onClick={onClose}>
+          <Button variant="ghost" size="icon" title={tr("common.close")} aria-label={tr("common.close")} onClick={onClose}>
             <X className="size-4" />
           </Button>
         </div>
@@ -404,7 +393,7 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
             {...IDENTIFIER_INPUT_PROPS}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search title, branch, project, path…"
+            placeholder={tr("projects.search_title_branch_project_path")}
             className="pl-8"
           />
         </div>
@@ -412,44 +401,44 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
           values={projectFilter}
           onChange={setProjectFilter}
           items={projectItems}
-          emptyLabel="All projects"
-          placeholder="Search projects…"
+          emptyLabel={tr("common.all_projects")}
+          placeholder={tr("common.search_projects")}
           className="w-48"
         />
         <MultiSearchSelect
           values={statusFilter}
           onChange={setStatusFilter}
           items={statusItems}
-          emptyLabel="All statuses"
-          placeholder="Search statuses…"
+          emptyLabel={tr("common.all_statuses")}
+          placeholder={tr("common.search_statuses")}
           className="w-44"
         />
         <Select
           value={staleFilter}
           onChange={(e) => setStaleFilter(e.target.value as StaleFilter)}
           className="w-36"
-          title="Filter by staleness"
+          title={tr("projects.filter_by_staleness")}
         >
-          <option value="all">All</option>
-          <option value="stale">Stale only</option>
-          <option value="fresh">Fresh only</option>
+          <option value="all"><I18nText id="common.all" /></option>
+          <option value="stale"><I18nText id="projects.stale_only" /></option>
+          <option value="fresh"><I18nText id="projects.fresh_only" /></option>
         </Select>
         <Select
           value={sortField}
           onChange={(e) => setSortField(e.target.value as SortField)}
           className="w-32"
-          title="Sort field"
+          title={tr("projects.sort_field")}
         >
-          <option value="updated">Updated</option>
-          <option value="project">Project</option>
-          <option value="status">Status</option>
-          <option value="branch">Branch</option>
+          <option value="updated"><I18nText id="common.updated" /></option>
+          <option value="project"><I18nText id="common.project_985959" /></option>
+          <option value="status"><I18nText id="common.status" /></option>
+          <option value="branch"><I18nText id="common.branch" /></option>
         </Select>
         <Button
           size="icon"
           variant="outline"
-          title={sortDir === "asc" ? "Ascending" : "Descending"}
-          aria-label="Toggle sort direction"
+          title={sortDir === "asc" ? tr("common.ascending") : tr("common.descending")}
+          aria-label={tr("common.toggle_sort_direction")}
           onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
         >
           {sortDir === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />}
@@ -464,9 +453,7 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
               setStatusFilter([]);
               setStaleFilter("all");
             }}
-          >
-            Clear
-          </Button>
+          ><I18nText id="common.clear" />{" "}</Button>
         )}
       </div>
 
@@ -479,22 +466,17 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
 
         {loading && worktrees.length === 0 && (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading worktrees…
-          </div>
+            <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="projects.loading_worktrees" />{" "}</div>
         )}
 
         {!loading && !error && worktrees.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground">
-            <FolderGit2 className="size-6 opacity-40" />
-            No worktrees on disk.
-          </div>
+            <FolderGit2 className="size-6 opacity-40" /><I18nText id="projects.no_worktrees_on_disk" />{" "}</div>
         )}
 
         {!loading && !error && worktrees.length > 0 && sorted.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground">
-            <FolderGit2 className="size-6 opacity-40" />
-            No worktrees match these filters.
-          </div>
+            <FolderGit2 className="size-6 opacity-40" /><I18nText id="projects.no_worktrees_match_these_filters" />{" "}</div>
         )}
 
         {sorted.length > 0 && (
@@ -513,7 +495,7 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
                           type="button"
                           className="min-w-0 truncate text-left text-sm font-medium hover:underline"
                           onClick={() => onOpenTask(task)}
-                          title="Open task"
+                          title={tr("common.open_task")}
                         >
                           {task.title}
                         </button>
@@ -522,19 +504,17 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
                           {w.taskTitle}
                         </span>
                       ) : (
-                        <span className="text-sm text-muted-foreground">no ticket</span>
+                        <span className="text-sm text-muted-foreground"><I18nText id="projects.no_ticket" /></span>
                       )}
                       {w.column != null && (
                         <Badge variant="outline">{statusLabel(w)}</Badge>
                       )}
-                      {w.archivedAt != null && <Badge variant="secondary">Archived</Badge>}
+                      {w.archivedAt != null && <Badge variant="secondary"><I18nText id="common.archived_bdb865" /></Badge>}
                       {w.stale && (
                         <Badge
                           variant="destructive"
                           title={w.staleReasons.map((r) => STALE_REASON_LABEL[r]).join(", ")}
-                        >
-                          Stale
-                        </Badge>
+                        ><I18nText id="projects.stale" />{" "}</Badge>
                       )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -551,33 +531,29 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
                             <span
                               data-testid="worktree-row-branch-drift"
                               className="rounded bg-info/15 px-1 text-[10px] font-medium text-info"
-                            >
-                              drifted
-                            </span>
+                            ><I18nText id="common.drifted" />{" "}</span>
                           </span>
                         );
                       })()}
                       <span>{projectLabel(w)}</span>
                       <span className="min-w-0 truncate" title={w.path}>{abbreviateHome(w.path, homeDir)}</span>
-                      <span>updated {formatAge(w.taskUpdatedAt)}</span>
-                      {w.runActive && <span className="text-success">running</span>}
+                      <span><I18nText id="common.updated_27eb5e" />{" "}{formatAge(w.taskUpdatedAt)}</span>
+                      {w.runActive && <span className="text-success"><I18nText id="common.running_c071cf" /></span>}
                       {!w.runActive && w.heldByBackgroundAgents && (
-                        <span className="text-success">agents working</span>
+                        <span className="text-success"><I18nText id="projects.agents_working" /></span>
                       )}
                       {status === "loading" && (
-                        <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label="Loading git status" />
+                        <Loader2 className="size-3 animate-spin text-muted-foreground" aria-label={tr("projects.loading_git_status")} />
                       )}
                       {status && status !== "loading" && !status.ignored && (
                         <>
                           {status.dirty && (
-                            <span className="text-warning" title="Has uncommitted changes">
-                              uncommitted
-                            </span>
+                            <span className="text-warning" title={tr("projects.has_uncommitted_changes")}><I18nText id="projects.uncommitted" />{" "}</span>
                           )}
                           {status.ahead > 0 && (
                             <span
                               className="inline-flex items-center gap-0.5"
-                              title={`${status.ahead} commit${status.ahead === 1 ? "" : "s"} ahead`}
+                              title={tr("common.commit_ahead", { p0: countLabel(status.ahead, "commit") })}
                             >
                               <ArrowUp className="size-3" />
                               {status.ahead}
@@ -588,12 +564,10 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
                               className="text-success"
                               title={
                                 status.dirty
-                                  ? "Merged into the default branch — committed work is safe to delete, but uncommitted changes would be lost"
-                                  : "Already merged into the default branch — safe to delete"
+                                  ? tr("common.merged_into_the_default_branch_committed_work_is")
+                                  : tr("common.already_merged_into_the_default_branch_safe_to")
                               }
-                            >
-                              merged
-                            </span>
+                            ><I18nText id="common.merged" />{" "}</span>
                           )}
                         </>
                       )}
@@ -609,10 +583,10 @@ export function WorktreesDialog({ open, onClose, tasks, projects, onOpenTask, ho
                     variant="ghost"
                     title={
                       w.runActive
-                        ? (w.taskId ? "Stop the running agent and delete worktree" : "Stop the run first")
-                        : "Delete worktree"
+                        ? (w.taskId ? tr("common.stop_the_running_agent_and_delete_worktree") : tr("common.stop_the_run_first"))
+                        : tr("projects.delete_worktree")
                     }
-                    aria-label="Delete worktree"
+                    aria-label={tr("projects.delete_worktree")}
                     disabled={(w.runActive && !w.taskId) || busy}
                     onClick={() => { void (w.taskId ? deleteTaskBacked(w) : deleteOrphan(w)); }}
                   >

@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { staticLabel } from "@/i18n/presentation";
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { api, type AgentModelMap } from "@/lib/api";
 import { useAgentProfiles } from "@/lib/agent-profiles";
-import { discoveredEffortsFor, mergeModelOptions } from "../../../shared/model-options.ts";
+import { discoveredEffortsFor, mergeModelOptions } from "@/i18n/model-options";
 import {
   AGENT_OPTIONS,
   CATALOG_SCOPED_KINDS,
@@ -22,7 +25,7 @@ import {
   type AgentProfile,
   type AgentStatus,
   type Harness,
-} from "../../../shared/types.ts";
+} from "@/i18n/options";
 import { AgentIcon } from "./AgentIcon";
 import { AgentProfileCard } from "./AgentProfileCard";
 import { AgentProfilePicker } from "./AgentProfilePicker";
@@ -475,6 +478,8 @@ export function TaskLaunchPickers({
   hideProfilePicker?: boolean;
   onManageProfiles?: () => void;
 }) {
+  useUILocale();
+  const fieldId = useId();
   const {
     harnesses,
     availableHarnesses,
@@ -509,7 +514,7 @@ export function TaskLaunchPickers({
     <>
       {!hideProfilePicker && (
         <div className="space-y-1">
-          <label className="text-muted-foreground">Agent</label>
+          <label className="text-muted-foreground"><I18nText id="common.agent" /></label>
           <AgentProfilePicker
             value={agentProfileId}
             onChange={setAgentProfileId}
@@ -530,7 +535,7 @@ export function TaskLaunchPickers({
           {effectiveStatus && !effectiveStatus.available && (
             <div
               data-testid="launch-agent-unavailable-hint"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground"
+              className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger"
             >
               <div className="font-medium">{effectiveStatus.reason}</div>
               {effectiveStatus.installHint && (
@@ -543,7 +548,7 @@ export function TaskLaunchPickers({
       ) : (
         <>
           <div className="space-y-1">
-            <label className="text-muted-foreground">Harness</label>
+            <label className="text-muted-foreground"><I18nText id="common.harness" /></label>
             <div className="grid grid-cols-2 gap-1">
               {availableHarnesses.map((h) => {
                 const status = agents.find((s) => s.harnessId === h.id);
@@ -554,11 +559,12 @@ export function TaskLaunchPickers({
                     key={h.id}
                     size="sm"
                     variant={agent === h.id ? "default" : "outline"}
+                    aria-pressed={agent === h.id}
                     onClick={() => switchAgent(h.id)}
                     title={
                       [
                         status?.reason,
-                        status?.loggedIn === false ? (status.authHelp ?? "Not logged in") : null,
+                        status?.loggedIn === false ? (status.authHelp ?? tr("common.not_logged_in")) : null,
                         status?.path,
                         status?.version,
                       ]
@@ -582,7 +588,7 @@ export function TaskLaunchPickers({
             {selectedStatus && !selectedStatus.available && (
               <div
                 data-testid="launch-agent-unavailable-hint"
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground"
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger"
               >
                 <div className="font-medium">{selectedStatus.reason}</div>
                 {selectedStatus.installHint && (
@@ -594,36 +600,37 @@ export function TaskLaunchPickers({
           </div>
 
           <div className="space-y-1">
-            <label className="text-muted-foreground">Mode</label>
-            <Select value={mode} onChange={(e) => setMode(e.target.value)} className="h-8">
+            <label htmlFor={`${fieldId}-mode`} className="text-muted-foreground"><I18nText id="common.mode" /></label>
+            <Select id={`${fieldId}-mode`} value={mode} onChange={(e) => setMode(e.target.value)} className="h-8">
               {modes.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
+                <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
               ))}
             </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="min-w-0 space-y-1">
-              <label className="text-muted-foreground">Model</label>
-              <Select value={model} onChange={(e) => setModel(e.target.value)} className="h-8">
+              <label htmlFor={`${fieldId}-model`} className="text-muted-foreground"><I18nText id="common.model" /></label>
+              <Select id={`${fieldId}-model`} value={model} onChange={(e) => setModel(e.target.value)} className="h-8">
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
+                  <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
                 ))}
               </Select>
             </div>
             <div className="min-w-0 space-y-1">
-              <label className="text-muted-foreground">Effort</label>
+              <label htmlFor={`${fieldId}-effort`} className="text-muted-foreground"><I18nText id="common.effort" /></label>
               <Select
+                id={`${fieldId}-effort`}
                 value={effort ?? ""}
                 onChange={(e) => setEffort(e.target.value)}
                 disabled={efforts.length === 0}
                 className="h-8"
               >
                 {efforts.length === 0 ? (
-                  <option value="">n/a</option>
+                  <option value=""><I18nText id="common.n_a" /></option>
                 ) : (
                   efforts.map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
+                    <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
                   ))
                 )}
               </Select>
@@ -637,12 +644,12 @@ export function TaskLaunchPickers({
                   data-testid="launch-max-mode-toggle"
                   className="flex h-8 items-center justify-between rounded-md border border-border px-2 text-xs"
                 >
-                  <span>Max Mode</span>
+                  <span><I18nText id="tasks.max_mode" /></span>
                   <Switch
                     checked={maxMode}
                     onCheckedChange={setMaxMode}
                     disabled={!maxModeAvailable}
-                    aria-label="Use Cursor Max Mode context"
+                    aria-label={tr("tasks.use_cursor_max_mode_context")}
                   />
                 </label>
               )}
@@ -651,12 +658,12 @@ export function TaskLaunchPickers({
                   data-testid="launch-fast-toggle"
                   className="flex h-8 items-center justify-between rounded-md border border-border px-2 text-xs"
                 >
-                  <span>Fast</span>
+                  <span><I18nText id="tasks.fast" /></span>
                   <Switch
                     checked={fast}
                     onCheckedChange={setFast}
                     disabled={!fastAvailable}
-                    aria-label="Use Cursor fast variant"
+                    aria-label={tr("tasks.use_cursor_fast_variant")}
                   />
                 </label>
               )}
@@ -684,8 +691,8 @@ export async function createAndStartTask(input: Parameters<typeof api.createTask
     const rolledBack = await api.deleteTask(created.id).then(() => true, () => false);
     throw new Error(
       rolledBack
-        ? `couldn't start the task: ${detail}`
-        : `task was created but couldn't start (${detail}) — find it on the board and start it manually`,
+        ? tr("common.couldn_t_start_the_task", { p0: String(detail) })
+        : tr("common.task_was_created_but_couldn_t_start_find", { p0: String(detail) }),
     );
   }
   return created.id;

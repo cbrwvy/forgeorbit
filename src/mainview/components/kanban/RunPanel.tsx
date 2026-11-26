@@ -1,3 +1,13 @@
+import { TaskComputerWorkflowDetails } from "./TaskComputerWorkflow";
+import { ManagerTaskSummary } from "./ManagerTaskSummary";
+import { ProviderRefusalNotice } from "@/components/ui/provider-refusal-notice";
+import { RunTerminationNotice } from "./RunTerminationNotice";
+import { stopToast } from "@/lib/run-termination-text";
+import { requestOpenAccounts } from "@/lib/open-accounts";
+import { englishPluralSuffix, intlLocale, t as tr } from "@/i18n/core";
+import { codeLabel, staticLabel } from "@/i18n/presentation";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -93,11 +103,11 @@ import {
   type ToolResultAttachment,
   type ToolResultRetention,
   retentionTrimNote,
-} from "../../../shared/types.ts";
+} from "@/i18n/options";
 import { appendReferences } from "../../../shared/refs.ts";
 import { parseSentFilesToolUse } from "../../../shared/sent-files.ts";
-import { stepNameById } from "../../../shared/pipeline.ts";
-import { discoveredEffortsFor, mergeModelOptions } from "../../../shared/model-options.ts";
+import { isHandoffReminderMarker, stepNameById } from "../../../shared/pipeline.ts";
+import { discoveredEffortsFor, mergeModelOptions } from "@/i18n/model-options";
 import { parseIssueUrl } from "../../../shared/issue-task.ts";
 import { draftsEqual, normalizeDraft } from "@/lib/draft";
 import { createEventDeduper } from "@/lib/event-dedup";
@@ -106,9 +116,16 @@ import { createEventBuffer } from "@/lib/event-buffer";
 import { invalidatesRebuiltSnapshot } from "@/lib/rebuilt-mask";
 import { cleanPromptPane } from "@/lib/prompt-noise";
 import { parseUserMessage, splitReferences, parseMessageSegments, normalizeDeliveredUserText, type MessageSegment } from "../../../shared/user-message.ts";
-import { isHandoffReminderMarker } from "../../../shared/pipeline.ts";
+
 import { isImageSourceMetaBreadcrumb, stripImagePlaceholders } from "../../../shared/attachments.ts";
 import { AgentIcon } from "./AgentIcon";
+import { UrgencySelect } from "./UrgencyBadge";
+import { ScheduledAvailabilityControl } from "./ScheduledAvailability";
+import { RecurringTemplateDialog } from "../recurring/RecurringTemplateDialog";
+import { formatRecurrenceSummary, type RecurringTemplateView } from "../../../shared/recurring-tasks.ts";
+import { normalizeUrgency, urgencyLabelKey, type Urgency } from "../../../shared/board-order.ts";
+import { formatUtcTimestamp } from "../../../shared/task-availability.ts";
+import { refreshHandsoff } from "@/lib/handsoff-events";
 import { AgentProfileCard } from "./AgentProfileCard";
 import { AgentProfileDetailsDialog } from "./AgentProfileDetailsDialog";
 import { AttachmentChips } from "./AttachmentChips";
@@ -123,6 +140,19 @@ import { TerminalView } from "./TerminalView";
 import { deriveTodoProgress } from "@/lib/todo-progress";
 import { TodoProgressCard } from "./TodoProgressCard";
 import { PlanDialog, PlanStatusBadge } from "./PlanDialog";
+import { TaskSchedulingSection } from "./TaskSchedulingSection";
+import { ResourceRecommendation } from "../router/ResourceRecommendation";
+import { EmployeeExecution } from "./EmployeeExecution";
+import { ProjectTestPermission } from "../permissions/ProjectTestPermission";
+import { TaskWorkspacePanel } from "./TaskWorkspacePanel";
+import { HandsoffTaskPanel } from "../handsoff/HandsoffTaskPanel";
+import { LiveExecutionApproval } from "./LiveExecutionApproval";
+import { AccessModeDisclosure, accessModeLabel } from "./AccessModeDisclosure";
+import { assessAccessDiagnostics, type AccessDiagnostics } from "../../../shared/execution/access-mode.ts";
+import { TaskQualityControl } from "./TaskQualityControl";
+import { TaskForecastActual } from "@/components/usage/TaskForecastActual";
+import { TaskAssignmentPanel } from "./TaskAssignmentPanel";
+import { OrchestratedWorkflowPanel } from "./OrchestratedWorkflowPanel";
 import { ASSISTANT_MD_COMPONENTS, USER_MD_COMPONENTS, ExternalLink, MD_URL_TRANSFORM, MdImageScopeContext, EMPTY_MD_IMAGE_SCOPE, type MdImageScope } from "./md-components";
 import { MachineLabel, CommandOutputBody, MessageSegments, hasAuthoredContent, HandoffReminderBadge } from "./MessageSegments";
 import { CompactionSummaryBlock } from "./CompactionSummaryBlock";
@@ -225,6 +255,7 @@ interface Props {
   /** "Manage agents…" — wired to the task-details Detach hint's sibling
    *  affordance and the header chip, mirroring `NewTaskForm`'s own prop. */
   onOpenSettingsAgents: (profileId?: string) => void;
+  onOpenProjectTeam?: (projectPath: string) => void;
   agentModels: AgentModelMap;
   /** Per-harness model catalog (fx account-scoped) — see `HarnessModelMap`
    *  on the api client. Preferred over `agentModels` for the task's own
@@ -327,7 +358,7 @@ function appendIssueCloseDirective(body: string, issueUrl: string | null | undef
   if (!parsed) return body;
   const marker = `#${parsed.number}`;
   if (new RegExp(`#${parsed.number}(?!\\d)`).test(body)) return body;
-  const directive = parsed.provider === "bitbucket" ? `Issue ${marker}` : `Closes ${marker}`;
+  const directive = parsed.provider === "bitbucket" ? tr("common.issue", { p0: String(marker) }) : tr("common.closes", { p0: String(marker) });
   return body ? `${body}\n\n${directive}` : directive;
 }
 
@@ -342,7 +373,7 @@ function formatDuration(r: Run): string {
 }
 
 function formatTime(ts: number): string {
-  return new Date(ts).toLocaleString(undefined, {
+  return new Date(ts).toLocaleString(intlLocale(), {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -360,7 +391,8 @@ function formatTime(ts: number): string {
  * the kanban behind it stays visible but de-emphasized. The panel keeps the
  * last task mounted during the exit animation so the slide-out doesn't snap.
  */
-export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles, onOpenSettingsAgents, agentModels, harnessModels, onRefreshModels, homeDir, onTaskFieldsChanged, onClose, onShowDiff, onArchive, onUnarchive, onOpenPullRequest, onViewPullRequest, onViewIssue, onOpenPipeline = noOpOpenPipeline, focusSubagent = null, onFocusSubagentConsumed }: Props) {
+export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles, onOpenSettingsAgents, onOpenProjectTeam, agentModels, harnessModels, onRefreshModels, homeDir, onTaskFieldsChanged, onClose, onShowDiff, onArchive, onUnarchive, onOpenPullRequest, onViewPullRequest, onViewIssue, onOpenPipeline = noOpOpenPipeline, focusSubagent = null, onFocusSubagentConsumed }: Props) {
+  useUILocale();
   // `mountedTask` lags behind `task` so that when the parent sets task → null
   // we keep rendering the old contents while the exit animation plays.
   const [mountedTask, setMountedTask] = useState<Task | null>(task);
@@ -514,29 +546,51 @@ export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const opener = document.activeElement;
+    panel?.focus({ preventScroll: true });
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected &&
+        (document.activeElement === document.body || panel?.contains(document.activeElement))) {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  }, [open]);
+
   if (!mountedTask) return null;
 
   return (
     <>
       <button
         type="button"
-        aria-label="Close task panel"
+        aria-label={tr("tasks.close_task_panel")}
+        aria-hidden
+        tabIndex={-1}
         onClick={onClose}
         className={cn(
+          // Starts below the 2.5rem title bar (App.tsx `h-10`) so Emergency Stop and the Needs-you
+          // indicator stay reachable while a task panel is open (FO-UX-SIMPLIFY02-M8, observed in WKWebView).
           // Deliberately NO backdrop blur utility: a full-window backdrop filter makes
           // WebKit re-blur the entire board every frame anything beneath it
           // repaints or animates (an awaiting card's glow, a poll-driven
           // re-render) for as long as the panel is open — i.e. exactly while
           // the user sits watching a run. A slightly denser plain scrim gives
           // the same "focus on the panel" read for zero per-frame cost.
-          "fixed inset-0 z-30 bg-background/50 transition-opacity duration-200",
+          "fixed inset-x-0 bottom-0 top-10 z-30 bg-background/50 transition-opacity duration-200",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       />
       <aside
+        ref={panelRef}
+        tabIndex={-1}
+        inert={!open}
+        aria-label={mountedTask.title}
         style={{ width }}
         className={cn(
-          "fixed right-0 top-0 z-40 flex h-full max-w-[90vw] flex-col border-l border-border/60 bg-card shadow-2xl transition-transform duration-300 ease-out",
+          "fixed bottom-0 right-0 top-10 z-40 flex max-w-[90vw] flex-col border-l border-border/60 bg-card shadow-2xl transition-transform duration-300 ease-out",
           open ? "translate-x-0" : "translate-x-full",
         )}
       >
@@ -547,7 +601,7 @@ export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize task panel"
+          aria-label={tr("tasks.resize_task_panel")}
           aria-valuenow={width}
           aria-valuemin={RUN_PANEL_MIN_WIDTH}
           tabIndex={0}
@@ -558,7 +612,7 @@ export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles
           onPointerCancel={onResizePointerEnd}
           onDoubleClick={() => commitWidth(clampPanelWidth(RUN_PANEL_DEFAULT_WIDTH, window.innerWidth))}
           onKeyDown={onResizeKeyDown}
-          title="Drag to resize · double-click to reset"
+          title={tr("tasks.drag_to_resize_double_click_to_reset")}
           className={cn(
             "absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none select-none outline-none transition-colors",
             "hover:bg-primary/40 focus-visible:bg-primary/40",
@@ -572,6 +626,7 @@ export function RunPanel({ task, stickyUserMessages, agents, harnesses, profiles
           harnesses={harnesses}
           profiles={profiles}
           onOpenSettingsAgents={onOpenSettingsAgents}
+          onOpenProjectTeam={onOpenProjectTeam}
           agentModels={agentModels}
           harnessModels={harnessModels}
           onRefreshModels={onRefreshModels}
@@ -606,6 +661,7 @@ function RunPanelBody({
   harnesses,
   profiles,
   onOpenSettingsAgents,
+  onOpenProjectTeam,
   agentModels,
   harnessModels,
   onRefreshModels,
@@ -630,6 +686,7 @@ function RunPanelBody({
   harnesses: Harness[];
   profiles: AgentProfile[] | null;
   onOpenSettingsAgents: (profileId?: string) => void;
+  onOpenProjectTeam?: (projectPath: string) => void;
   agentModels: AgentModelMap;
   harnessModels: Record<string, { id: string; label?: string }[]>;
   onRefreshModels: (harnessId?: string) => Promise<void>;
@@ -662,6 +719,19 @@ function RunPanelBody({
   /** See `Props.onFocusSubagentConsumed` on the outer `RunPanel`. */
   onFocusSubagentConsumed: ((nonce: number) => void) | undefined;
 }) {
+  const { locale: uiLocale } = useUILocale();
+  const [managerDetailsFor, setManagerDetailsFor] = useState<string | null>(null);
+  const managerDetails = managerDetailsFor === task.id;
+  const revealManagerDetails = (action?: "setup" | "answer" | "review") => {
+    setManagerDetailsFor(task.id);
+    requestAnimationFrame(() => {
+      const selector = action === "setup" ? '[data-testid="employee-execution"]' : action === "review" || task.qcState?.latestVerdict === "BLOCKED" ? '[data-testid="task-quality-control"]' : '[data-testid="transcript-log"]';
+      const target = document.querySelector<HTMLElement>(selector);
+      // Open the existing execution disclosure without authorizing anything.
+      if (target?.tagName === "DETAILS") (target as HTMLDetailsElement).open = true;
+      target?.scrollIntoView({ block: "nearest" });
+    });
+  };
   const archived = task.archivedAt != null;
   const kind = harnessKindOf(task.agent, harnesses);
   /** The task id this render's async handlers should be writing state for.
@@ -943,6 +1013,7 @@ function RunPanelBody({
     // fx-only busy flags (Resume / Cancel auto-resume buttons) — same per-task
     // scope as `sending`: a click on task A must not leave B's button disabled.
     setResumeBusy(false);
+    setStopping(false);
     setCancelAutoBusy(false);
     setGitStatus(null);
     // `editingId` (the backlog tray's inline-editor state) lives inside the
@@ -969,7 +1040,7 @@ function RunPanelBody({
       const res = await api.rebuildRunEvents(latestRun.id);
       if (currentTaskIdRef.current !== sentTaskId) return;
       if (res.events.length === 0) {
-        setRebuildNote(res.reason ?? "no events found in JSONL");
+        setRebuildNote(res.reason ?? tr("common.no_events_found_in_jsonl"));
         return;
       }
       setRebuilt({
@@ -984,8 +1055,8 @@ function RunPanelBody({
       if (res.hasMore) setHasMoreEarlier(true);
       setRebuildNote(
         res.hasMore
-          ? `Loaded the most recent ${res.events.length} events from session JSONL — older history is available via "Load earlier messages".`
-          : `Loaded ${res.events.length} events from session JSONL.`,
+          ? tr("common.loaded_the_most_recent_events_from_session_jsonl", { p0: String(res.events.length) })
+          : tr("common.loaded_events_from_session_jsonl", { p0: String(res.events.length) }),
       );
     } catch (e) {
       if (currentTaskIdRef.current !== sentTaskId) return;
@@ -1740,7 +1811,7 @@ function RunPanelBody({
       if (r.claudeSessionId === rebuilt.sessionId) ids.add(r.id);
     }
     return ids;
-  }, [rebuilt, runs]);
+  }, [rebuilt, runs, uiLocale]);
 
   /** Live mirror of `{ maxLiveEventIdAtSnapshot, runIds }` derived from
    *  `rebuilt`/`rebuiltRunIds`, read by the SSE batch-flush callback in the
@@ -1759,7 +1830,7 @@ function RunPanelBody({
   /** The task's own (main) agent events — everything not tagged to a subagent.
    *  The rebuild-from-JSONL path only ever covers the main session transcript,
    *  so it splices against these. */
-  const mainEvents = useMemo(() => events.filter((e) => !e.subagentId), [events]);
+  const mainEvents = useMemo(() => events.filter((e) => !e.subagentId), [events, uiLocale]);
 
   /** Merged fx usage / provider / title / recovery per run, each keyed by
    *  `runId` — feed the run-row chips in `RunsList` (usage/provider/title)
@@ -1814,7 +1885,7 @@ function RunPanelBody({
       }
     }
     return { usageByRunId: usage, providerByRunId: provider, titleByRunId: title, recoveryByRunId: recovery };
-  }, [events, kind]);
+  }, [events, kind, uiLocale]);
 
   /** Background/sub-agent events bucketed by subagent id, in arrival order. */
   const subagentEventsById = useMemo(() => {
@@ -1826,7 +1897,7 @@ function RunPanelBody({
       else m.set(e.subagentId, [e]);
     }
     return m;
-  }, [events]);
+  }, [events, uiLocale]);
 
   /** Events for whichever stream the tab strip has selected. For "main", splice
    *  `rebuilt` in by dropping events from runs that share its sessionId and
@@ -1857,13 +1928,13 @@ function RunPanelBody({
     if (!rebuilt || !rebuiltRunIds) return collapseRepeatedStatusChips(mainEvents);
     const others = mainEvents.filter((e) => !rebuiltRunIds.has(e.runId) || e.stream === "status");
     return collapseRepeatedStatusChips([...others, ...rebuilt.events].sort((a, b) => a.ts - b.ts));
-  }, [activeStream, subagentEventsById, mainEvents, rebuilt, rebuiltRunIds]);
+  }, [activeStream, subagentEventsById, mainEvents, rebuilt, rebuiltRunIds, uiLocale]);
 
   /** The current to-do list for whichever stream is selected. Claude re-emits
    *  the whole TodoWrite list on every change, so this is a latest-wins scan
    *  (see lib/todo-progress.ts). Memoized on `displayedEvents` alone — it is
    *  recomputed on every SSE frame, so it must stay a single O(n) pass. */
-  const todoProgress = useMemo(() => deriveTodoProgress(displayedEvents), [displayedEvents]);
+  const todoProgress = useMemo(() => deriveTodoProgress(displayedEvents), [displayedEvents, uiLocale]);
 
   // `findMatchingEventIds` (lib/event-search.ts) takes `displayedEvents`
   // straight — it derives each event's search id from its own position in
@@ -1873,7 +1944,7 @@ function RunPanelBody({
   // actually shows; see `searchableEventText`.)
   const matches = useMemo(
     () => findMatchingEventIds(displayedEvents, searchQuery),
-    [displayedEvents, searchQuery],
+    [displayedEvents, searchQuery, uiLocale],
   );
 
   // Derived purely for display — no state, so there's no "0/0" flash before
@@ -2070,7 +2141,7 @@ function RunPanelBody({
     }
     if (interactions.length > 0) return "off";
     return runs.some((r) => r.status === "running") ? "active" : "off";
-  }, [activeStream, subagentList, interactions.length, runs]);
+  }, [activeStream, subagentList, interactions.length, runs, uiLocale]);
 
   /** Summary for the "Holding in running" line on the Main stream: the turn
    *  itself has resolved (no run is `running`, no interaction card is up) but
@@ -2103,8 +2174,8 @@ function RunPanelBody({
     if (shells > 0) parts.push(`${shells} shell${shells > 1 ? "s" : ""}`);
     if (workflows > 0) parts.push(`${workflows} workflow${workflows > 1 ? "s" : ""}`);
     if (agents > 0) parts.push(`${agents} agent${agents > 1 ? "s" : ""}`);
-    return parts.length > 0 ? `Holding in running — ${parts.join(" · ")} still active` : null;
-  }, [activeStream, task.column, interactions.length, runs, subagentList]);
+    return parts.length > 0 ? tr("common.holding_in_running_still_active", { p0: String(parts.join(" · ")) }) : null;
+  }, [activeStream, task.column, interactions.length, runs, subagentList, uiLocale]);
 
   // The run-status RunEventList uses to gate its bottom heartbeat. On a
   // background-agent tab this must reflect THAT subagent's status, not the main
@@ -2117,12 +2188,12 @@ function RunPanelBody({
     return subagentList.find((s) => s.id === activeStream)?.status === "running"
       ? "running"
       : "succeeded";
-  }, [activeStream, subagentList, latestRun?.status]);
+  }, [activeStream, subagentList, latestRun?.status, uiLocale]);
 
   // Tabs are shown only while background agents are active (see
   // `shouldShowSubagentTabs`). Logic is extracted + unit-tested in
   // lib/subagent-tabs.ts (the repo has no DOM test harness).
-  const parentRunRunning = useMemo(() => runs.some((r) => r.status === "running"), [runs]);
+  const parentRunRunning = useMemo(() => runs.some((r) => r.status === "running"), [runs, uiLocale]);
   // A focus request for a helper this task actually has keeps the strip
   // visible even once everything finished — otherwise a satellite's "Open
   // transcript" on a done run would land on a collapsed strip and be forced
@@ -2133,7 +2204,7 @@ function RunPanelBody({
   const focusedSubagentKnown = !!focusSubagent && subagentList.some((sub) => sub.id === focusSubagent.id);
   const showSubagentTabs = useMemo(
     () => shouldShowSubagentTabs(subagentList, parentRunRunning) || focusedSubagentKnown,
-    [subagentList, parentRunRunning, focusedSubagentKnown],
+    [subagentList, parentRunRunning, focusedSubagentKnown, uiLocale],
   );
 
   // When the strip collapses (or the active subagent disappears), fall back to
@@ -2421,6 +2492,8 @@ function RunPanelBody({
   // first is still resolving — the server also guards this with a synchronous
   // in-flight claim, but this keeps the button honest client-side too.
   const [resumeBusy, setResumeBusy] = useState(false);
+  // A Stop is in flight: the core is waiting to observe the process exit, which can take several seconds.
+  const [stopping, setStopping] = useState(false);
   // The `latestRun.id` this panel had at the moment Resume was clicked —
   // read by the busy-clearing effect below to detect when the runs
   // snapshot has actually caught up with the resume, rather than clearing
@@ -2545,7 +2618,7 @@ function RunPanelBody({
     const payload = recoveryByRunId.get(latestRun.id);
     if (!payload || payload.state !== "active" || payload.replayed === true) return null;
     return fxRecoveryNoticeText(payload);
-  }, [kind, activeStream, latestRun, recoveryByRunId]);
+  }, [kind, activeStream, latestRun, recoveryByRunId, uiLocale]);
   /** Paused fx recovery notice + Resume affordance, same bottom slot as
    *  `liveRecoveryNotice` (mutually exclusive with it — a run is either
    *  `running` with an active retry or `failed` with a paused one, never
@@ -2615,7 +2688,7 @@ function RunPanelBody({
   }, [
     kind, activeStream, archived, task.column, latestRun, recoveryByRunId, resumeBusy,
     handleResumeFxRecovery, task.fxRecovery, handleCancelFxAutoResume, cancelAutoBusy,
-  ]);
+  , uiLocale]);
   // Messages backlog — saved, not-yet-sent drafts for this task. Seeded from
   // the task prop and kept in sync as the 2s task poll refreshes `task.backlog`;
   // each mutation also updates this optimistically from the endpoint's returned
@@ -2780,7 +2853,7 @@ function RunPanelBody({
     if (!parentId) return;
     const stepId = task.pipelineStepId;
     const buildInfo = (pipelineName: string, graph: PipelineGraph | null): PipelineStripInfo => {
-      const stepName = graph && stepId ? stepNameById(graph, stepId) : (stepId ?? "this step");
+      const stepName = graph && stepId ? stepNameById(graph, stepId) : (stepId ?? tr("common.this_step"));
       const stepTotal = graph?.steps.length ?? 0;
       let stepIndex: number | null = null;
       if (graph && stepId) {
@@ -2826,7 +2899,7 @@ function RunPanelBody({
   // PR mergeability for the composer-row "Resolve Conflicts" button. `parsedPrUrl`
   // is derived once per `task.prUrl` change and reused for both the fetch
   // effect and the render-time gate (`canOfferResolveConflicts`).
-  const parsedPrUrl = useMemo(() => parsePrUrl(task.prUrl), [task.prUrl]);
+  const parsedPrUrl = useMemo(() => parsePrUrl(task.prUrl), [task.prUrl, uiLocale]);
   const [prStatus, setPrStatus] = useState<GitHubPullMergeability | null>(null);
   const [prStatusLoading, setPrStatusLoading] = useState(false);
   const [prStatusError, setPrStatusError] = useState<string | null>(null);
@@ -3070,8 +3143,23 @@ function RunPanelBody({
   };
 
   const stop = async () => {
-    if (!liveRunId) return;
-    try { await api.cancelRun(liveRunId); } catch { /* surfaced via log */ }
+    if (stopping) return;
+    const stoppedTaskId = task.id;
+    setStopping(true);
+    try {
+      const activeReview = task.qcState?.activeReviewId;
+      const runId = activeReview
+        ? (await api.getTaskQc(task.id)).reviews.find((r) => r.id === activeReview)?.reviewRunId
+        : liveRunId;
+      if (!runId) return;
+      const result = await api.cancelRun(runId);
+      // A request is not proof: the toast says what the core observed about the process.
+      const outcome = stopToast(result, "running");
+      if (outcome.tone === "warning") toast.warning(tr(outcome.key)); else toast(tr(outcome.key));
+    } catch { /* surfaced via log */ }
+    finally {
+      if (currentTaskIdRef.current === stoppedTaskId) setStopping(false);
+    }
   };
 
   // Park the current composer content on the backlog instead of sending it —
@@ -3436,7 +3524,7 @@ function RunPanelBody({
   const fileScope = useMemo<FileScope>(() => {
     const scope = fileScopeForTask(task);
     return scope.ref ? { dir: scope.dir, ref: scope.ref } : { dir: scope.dir };
-  }, [task.worktreePath, task.isolation, task.workdir, task.baseRef, task.branchSource, task.branch]);
+  }, [task.worktreePath, task.isolation, task.workdir, task.baseRef, task.branchSource, task.branch, uiLocale]);
   // Hoisted above the composer's own internal calls (passed down via
   // `capabilities`/`savedPrompts` below) so the dock's Main ↔ subagent tab
   // switches and the archived-without-canSend swap — which unmount and
@@ -3451,7 +3539,7 @@ function RunPanelBody({
   // fresh array each render would defeat them.
   const pathRoots = useMemo(
     () => [task.worktreePath, task.workdir],
-    [task.worktreePath, task.workdir],
+    [task.worktreePath, task.workdir, uiLocale],
   );
   const onSendDragOver = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes("Files")) return;
@@ -3492,10 +3580,27 @@ function RunPanelBody({
   // Same capture rationale as `prUrl` above, for the "View issue" header
   // affordance.
   const issueUrl = task.issueUrl;
+  const showAssignee = task.archivedAt == null && !task.pipelineId && !task.pipelineParentId
+    && !task.objectiveMissionId && ["backlog", "inbox", "ready"].includes(task.column);
 
   return (
     <>
-      <header className="border-b border-border/60 p-3">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-b border-border/60 px-3 py-2">
+        <Button size="sm" variant="ghost" title={tr("manager.details.hint")} data-testid="manager-task-details" aria-controls="manager-task-technical" aria-expanded={managerDetails} onClick={() => setManagerDetailsFor(managerDetails ? null : task.id)}>{tr("manager.details")}</Button>
+        {!archived && (canControl || task.column === "running" || !!task.qcState?.activeReviewId) && <Button size="sm" variant="destructive" onClick={stop} disabled={stopping} data-testid="run-stop" title={tr("manager.stopTask")}><span data-testid="manager-task-stop">{tr(stopping ? "stop.stopping" : "common.stop")}</span></Button>}
+        <Button size="icon" variant="ghost" onClick={onClose} aria-label={tr("tasks.close_task_details")}><X className="size-4" /></Button>
+      </div>
+      <div className={cn("min-h-0 overscroll-contain", managerDetails ? "max-h-[55%] shrink-0 overflow-y-auto" : "flex-1 overflow-y-auto")}>
+        <ManagerTaskSummary key={`manager-${task.id}`} task={task} onTaskChanged={onTaskFieldsChanged} onNext={revealManagerDetails} onSetup={(kind) => kind === "assignment" && onOpenProjectTeam ? onOpenProjectTeam(task.ownerProjectPath ?? task.workdir) : onOpenSettingsAgents()} />
+        {!managerDetails && <section className="p-4" aria-label={tr("manager.assignment")} data-testid="manager-task-assignment">
+          <h3 className="mb-2 text-xs font-semibold text-muted-foreground">{tr("manager.assignment")}</h3>
+          <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{task.prompt}</p>
+        </section>}
+        {!managerDetails && showAssignee && <TaskAssignmentPanel key={task.id} task={task} compact />}
+      </div>
+      <div id="manager-task-technical" className={managerDetails ? "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain" : "hidden"} data-testid="manager-task-technical-details">
+      {managerDetails && !task.pipelineId && !task.pipelineParentId && !task.objectiveMissionId && <div className="shrink-0 px-3 pt-3"><TaskComputerWorkflowDetails key={task.id} task={task} onChanged={onTaskFieldsChanged} /></div>}
+      <header className="shrink-0 border-b border-border/60 p-3">
         <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Lives in the header (not the composer chip row) so the link stays
               reachable on archived tasks and after orphan reconciliation
@@ -3504,13 +3609,13 @@ function RunPanelBody({
               subpage directly; otherwise (an unrecognized provider URL
               shape) fall back to the plain external link, as before. */}
           {prUrl && (
-            <Tooltip align="end" label="Open the pull request created for this task">
+            <Tooltip align="end" label={tr("tasks.open_the_pull_request_created_for_this_task")}>
               {parsePullNumber(prUrl) != null ? (
                 <Button
                   size="icon"
                   variant="outline"
                   onClick={() => onViewPullRequest({ projectPath: task.workdir, prUrl })}
-                  aria-label="View PR"
+                  aria-label={tr("tasks.view_pr")}
                 >
                   <GitPullRequest className="size-4" />
                 </Button>
@@ -3518,7 +3623,7 @@ function RunPanelBody({
                 <ExternalLink
                   href={prUrl}
                   className={cn(buttonVariants({ variant: "outline", size: "icon" }), "text-foreground no-underline hover:no-underline")}
-                  aria-label="View PR"
+                  aria-label={tr("tasks.view_pr")}
                 >
                   <GitPullRequest className="size-4" />
                 </ExternalLink>
@@ -3530,13 +3635,13 @@ function RunPanelBody({
               in-app-detail-vs-external-link branch, keyed on whether
               `issueUrl` parses to a recognized provider issue URL. */}
           {issueUrl && (
-            <Tooltip align="end" label="Open the issue this task was created from">
+            <Tooltip align="end" label={tr("tasks.open_the_issue_this_task_was_created_from")}>
               {parseIssueUrl(issueUrl) != null ? (
                 <Button
                   size="icon"
                   variant="outline"
                   onClick={() => onViewIssue({ projectPath: task.workdir, issueUrl })}
-                  aria-label="View issue"
+                  aria-label={tr("common.view_issue")}
                   data-testid="view-issue"
                 >
                   <CircleDot className="size-4" />
@@ -3545,7 +3650,7 @@ function RunPanelBody({
                 <ExternalLink
                   href={issueUrl}
                   className={cn(buttonVariants({ variant: "outline", size: "icon" }), "text-foreground no-underline hover:no-underline")}
-                  aria-label="View issue"
+                  aria-label={tr("common.view_issue")}
                   data-testid="view-issue"
                 >
                   <CircleDot className="size-4" />
@@ -3556,24 +3661,24 @@ function RunPanelBody({
           {/* Manual re-check — only once a first fetch has settled, so it
               doesn't appear (and immediately duplicate) the initial load. */}
           {parsedPrUrl && (prStatus != null || prStatusError != null) && (
-            <Tooltip align="end" label={prStatusError ?? "Re-check PR mergeability"}>
+            <Tooltip align="end" label={prStatusError ?? tr("common.re_check_pr_mergeability")}>
               <Button
                 size="icon"
                 variant="ghost"
                 onClick={refreshPrStatus}
                 disabled={prStatusLoading}
-                aria-label={prStatusError ? `Re-check PR status — ${prStatusError}` : "Re-check PR status"}
+                aria-label={prStatusError ? tr("common.re_check_pr_status", { p0: String(prStatusError) }) : tr("common.re_check_pr_status_916234")}
               >
                 <RefreshCw className="size-4" />
               </Button>
             </Tooltip>
           )}
-          <Tooltip align="end" label="View this task's changes (git diff)">
+          <Tooltip align="end" label={tr("tasks.view_this_task_s_changes_git_diff")}>
             <Button
               size="icon"
               variant="outline"
               onClick={() => onShowDiff(task)}
-              aria-label="View diff"
+              aria-label={tr("tasks.view_diff")}
             >
               <GitCompare className="size-4" />
             </Button>
@@ -3582,8 +3687,8 @@ function RunPanelBody({
             align="end"
             label={
               task.worktreePath
-                ? `Open the worktree in your file manager: ${task.worktreePath}`
-                : `Open the project workdir in your file manager: ${task.workdir}`
+                ? tr("common.open_the_worktree_in_your_file_manager", { p0: String(task.worktreePath) })
+                : tr("common.open_the_project_workdir_in_your_file_manager", { p0: String(task.workdir) })
             }
           >
             <Button
@@ -3595,49 +3700,39 @@ function RunPanelBody({
                   taskId: task.id,
                 }).catch(() => { /* swallowed — openPath failures are best-effort */ })
               }
-              aria-label="Open working folder"
+              aria-label={tr("tasks.open_working_folder")}
             >
               <FolderOpen className="size-4" />
             </Button>
           </Tooltip>
-          {/* Stop targets the main run. Hide it while viewing a read-only
-              background-agent tab so the control doesn't read as "stop this
-              agent" — switch back to Main to stop the task. */}
-          {!archived && canControl && activeStream === "main" && (
-            <Tooltip align="end" label="Stop">
-              <Button size="icon" variant="destructive" onClick={stop} aria-label="Stop">
-                <Square className="size-4" />
-              </Button>
-            </Tooltip>
-          )}
           {/* Step tasks can't be archived individually — the server 409s
               it, since the parent pipeline task owns their lifecycle (D9,
               docs/plans/pipelines.md). Gated out here rather than left to
               fail on click. */}
           {!task.pipelineParentId && !archived && (task.column === "done" || active) && (
-            <Tooltip align="end" label={active ? "Stop the running agent and archive task" : "Archive task"}>
+            <Tooltip align="end" label={active ? tr("common.stop_the_running_agent_and_archive_task") : tr("common.archive_task")}>
               <Button
                 size="icon"
                 variant="outline"
                 onClick={() => onArchive(task)}
-                aria-label={active ? "Stop the running agent and archive task" : "Archive task"}
+                aria-label={active ? tr("common.stop_the_running_agent_and_archive_task") : tr("common.archive_task")}
               >
                 <Archive className="size-4" />
               </Button>
             </Tooltip>
           )}
           {!task.pipelineParentId && archived && (
-            <Tooltip align="end" label="Unarchive task">
-              <Button size="icon" variant="outline" onClick={() => onUnarchive(task)} aria-label="Unarchive">
+            <Tooltip align="end" label={tr("tasks.unarchive_task")}>
+              <Button size="icon" variant="outline" onClick={() => onUnarchive(task)} aria-label={tr("common.unarchive")}>
                 <ArchiveRestore className="size-4" />
               </Button>
             </Tooltip>
           )}
-          <Tooltip align="end" label="Search messages">
+          <Tooltip align="end" label={tr("tasks.search_messages")}>
             <Button
               size="icon"
               variant="ghost"
-              aria-label="Search messages"
+              aria-label={tr("tasks.search_messages")}
               aria-expanded={searchOpen}
               onClick={() => {
                 if (searchOpen) {
@@ -3654,16 +3749,12 @@ function RunPanelBody({
               <Search className="size-4" />
             </Button>
           </Tooltip>
-          <Tooltip align="end" label="Close task details">
-            <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close task details">
-              <X className="size-4" />
-            </Button>
-          </Tooltip>
+
         </div>
         <div className="mt-2 truncate text-sm font-semibold">{task.title}</div>
         <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           <span className="truncate">
-            {task.agent} · {task.column}
+            {task.agent} · {codeLabel(task.column)}
             {task.branch && !branchDrift.drifted && <> · <span className="font-mono">{task.branch}</span></>}
             {branchDrift.drifted && (
               <>
@@ -3673,16 +3764,16 @@ function RunPanelBody({
                   data-testid="run-panel-branch-drift"
                   title={driftTitle(task.branch ?? null)}
                   className={cn(
-                    "rounded px-1 py-px text-[10px] font-medium",
+                    "rounded px-1 py-px text-[length:var(--text-caption)] font-medium",
                     task.branchSource === "existing" ? "bg-warning/15 text-warning" : "bg-info/15 text-info",
                   )}
                 >
-                  {task.branchSource === "existing" ? "not on PR head" : "drifted"}
+                  {task.branchSource === "existing" ? tr("common.not_on_pr_head") : tr("common.drifted")}
                 </span>
               </>
             )}
             {task.baseRef && (
-              <> · <span className="font-mono opacity-70">base {task.baseRef.slice(0, 7)}</span></>
+              <> · <span className="font-mono opacity-70"><I18nText id="common.base" />{" "}{task.baseRef.slice(0, 7)}</span></>
             )}
           </span>
           {agentProfileDisplay && agentProfileForCard && (
@@ -3715,29 +3806,28 @@ function RunPanelBody({
             <Workflow className="size-3.5 shrink-0" aria-hidden />
             <span className="truncate">
               {pipelineStrip && pipelineStrip !== "loading" && pipelineStrip !== "error" && pipelineStrip !== "missing" ? (
-                <>
-                  Part of pipeline <strong className="font-semibold">{pipelineStrip.pipelineName}</strong> · step{" "}
+                <><I18nText id="tasks.part_of_pipeline" />{" "}<strong className="font-semibold">{pipelineStrip.pipelineName}</strong>{" "}<I18nText id="tasks.step" />{" "}
                   <strong className="font-semibold">{pipelineStrip.stepName}</strong>
                   {pipelineStrip.stepIndex !== null && pipelineStrip.stepTotal > 0
                     ? ` (${pipelineStrip.stepIndex}/${pipelineStrip.stepTotal})`
                     : null}
                 </>
               ) : pipelineStrip === "missing" ? (
-                "Part of a pipeline whose task no longer exists"
+                tr("common.part_of_a_pipeline_whose_task_no_longer")
               ) : (
-                "Part of a pipeline"
+                tr("common.part_of_a_pipeline")
               )}
             </span>
           </span>
           <Button
             size="sm"
             variant="outline"
-            className="h-6 shrink-0 px-2 text-[10px]"
+            className="h-6 shrink-0 px-2 text-[length:var(--text-caption)]"
             data-testid="run-panel-open-pipeline"
             // The parent 404'd (L-A10) — there's no run view to open, and
             // App's own vanished-row sync would bounce it straight back.
             disabled={pipelineStrip === "missing"}
-            title={pipelineStrip === "missing" ? "The pipeline task was deleted" : undefined}
+            title={pipelineStrip === "missing" ? tr("common.the_pipeline_task_was_deleted") : undefined}
             onClick={() => {
               // Close first — otherwise the run view opens behind this
               // non-portaled `fixed` <aside> (z-40 > the page views' < 30)
@@ -3745,9 +3835,7 @@ function RunPanelBody({
               onClose();
               onOpenPipeline(task.pipelineParentId!);
             }}
-          >
-            Open pipeline
-          </Button>
+          ><I18nText id="common.open_pipeline" />{" "}</Button>
         </div>
       ) : task.pipelineId ? (
         <div
@@ -3756,21 +3844,19 @@ function RunPanelBody({
         >
           <span className="flex min-w-0 items-center gap-1.5">
             <Workflow className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate">Pipeline task — open the pipeline view</span>
+            <span className="truncate"><I18nText id="tasks.pipeline_task_open_the_pipeline_view" /></span>
           </span>
           <Button
             size="sm"
             variant="outline"
-            className="h-6 shrink-0 px-2 text-[10px]"
+            className="h-6 shrink-0 px-2 text-[length:var(--text-caption)]"
             data-testid="run-panel-open-pipeline"
             onClick={() => {
               // Same close-before-open rationale as the step-task button above.
               onClose();
               onOpenPipeline(task.id);
             }}
-          >
-            Open pipeline
-          </Button>
+          ><I18nText id="common.open_pipeline" />{" "}</Button>
         </div>
       ) : null}
 
@@ -3781,7 +3867,7 @@ function RunPanelBody({
             <Input
               ref={searchInputRef}
               {...IDENTIFIER_INPUT_PROPS}
-              aria-label="Search messages"
+              aria-label={tr("tasks.search_messages")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -3794,39 +3880,39 @@ function RunPanelBody({
                   closeSearch();
                 }
               }}
-              placeholder="Search messages…"
+              placeholder={tr("tasks.search_messages_cd889f")}
               className="h-8 pl-8 text-xs"
             />
           </div>
-          <span aria-live="polite" className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          <span aria-live="polite" className="shrink-0 text-[length:var(--text-caption)] tabular-nums text-muted-foreground">
             {matches.length === 0 ? "0/0" : `${activeMatchPosition + 1}/${matches.length}`}
           </span>
-          <Tooltip align="end" label="Previous match">
+          <Tooltip align="end" label={tr("tasks.previous_match")}>
             <Button
               size="icon"
               variant="ghost"
               className="size-7"
               disabled={matches.length === 0}
               onClick={() => stepSearch(-1)}
-              aria-label="Previous match"
+              aria-label={tr("tasks.previous_match")}
             >
               <ChevronUp className="size-3.5" />
             </Button>
           </Tooltip>
-          <Tooltip align="end" label="Next match">
+          <Tooltip align="end" label={tr("tasks.next_match")}>
             <Button
               size="icon"
               variant="ghost"
               className="size-7"
               disabled={matches.length === 0}
               onClick={() => stepSearch(1)}
-              aria-label="Next match"
+              aria-label={tr("tasks.next_match")}
             >
               <ChevronDown className="size-3.5" />
             </Button>
           </Tooltip>
-          <Tooltip align="end" label="Close search">
-            <Button size="icon" variant="ghost" className="size-7" onClick={closeSearch} aria-label="Close search">
+          <Tooltip align="end" label={tr("tasks.close_search")}>
+            <Button size="icon" variant="ghost" className="size-7" onClick={closeSearch} aria-label={tr("tasks.close_search")}>
               <X className="size-3.5" />
             </Button>
           </Tooltip>
@@ -3837,7 +3923,11 @@ function RunPanelBody({
           model / effort each PATCH the task on change, and if a live claude
           tmux session exists the backend mirrors the change via slash commands
           so the conversation context survives the edit. */}
+      {/* Keep all disclosures in one bounded scroll area. Router and Execution
+          can remain open together without pushing controls past the panel. */}
+      <div className="min-h-0 max-h-[35dvh] shrink-0 overflow-y-auto overscroll-contain" data-testid="task-details-scroll">
       <TaskDetails
+        hideAssignment={!managerDetails && showAssignee}
         task={task}
         agents={agents}
         harnesses={harnesses}
@@ -3867,6 +3957,7 @@ function RunPanelBody({
         // proving a run happened is enough.
         hasRun={runs.length > 0 || task.hasOpenableRun || task.runId != null}
       />
+      </div>
 
       <RunsList runs={runs} runsLoaded={runsLoaded} usageByRun={usageByRunId} providerByRun={providerByRunId} titleByRun={titleByRunId} />
 
@@ -3949,7 +4040,7 @@ function RunPanelBody({
         // converting path 1 to a layout effect (see the pin-paths comment
         // above), is what closes that hole.
         data-testid="transcript-log"
-        className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 text-xs leading-relaxed [overflow-anchor:none]"
+        className="min-h-48 min-w-0 flex-1 shrink-0 overflow-y-auto overflow-x-hidden p-3 text-xs leading-relaxed [overflow-anchor:none]"
       >
         <div ref={logContentRef}>
           {/* "Load earlier messages" — only meaningful once we have a real DB
@@ -3968,9 +4059,9 @@ function RunPanelBody({
                 variant="outline"
                 onClick={loadEarlierEvents}
                 disabled={loadingEarlier}
-                className="h-6 px-2 text-[10px] uppercase tracking-wide text-muted-foreground"
+                className="h-6 px-2 text-xs uppercase tracking-wide text-muted-foreground"
               >
-                {loadingEarlier ? "Loading…" : "Load earlier messages"}
+                {loadingEarlier ? tr("common.loading") : tr("common.load_earlier_messages")}
               </Button>
             </div>
           )}
@@ -3981,11 +4072,11 @@ function RunPanelBody({
             // slower `listRuns` response arrives. Showing the skeleton on
             // `!runsLoaded` alone would hide those already-rendered events
             // behind "Loading messages…" until `listRuns` finally resolves.
-            <div className="text-muted-foreground" data-testid="transcript-loading">Loading messages…</div>
+            <div className="text-muted-foreground" data-testid="transcript-loading"><I18nText id="tasks.loading_messages" /></div>
           ) : runsLoaded && runs.length === 0 ? (
-            <div className="text-muted-foreground">(no runs yet — press Run to start the agent)</div>
+            <div className="text-muted-foreground"><span>{tr("manager.history.empty")}</span></div>
           ) : runsLoaded && displayedEvents.length === 0 ? (
-            <div className="text-muted-foreground">Waiting for the first event…</div>
+            <div className="text-muted-foreground"><I18nText id="tasks.waiting_for_the_first_event" /></div>
           ) : (
             <>
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -3994,18 +4085,18 @@ function RunPanelBody({
                     type="button"
                     onClick={() => void rebuildFromJsonl()}
                     disabled={rebuildBusy}
-                    className="rounded-md border border-border/60 bg-card px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-accent/40 disabled:opacity-50"
-                    title="Re-parse the latest run's events from claude's on-disk session JSONL. Useful when the stored events were truncated by an older ForgeOrbit version."
+                    className="rounded-md border border-border/60 bg-card px-2 py-0.5 text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground hover:bg-accent/40 disabled:opacity-50"
+                    title={tr("tasks.re_parse_the_latest_run_s_events_from")}
                   >
                     {rebuildBusy
-                      ? "Reloading…"
+                      ? tr("common.reloading")
                       : rebuilt
-                        ? `Reload from JSONL (${rebuilt.events.length} events)`
-                        : "Load from session JSONL"}
+                        ? tr("common.reload_from_jsonl_events", { p0: String(rebuilt.events.length) })
+                        : tr("common.load_from_session_jsonl")}
                   </button>
                 ) : <span />}
                 {rebuildNote && (
-                  <span className="text-[10px] text-muted-foreground">{rebuildNote}</span>
+                  <span className="text-[length:var(--text-caption)] text-muted-foreground">{rebuildNote}</span>
                 )}
               </div>
               <RunEventList
@@ -4093,30 +4184,21 @@ function RunPanelBody({
           the parent itself never runs an agent turn (D9,
           docs/plans/pipelines.md), so there's nothing for a composer to
           talk to regardless of column/archived state. */}
-      {task.pipelineId ? (
-        <div className="shrink-0 border-t border-border/60 p-3 text-[11px] text-muted-foreground">
-          This is a pipeline task — open the pipeline view to talk to its steps.
-        </div>
+      {task.column === "done" || task.qcState?.awaitingOwnerApproval ? null : task.pipelineId ? (
+        <div className="shrink-0 border-t border-border/60 p-3 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.this_is_a_pipeline_task_open_the_pipeline" />{" "}</div>
       ) : archived && !canSend ? (
-        <div className="shrink-0 border-t border-border/60 p-3 text-[11px] text-muted-foreground">
-          This task is archived. Unarchive it to interact.
-        </div>
+        <div className="shrink-0 border-t border-border/60 p-3 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.this_task_is_archived_unarchive_it_to_interact" />{" "}</div>
       ) : activeStream !== "main" ? (
         // Background-agent streams are read-only — you can watch them but not
         // talk to them. Switch back to Main to send a message.
-        <div className="flex shrink-0 items-center gap-2 border-t border-border/60 p-3 text-[11px] text-muted-foreground">
+        <div className="flex shrink-0 items-center gap-2 border-t border-border/60 p-3 text-[length:var(--text-caption)] text-muted-foreground">
           <Eye className="size-3 shrink-0" />
-          <span>
-            Viewing a background agent — read-only.{" "}
+          <span><I18nText id="tasks.viewing_a_background_agent_read_only" />{" "}
             <button
               type="button"
               onClick={() => setActiveStream("main")}
               className="text-foreground underline underline-offset-2 hover:no-underline"
-            >
-              Back to Main
-            </button>{" "}
-            to send a message.
-          </span>
+            ><I18nText id="tasks.back_to_main" />{" "}</button>{" "}<I18nText id="tasks.to_send_a_message" />{" "}</span>
         </div>
       ) : (
         <div
@@ -4174,10 +4256,9 @@ function RunPanelBody({
                     variant="ghost"
                     onClick={() => void saveForLater()}
                     disabled={sending || backlogBusy}
-                    title="Save this message to the backlog to send later — without sending it now."
+                    title={tr("tasks.save_this_message_to_the_backlog_to_send")}
                   >
-                    <BookmarkPlus className="mr-1 size-3" /> Save for later
-                  </Button>
+                    <BookmarkPlus className="mr-1 size-3" />{" "}<I18nText id="tasks.save_for_later" />{" "}</Button>
                 )}
                 {/* Commit & push keys on live git state (uncommitted changes or
                     unpushed commits), not run status — see `shouldOfferCommitPush`.
@@ -4187,10 +4268,9 @@ function RunPanelBody({
                     size="sm"
                     variant="secondary"
                     onClick={() => void sendCommitPush()}
-                    title="Ask the agent to commit the working-tree changes, push the current branch to origin, and reply with the link to open a PR plus a PR title and description in copyable code blocks."
+                    title={tr("tasks.ask_the_agent_to_commit_the_working_tree")}
                   >
-                    <GitCommit className="mr-1 size-3" /> Commit &amp; push
-                  </Button>
+                    <GitCommit className="mr-1 size-3" />{" "}<I18nText id="tasks.commit_push" />{" "}</Button>
                 )}
                 {/* Offered once the branch is pushed and synced with its
                     remote (git-state-only, same convention as Commit & push
@@ -4217,10 +4297,9 @@ function RunPanelBody({
                         taskId: task.id,
                       });
                     }}
-                    title="Create a pull request for this task's branch — prefilled from the agent's summary when available"
+                    title={tr("tasks.create_a_pull_request_for_this_task_s")}
                   >
-                    <GitPullRequest className="mr-1 size-3" /> Create PR
-                  </Button>
+                    <GitPullRequest className="mr-1 size-3" />{" "}<I18nText id="tasks.create_pr" />{" "}</Button>
                 )}
                 {/* Post-PR counterpart to "Open PR" above: offered once the
                     task's PR reports merge conflicts. Gated on `!archived`
@@ -4241,17 +4320,17 @@ function RunPanelBody({
                     disabled={!canSend || modalPending || sending || backlogBusy || resolvingConflicts || resolveConflictsSent}
                     title={
                       !canSend
-                        ? "Start the task before asking the agent to resolve conflicts"
+                        ? tr("common.start_the_task_before_asking_the_agent_to")
                         : modalPending
-                          ? "Answer the pending prompt before sending another message"
+                          ? tr("common.answer_the_pending_prompt_before_sending_another_message")
                           : resolveConflictsSent
-                            ? "Already sent — waiting for the agent to pick it up"
+                            ? tr("common.already_sent_waiting_for_the_agent_to_pick")
                             : sending || backlogBusy || resolvingConflicts
-                              ? "A message is already being sent"
-                              : "Ask the agent to merge the base branch and resolve the reported conflicts"
+                              ? tr("common.a_message_is_already_being_sent")
+                              : tr("common.ask_the_agent_to_merge_the_base_branch")
                     }
                   >
-                    <GitMerge className="mr-1 size-3" /> {resolveConflictsSent ? "Sent to agent" : "Resolve Conflicts"}
+                    <GitMerge className="mr-1 size-3" /> {resolveConflictsSent ? tr("common.sent_to_agent") : tr("common.resolve_conflicts")}
                   </Button>
                 )}
               </>
@@ -4262,9 +4341,7 @@ function RunPanelBody({
             // task doesn't have, so call it out inline rather than silently.
             notice={
               archived && (
-                <p className="text-[10px] text-muted-foreground">
-                  Sending will unarchive this task and restore its worktree.
-                </p>
+                <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.sending_will_unarchive_this_task_and_restore_its" />{" "}</p>
               )
             }
             // Always available: refs can be attached to a draft you're only
@@ -4310,13 +4387,13 @@ function RunPanelBody({
                 align="end"
                 side="top"
                 className="shrink-0"
-                label={liveRunId ? "Send to the live agent" : "Resume the conversation with this message"}
+                label={liveRunId ? tr("common.send_to_the_live_agent") : tr("common.resume_the_conversation_with_this_message")}
               >
                 <Button
                   size="icon"
                   onClick={() => void send()}
                   disabled={!canSend || sending || backlogBusy || modalPending || (!input.trim() && sendRefs.length === 0)}
-                  aria-label="Send"
+                  aria-label={tr("common.send")}
                   className="h-16 w-12 shrink-0"
                 >
                   <Send className="size-4" />
@@ -4328,20 +4405,20 @@ function RunPanelBody({
             textareaTestId="send-textarea"
             placeholder={
               modalPending
-                ? "Answer the prompt above — or type a message and Save it for later."
+                ? tr("common.answer_the_prompt_above_or_type_a_message")
                 : canSend
                 ? task.column === "running"
-                  ? "Agent is working — your message will be added to the current turn. Type / for commands, @ for files."
+                  ? tr("common.agent_is_working_your_message_will_be_added")
                   : task.column === "blocked"
-                    ? "Answer the question, or send any follow-up. Type / for commands, @ for files."
-                    : "Send a message — resumes the conversation in a fresh session. Type / for commands, @ for files."
+                    ? tr("common.answer_the_question_or_send_any_follow_up")
+                    : tr("common.send_a_message_resumes_the_conversation_in_a")
                 // `!canSend` covers two states: never run, and "ran but has
                 // no resumable session" (a codex task whose run_id was
                 // cleared — claude falls back to its newest run). Don't
                 // claim "not running yet" in the latter.
                 : runs.length > 0
-                  ? "No live session to send to — save this message for later, or re-run the task."
-                  : "Not running yet — type a message and Save it for later, ready to send once the task runs."
+                  ? tr("common.no_live_session_to_send_to_save_this")
+                  : tr("common.not_running_yet_type_a_message_and_save")
             }
             // Typing is allowed in every state the composer renders, even
             // when we can't send: that's the point of "Save for later".
@@ -4416,6 +4493,7 @@ function RunPanelBody({
           focusComposer={focusComposer}
         />
       )}
+      </div>
     </>
   );
 }
@@ -4465,17 +4543,18 @@ function BacklogTray({
   onDelete: (itemId: string) => void;
   onMove: (itemId: string, dir: -1 | 1) => void;
 }) {
+  useUILocale();
   const [editingId, setEditingId] = useState<string | null>(null);
   return (
     <div className="shrink-0 border-t border-border/60">
-      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">
+      <div className="flex items-center gap-1.5 px-3 pb-1 pt-2 text-[length:var(--text-caption)] font-medium text-muted-foreground">
         <ClipboardList className="size-3.5" />
-        <span>Backlog</span>
-        <span className="rounded bg-muted px-1 text-[10px]">{items.length}</span>
+        <span><I18nText id="tasks.backlog" /></span>
+        <span className="rounded bg-muted px-1 text-[length:var(--text-caption)]">{items.length}</span>
         <span className="ml-1 font-normal text-muted-foreground/70">
           {readOnly
-            ? "saved messages — unarchive the task to edit or send"
-            : "saved messages — send when you're ready"}
+            ? tr("common.saved_messages_unarchive_the_task_to_edit_or")
+            : tr("common.saved_messages_send_when_you_re_ready")}
         </span>
       </div>
       {/* Grow the window while a row is being edited: the inline editor is
@@ -4551,6 +4630,7 @@ function BacklogItemRow({
   onDelete: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
+  useUILocale();
   const [draft, setDraft] = useState(item.text);
   const [draftRefs, setDraftRefs] = useState<TaskReference[]>(item.references);
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -4622,16 +4702,13 @@ function BacklogItemRow({
           startingFolder={startingFolder}
         />
         <div ref={actionsRef} className="flex items-center justify-end gap-1.5">
-          <Button size="sm" variant="ghost" onClick={onCancelEdit}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancelEdit}><I18nText id="common.cancel" />{" "}</Button>
           <Button
             size="sm"
             disabled={!canSave || busy}
             onClick={() => onSaveEdit({ text: draft.trim(), references: draftRefs })}
           >
-            <Check className="mr-1 size-3" /> Save
-          </Button>
+            <Check className="mr-1 size-3" />{" "}<I18nText id="common.save" />{" "}</Button>
         </div>
       </div>
     );
@@ -4642,7 +4719,7 @@ function BacklogItemRow({
       <div className="min-w-0 flex-1">
         <p className="line-clamp-3 whitespace-pre-wrap break-words text-xs text-foreground/90">
           {item.text || (
-            <span className="italic text-muted-foreground">(references only)</span>
+            <span className="italic text-muted-foreground"><I18nText id="tasks.references_only" /></span>
           )}
         </p>
         {item.references.length > 0 && (
@@ -4653,7 +4730,7 @@ function BacklogItemRow({
                 <span
                   key={r.path}
                   title={r.path}
-                  className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground"
+                  className="inline-flex items-center gap-1 rounded bg-muted px-1 py-0.5 text-[length:var(--text-caption)] text-muted-foreground"
                 >
                   <Icon className="size-3 shrink-0 opacity-70" />
                   {refBasename(r.path)}{r.isDirectory ? "/" : ""}
@@ -4665,34 +4742,34 @@ function BacklogItemRow({
       </div>
       {!readOnly && (
         <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-          <Tooltip align="end" side="top" label="Move up">
+          <Tooltip align="end" side="top" label={tr("tasks.move_up")}>
             <button
               type="button"
               className={BACKLOG_ICON_BTN}
               disabled={index === 0 || busy}
               onClick={() => onMove(-1)}
-              aria-label="Move up"
+              aria-label={tr("tasks.move_up")}
             >
               <ArrowUp className="size-3.5" />
             </button>
           </Tooltip>
-          <Tooltip align="end" side="top" label="Move down">
+          <Tooltip align="end" side="top" label={tr("tasks.move_down")}>
             <button
               type="button"
               className={BACKLOG_ICON_BTN}
               disabled={index === total - 1 || busy}
               onClick={() => onMove(1)}
-              aria-label="Move down"
+              aria-label={tr("tasks.move_down")}
             >
               <ArrowDown className="size-3.5" />
             </button>
           </Tooltip>
-          <Tooltip align="end" side="top" label="Edit">
+          <Tooltip align="end" side="top" label={tr("common.edit")}>
             <button
               type="button"
               className={BACKLOG_ICON_BTN}
               onClick={onStartEdit}
-              aria-label="Edit"
+              aria-label={tr("common.edit")}
             >
               <FilePenLine className="size-3.5" />
             </button>
@@ -4705,8 +4782,8 @@ function BacklogItemRow({
             side="top"
             label={
               canSend
-                ? "Send now"
-                : "Can't send right now — run the task, or answer the pending prompt first"
+                ? tr("tasks.send_now")
+                : tr("common.can_t_send_right_now_run_the_task")
             }
           >
             <button
@@ -4714,18 +4791,18 @@ function BacklogItemRow({
               className={BACKLOG_ICON_BTN}
               disabled={!canSend || busy}
               onClick={onSend}
-              aria-label="Send now"
+              aria-label={tr("tasks.send_now")}
             >
               <Send className="size-3.5" />
             </button>
           </Tooltip>
-          <Tooltip align="end" side="top" label="Delete">
+          <Tooltip align="end" side="top" label={tr("common.delete")}>
             <button
               type="button"
               className={cn(BACKLOG_ICON_BTN, "hover:bg-destructive/10 hover:text-destructive")}
               disabled={busy}
               onClick={onDelete}
-              aria-label="Delete"
+              aria-label={tr("common.delete")}
             >
               <Trash2 className="size-3.5" />
             </button>
@@ -4746,11 +4823,12 @@ function BacklogItemRow({
  * a finished one a check.
  */
 function SubagentTab({ s, selected, onSelect }: { s: Subagent; selected: boolean; onSelect: (id: string) => void }) {
+  useUILocale();
   // Background shells always carry agentType "shell", which reads as a
   // redundant label right next to the Terminal glyph below when there's no
   // description to pair it with — prefer a more descriptive fallback for
   // that row kind.
-  const label = s.parentKind === "bg_session" ? "background shell" : (s.agentType ?? "agent");
+  const label = s.parentKind === "bg_session" ? tr("common.background_shell") : (s.agentType ?? "agent");
   return (
     <button
       type="button"
@@ -4761,7 +4839,7 @@ function SubagentTab({ s, selected, onSelect }: { s: Subagent; selected: boolean
       onClick={() => onSelect(s.id)}
       title={s.description ?? label}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors",
+        "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--text-caption)] transition-colors",
         selected
           ? "bg-accent text-accent-foreground ring-1 ring-border"
           : "text-muted-foreground hover:bg-muted/40",
@@ -4806,6 +4884,7 @@ function SubagentTabs({
   active: string;
   onSelect: (id: string) => void;
 }) {
+  const { locale: uiLocale } = useUILocale();
   // Running agents sort first, right after Main, so what's live is always the
   // closest thing to hand (see `sortSubagentTabs`). Then collapse a large
   // fan-out behind a "+N" pill; expanding wraps the strip onto multiple rows
@@ -4821,7 +4900,7 @@ function SubagentTabs({
   return (
     <div
       role="tablist"
-      aria-label="Agent streams"
+      aria-label={tr("tasks.agent_streams")}
       className={cn(
         "flex shrink-0 items-center gap-1 border-b border-border/60 bg-card/40 px-2 py-1.5",
         expanded ? "flex-wrap" : "overflow-x-auto",
@@ -4833,7 +4912,7 @@ function SubagentTabs({
         aria-selected={active === "main"}
         onClick={() => onSelect("main")}
         className={cn(
-          "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+          "flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[length:var(--text-caption)] font-medium transition-colors",
           // Main is always emphasised (primary accent) so it reads as the
           // controllable stream even when a background tab is selected.
           active === "main"
@@ -4841,9 +4920,7 @@ function SubagentTabs({
             : "text-primary/80 hover:bg-primary/10",
         )}
       >
-        <Bot className="size-3" />
-        Main
-      </button>
+        <Bot className="size-3" /><I18nText id="tasks.main" />{" "}</button>
       {shown.map((s) => (
         <SubagentTab key={s.id} s={s} selected={active === s.id} onSelect={onSelect} />
       ))}
@@ -4851,10 +4928,10 @@ function SubagentTabs({
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="shrink-0 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted/40"
-          title={expanded ? "Collapse background-agent tabs" : `Show ${overflow.length} more background agent${overflow.length === 1 ? "" : "s"}`}
+          className="shrink-0 rounded-md px-2 py-1 text-[length:var(--text-caption)] text-muted-foreground hover:bg-muted/40"
+          title={expanded ? tr("common.collapse_background_agent_tabs") : tr("common.show_more_background_agent", { p0: String(overflow.length), p1: String(overflow.length === 1 ? "" : englishPluralSuffix()) })}
         >
-          {expanded ? "Show less" : `+${overflow.length}`}
+          {expanded ? tr("common.show_less") : `+${overflow.length}`}
         </button>
       )}
     </div>
@@ -4876,6 +4953,7 @@ function SubagentTabs({
  *  including any per-turn breakdown — on hover; the visible text is the
  *  abbreviated form. */
 function UsageChip({ usage }: { usage: FxUsagePayload }) {
+  useUILocale();
   const text = fxUsageChipText(usage);
   if (text === null) return null;
   return (
@@ -4890,10 +4968,11 @@ function UsageChip({ usage }: { usage: FxUsagePayload }) {
  *  summary row. Text is the bare value fx reported — no relabeling, so an
  *  unreleased provider id still renders sensibly. */
 function ProviderChip({ provider }: { provider: string }) {
+  useUILocale();
   return (
     <span
       className="inline-block max-w-[10rem] truncate align-bottom text-muted-foreground"
-      title="fx provider"
+      title={tr("tasks.fx_provider")}
       data-testid="fx-provider-chip"
     >
       {provider}
@@ -4906,10 +4985,11 @@ function ProviderChip({ provider }: { provider: string }) {
  *  bare title fx reported — the driver already filters out fx's own
  *  "Untitled session" placeholder before emitting the sentinel. */
 function SessionTitleChip({ title }: { title: string }) {
+  useUILocale();
   return (
     <span
       className="inline-block max-w-[14rem] truncate align-bottom text-muted-foreground"
-      title="fx session title"
+      title={tr("tasks.fx_session_title")}
       data-testid="fx-session-title-chip"
     >
       {title}
@@ -4934,14 +5014,13 @@ function RunsList({
   providerByRun?: Map<string, string>;
   titleByRun?: Map<string, string>;
 }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
 
   if (runs.length === 0) {
     if (!runsLoaded) return null;
     return (
-      <div className="border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
-        No runs yet for this task.
-      </div>
+      <div className="border-b border-border/60 px-3 py-2 text-xs text-muted-foreground"><I18nText id="tasks.no_runs_yet_for_this_task" />{" "}</div>
     );
   }
 
@@ -4951,7 +5030,7 @@ function RunsList({
   const canExpand = runs.length > 1;
 
   return (
-    <div className="border-b border-border/60">
+    <div className="max-h-[25dvh] shrink-0 overflow-y-auto border-b border-border/60" data-testid="runs-list">
       <button
         type="button"
         onClick={() => canExpand && setOpen((o) => !o)}
@@ -4965,30 +5044,27 @@ function RunsList({
       >
         <span className="flex min-w-0 items-center gap-2">
           <Badge variant={STATUS_VARIANT[latest.status]} className="shrink-0">
-            {latest.status}
+            {codeLabel(latest.status)}
           </Badge>
           {latest.origin === "continuation" && (
             <Badge
               variant="secondary"
               className="shrink-0 px-1.5 py-0 text-[9px] uppercase text-muted-foreground"
               title={CONTINUATION_BADGE_TITLE}
-            >
-              auto
-            </Badge>
+            ><I18nText id="common.auto" />{" "}</Badge>
           )}
-          <span className="truncate">
-            Run #{ordinalFor(latest.id)} · {formatTime(latest.startedAt)}
+          <span className="truncate"><I18nText id="tasks.run" />{ordinalFor(latest.id)} · {formatTime(latest.startedAt)}
           </span>
           {canExpand && (
-            <span className="shrink-0 text-[10px] text-muted-foreground">
-              {open ? `${runs.length} runs` : `+${runs.length - 1} earlier`}
+            <span className="shrink-0 text-[length:var(--text-caption)] text-muted-foreground">
+              {open ? tr("common.runs_ddb820", { p0: String(runs.length) }) : tr("common.earlier", { p0: String(runs.length - 1) })}
             </span>
           )}
         </span>
-        <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] text-muted-foreground">
+        <span className="flex shrink-0 items-center gap-2 font-mono text-[length:var(--text-caption)] text-muted-foreground">
           <span>{formatDuration(latest)}</span>
           {latest.exitCode !== null && latest.exitCode !== 0 && (
-            <span className="text-destructive">exit {latest.exitCode}</span>
+            <span className="text-destructive"><I18nText id="tasks.exit" />{" "}{latest.exitCode}</span>
           )}
           {usageByRun?.get(latest.id) && <UsageChip usage={usageByRun.get(latest.id)!} />}
           {providerByRun?.get(latest.id) && <ProviderChip provider={providerByRun.get(latest.id)!} />}
@@ -4998,41 +5074,62 @@ function RunsList({
           )}
         </span>
       </button>
+      {/* A Reviewer run's refusal is shown once, in the QC section. */}
+      {latest.providerRefusal && !latest.qcReviewId && (
+        <ProviderRefusalNotice
+          refusal={latest.providerRefusal}
+          testId="run-provider-refusal"
+          className="mx-3 mb-2 space-y-1 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs"
+          onOpenAccount={requestOpenAccounts}
+        />
+      )}
+      <RunTerminationNotice
+        termination={latest.termination}
+        runStatus={latest.status}
+        role={latest.qcReviewId ? "reviewer" : "developer"}
+        testId="run-termination"
+        className="mx-3 mb-2"
+      />
       {open && canExpand && (
-        <ul className="border-t border-border/40 bg-card/50" aria-label="Run history">
+        <ul className="border-t border-border/40 bg-card/50" aria-label={tr("tasks.run_history")}>
           {runs.slice(1).map((r) => (
             <li
               key={r.id}
-              className="flex items-center justify-between gap-2 border-b border-border/30 px-3 py-1.5 text-xs last:border-b-0"
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-border/30 px-3 py-1.5 text-xs last:border-b-0"
             >
               <span className="flex min-w-0 items-center gap-2">
                 <Badge variant={STATUS_VARIANT[r.status]} className="shrink-0">
-                  {r.status}
+                  {codeLabel(r.status)}
                 </Badge>
                 {r.origin === "continuation" && (
                   <Badge
                     variant="secondary"
                     className="shrink-0 px-1.5 py-0 text-[9px] uppercase text-muted-foreground"
                     title={CONTINUATION_BADGE_TITLE}
-                  >
-                    auto
-                  </Badge>
+                  ><I18nText id="common.auto" />{" "}</Badge>
                 )}
                 <span className="truncate text-muted-foreground">
                   #{ordinalFor(r.id)} · {formatTime(r.startedAt)}
                 </span>
               </span>
-              <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+              <span className="flex shrink-0 items-center gap-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground">
                 <span>
                   {formatDuration(r)}
                   {r.exitCode !== null && r.exitCode !== 0 && (
-                    <span className="ml-1 text-destructive">exit {r.exitCode}</span>
+                    <span className="ml-1 text-destructive"><I18nText id="tasks.exit" />{" "}{r.exitCode}</span>
                   )}
                 </span>
                 {usageByRun?.get(r.id) && <UsageChip usage={usageByRun.get(r.id)!} />}
                 {providerByRun?.get(r.id) && <ProviderChip provider={providerByRun.get(r.id)!} />}
                 {titleByRun?.get(r.id) && <SessionTitleChip title={titleByRun.get(r.id)!} />}
               </span>
+              <RunTerminationNotice
+                termination={r.termination}
+                runStatus={r.status}
+                role={r.qcReviewId ? "reviewer" : "developer"}
+                testId="run-termination-earlier"
+                className="w-full"
+              />
             </li>
           ))}
         </ul>
@@ -5048,6 +5145,7 @@ function RunsList({
  * Defaults open when the task already has terminals (`openTerminalCount`).
  */
 function TerminalsSection({ task, awaitReady }: { task: Task; awaitReady: (forTaskId: string) => Promise<void> }) {
+  useUILocale();
   const count = task.openTerminalCount;
   // Seed open from the count at mount, then let the user own the toggle —
   // binding `open` to the polled count would re-expand the section whenever
@@ -5095,8 +5193,7 @@ function TerminalsSection({ task, awaitReady }: { task: Task; awaitReady: (forTa
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="cursor-pointer px-3 py-2 text-muted-foreground">
-        <span className="text-[10px] uppercase tracking-wide">
-          Terminal{count > 0 && <span className="font-mono normal-case"> ({count})</span>}
+        <span className="text-xs uppercase tracking-wide"><I18nText id="tasks.terminal" />{count > 0 && <span className="font-mono normal-case"> ({count})</span>}
         </span>
       </summary>
       <div className="h-80 border-t border-border/60">
@@ -5214,13 +5311,14 @@ function RunEventList({
    *  backlog tray exactly like the composer's own withheld branch. */
   onAskAnswerWithheld?: (reason: string) => void;
 }) {
+  const { locale: uiLocale } = useUILocale();
   // Index tool_results by their tool_use_id so the tool-use card can show
   // Normalise legacy `[tool: Name] {...}` / `[thinking] ...` / `[result] ...`
   // stdout strings (persisted before the structured-event refactor) into the
   // same shape live events use. Without this, replayed history from older
   // runs renders as ugly prefixed text while only the in-flight events get
   // proper cards.
-  const normalised = useMemo(() => events.map(normalizeLegacyEvent), [events]);
+  const normalised = useMemo(() => events.map(normalizeLegacyEvent), [events, uiLocale]);
 
   // Full markdown for the plan `TmuxPromptCard`'s plan branch is about to
   // act on — the source of truth is the task's latest PENDING claude plan
@@ -5254,7 +5352,7 @@ function RunEventList({
       }
     }
     return null;
-  }, [plans, normalised, agentKind, interactions]);
+  }, [plans, normalised, agentKind, interactions, uiLocale]);
 
   // Finding 4 (per-card plan markdown): in a multi-plan session, several
   // `tmux_prompt` interactions can be pending at once but at most one is
@@ -5268,7 +5366,7 @@ function RunEventList({
       if (!latest || it.createdAt > latest.createdAt) latest = it;
     }
     return latest?.id ?? null;
-  }, [interactions]);
+  }, [interactions, uiLocale]);
 
   // Index tool_results by their tool_use_id so the tool-use card can show
   // the result inline beneath it. Falls back to a standalone tool-result
@@ -5282,7 +5380,7 @@ function RunEventList({
       if (parsed?.toolUseId) map.set(parsed.toolUseId, parsed);
     }
     return map;
-  }, [normalised]);
+  }, [normalised, uiLocale]);
 
   // Index plans by their raw (possibly-`\n`-containing) toolCallId so the
   // `tool_use` case below can do an O(1) lookup instead of a per-render scan
@@ -5305,7 +5403,7 @@ function RunEventList({
     for (const p of plans) map.set(p.toolCallId, p);
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on `plansKey` (id+status), not `plans` — see comment above.
-  }, [plansKey]);
+  }, [plansKey, uiLocale]);
 
   // Interleave events and interaction cards by timestamp. Interactions
   // already carry a `createdAt`; pair each with the first event-index
@@ -5315,7 +5413,7 @@ function RunEventList({
   // fired right at end_turn.
   const sortedInteractions = useMemo(
     () => [...interactions].sort((a, b) => a.createdAt - b.createdAt),
-    [interactions],
+    [interactions, uiLocale],
   );
   const interactionByIndex = useMemo(() => {
     const slots = new Map<number, PendingInteraction[]>();
@@ -5327,7 +5425,7 @@ function RunEventList({
       slots.set(idx, bucket);
     }
     return slots;
-  }, [normalised, sortedInteractions]);
+  }, [normalised, sortedInteractions, uiLocale]);
 
   // Render either turn-grouped sections with a sticky user-message header or
   // one flat, normally scrolling block list. Settings defaults to the former
@@ -5534,7 +5632,7 @@ function RunEventList({
     // finished") spill out at the bottom.
     out.push(...(interactionByIndex.get(normalised.length) ?? []).map(renderInteraction));
     return out;
-  }, [normalised, interactionByIndex, resultByToolId, onInteractionResolved, taskId, pathRoots, planByToolCallId, onOpenPlan, latestPlanMarkdown, latestPlanPromptId, stickyUserMessages]);
+  }, [normalised, interactionByIndex, resultByToolId, onInteractionResolved, taskId, pathRoots, planByToolCallId, onOpenPlan, latestPlanMarkdown, latestPlanPromptId, stickyUserMessages, uiLocale]);
 
   // Scopes every `MdImage` under this list (assistant/user bubbles, tagged
   // segments, the plan-approval preview) to this task's id + roots without
@@ -5544,7 +5642,7 @@ function RunEventList({
   // `GitHubDialog`'s scope-less (`allowLocal: false`) default.
   const mdImageScope = useMemo<MdImageScope>(
     () => ({ taskId, roots: pathRoots ?? EMPTY_MD_IMAGE_SCOPE.roots, allowLocal: true }),
-    [taskId, pathRoots],
+    [taskId, pathRoots, uiLocale],
   );
 
   return (
@@ -5568,13 +5666,14 @@ function RunEventList({
  * "queued" state to surface — it's simply working or not.
  */
 function RunningIndicator() {
+  useUILocale();
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-[length:var(--text-caption)] text-muted-foreground">
       <span className="relative inline-flex size-2">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60 opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-success" />
       </span>
-      <span>Agent is working…</span>
+      <span><I18nText id="tasks.agent_is_working" /></span>
     </div>
   );
 }
@@ -5590,8 +5689,9 @@ function RunningIndicator() {
  * elsewhere, in the background tabs this line points at.
  */
 function HoldingIndicator({ text }: { text: string }) {
+  useUILocale();
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-[length:var(--text-caption)] text-muted-foreground">
       <span className="inline-flex size-2 shrink-0 rounded-full bg-info" />
       <span>{text}</span>
     </div>
@@ -5620,11 +5720,12 @@ function HoldingIndicator({ text }: { text: string }) {
  * link inside a native tooltip wouldn't be clickable anyway).
  */
 function RecoveryNotice({ text }: { text: string }) {
+  useUILocale();
   return (
     <div
       data-testid="fx-recovery-notice"
       title={text}
-      className="truncate rounded-md border border-warning/30 bg-warning/10 px-2 py-1 text-[11px] text-warning"
+      className="truncate rounded-md border border-warning/30 bg-warning/10 px-2 py-1 text-[length:var(--text-caption)] text-warning"
     >
       {renderLinkified(text)}
     </div>
@@ -5678,11 +5779,12 @@ function PausedRecoveryNotice({
   onCancelAuto?: () => void;
   cancelBusy?: boolean;
 }) {
+  useUILocale();
   const countdown = useCountdown(autoResume?.at ?? null);
   return (
     <div
       data-testid="fx-recovery-paused"
-      className="flex flex-col gap-1.5 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-[11px] text-danger"
+      className="flex flex-col gap-1.5 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-[length:var(--text-caption)] text-danger"
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1">{renderLinkified(text)}</span>
@@ -5693,15 +5795,13 @@ function PausedRecoveryNotice({
           data-testid="fx-recovery-resume"
           disabled={busy}
           onClick={onResume}
-          className="h-6 shrink-0 px-2 text-[11px]"
-        >
-          Resume
-        </Button>
+          className="h-6 shrink-0 px-2 text-[length:var(--text-caption)]"
+        ><I18nText id="common.resume" />{" "}</Button>
       </div>
       {autoResume && (
         <div className="flex items-center gap-2">
           <span data-testid="fx-recovery-countdown" className="min-w-0 flex-1">
-            {`Auto-resume in ${countdown} (${autoResume.attempt}/${autoResume.max})`}
+            {tr("common.auto_resume_in", { p0: String(countdown), p1: String(autoResume.attempt), p2: String(autoResume.max) })}
           </span>
           <Button
             type="button"
@@ -5710,21 +5810,19 @@ function PausedRecoveryNotice({
             data-testid="fx-recovery-cancel-auto"
             disabled={cancelBusy}
             onClick={onCancelAuto}
-            className="h-6 shrink-0 px-2 text-[11px] text-danger hover:text-danger"
-          >
-            Cancel
-          </Button>
+            className="h-6 shrink-0 px-2 text-[length:var(--text-caption)] text-danger hover:text-danger"
+          ><I18nText id="common.cancel" />{" "}</Button>
         </div>
       )}
       {stopped && (
         <span className="text-danger/80">
           {stopped === "exhausted"
-            ? `Auto-resume gave up after ${FX_AUTO_RESUME_MAX} attempts.`
+            ? tr("common.auto_resume_gave_up_after_attempts", { p0: String(FX_AUTO_RESUME_MAX) })
             : stopped === "cancelled"
-              ? "Auto-resume cancelled."
+              ? tr("common.auto_resume_cancelled")
               : stopped === "failed"
-                ? "Auto-resume could not start — resume manually."
-                : "Auto-resume disabled in Settings."}
+                ? tr("common.auto_resume_could_not_start_resume_manually")
+                : tr("common.auto_resume_disabled_in_settings")}
         </span>
       )}
     </div>
@@ -5867,6 +5965,7 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 // -> RunPanel -> PlanDialog). See md-components.tsx's doc comment.
 
 const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoots }: { text: string; taskId?: string; pathRoots?: readonly (string | null | undefined)[] }) {
+  const { locale: uiLocale } = useUILocale();
   const [expanded, setExpanded] = useState(false);
   const [needsToggle, setNeedsToggle] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -5896,7 +5995,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
   // clean string.
   const normalizedText = useMemo(
     () => normalizeDeliveredUserText(text.replace(/\r\n?/g, "\n")),
-    [text],
+    [text, uiLocale],
   );
 
   // Agetor's own automatic handoff-format reminder (see
@@ -5911,13 +6010,13 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
     const nl = normalizedText.indexOf("\n");
     const firstLine = nl === -1 ? normalizedText : normalizedText.slice(0, nl);
     return isHandoffReminderMarker(firstLine);
-  }, [normalizedText]);
+  }, [normalizedText, uiLocale]);
   const displayText = useMemo(() => {
     if (!isHandoffReminder) return normalizedText;
     const nl = normalizedText.indexOf("\n");
     const rest = nl === -1 ? "" : normalizedText.slice(nl + 1);
     return rest.replace(/^\n+/, "");
-  }, [normalizedText, isHandoffReminder]);
+  }, [normalizedText, isHandoffReminder, uiLocale]);
 
   // Recognize slash-command invocations (XML expansion or plain echo),
   // `<local-command-stdout>` blocks, and (see `src/shared/user-message.ts`'s
@@ -5936,7 +6035,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
   // markdown, never segmented.
   const parsed = useMemo(
     () => (isHandoffReminder ? null : parseUserMessage(displayText)),
-    [isHandoffReminder, displayText],
+    [isHandoffReminder, displayText, uiLocale],
   );
 
   // For an ordinary (non-command) message, split off a trailing "Referenced
@@ -5948,7 +6047,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
   // the common case.
   const ordinary = useMemo(
     () => splitReferences(displayText),
-    [displayText],
+    [displayText, uiLocale],
   );
 
   // Strip `[Image #N]` placeholders only when the message actually carries
@@ -5984,7 +6083,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
   // `commandArgsText` is `""`) when `parsed.kind !== "command"`.
   const commandSegments = useMemo(
     () => parseMessageSegments(displayCommandArgs),
-    [displayCommandArgs],
+    [displayCommandArgs, uiLocale],
   );
 
   // For the `tagged` kind: strip `[Image #N]` placeholders when the message
@@ -5997,7 +6096,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
     if (!parsed || parsed.kind !== "tagged") return [];
     const text = parsed.references.length > 0 ? stripImagePlaceholders(parsed.text) : parsed.text;
     return parseMessageSegments(pathRoots?.length ? shortenTaskPaths(text, pathRoots) : text);
-  }, [parsed, pathRoots]);
+  }, [parsed, pathRoots, uiLocale]);
 
   // Default to the collapsed ~3-line cap and measure once mounted. The cap
   // is always rendered so short messages don't flash full-height first;
@@ -6049,18 +6148,16 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
         {isHandoffReminder && <HandoffReminderBadge />}
         {parsed?.kind === "command-output" ? (
           <>
-            <MachineLabel>command output</MachineLabel>
+            <MachineLabel><I18nText id="tasks.command_output" /></MachineLabel>
             <div ref={contentRef} className={collapseClassName}>
               <CommandOutputBody output={parsed.output} />
             </div>
           </>
         ) : parsed?.kind === "command" ? (
           <>
-            <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/80">
-              you
-            </div>
+            <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/80"><I18nText id="tasks.you" />{" "}</div>
             <div className="mb-1">
-              <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/15 px-1.5 py-0.5 font-mono text-[11px] font-medium text-primary">
+              <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/15 px-1.5 py-0.5 font-mono text-[length:var(--text-caption)] font-medium text-primary">
                 <SquareSlash className="size-3" />
                 {parsed.command.name}
               </span>
@@ -6074,7 +6171,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
           </>
         ) : parsed?.kind === "tagged" ? (
           <>
-            {hasAuthoredContent(taggedSegments) && <MachineLabel>you</MachineLabel>}
+            {hasAuthoredContent(taggedSegments) && <MachineLabel><I18nText id="tasks.you" /></MachineLabel>}
             <div ref={contentRef} className={collapseClassName}>
               <MessageSegments segments={taggedSegments} />
             </div>
@@ -6082,9 +6179,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
           </>
         ) : (
           <>
-            <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/80">
-              you
-            </div>
+            <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/80"><I18nText id="tasks.you" />{" "}</div>
             <div ref={contentRef} className={collapseClassName}>
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -6101,9 +6196,9 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
           <button
             type="button"
             onClick={onToggle}
-            className="mt-1 text-[10px] font-medium uppercase tracking-wide text-primary/70 hover:text-primary"
+            className="mt-1 text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-primary/70 hover:text-primary"
           >
-            {expanded ? "Show less" : "Show more"}
+            {expanded ? tr("common.show_less") : tr("common.show_more")}
           </button>
         )}
       </div>
@@ -6112,6 +6207,7 @@ const UserMessageBlock = memo(function UserMessageBlock({ text, taskId, pathRoot
 });
 
 const AssistantBlock = memo(function AssistantBlock({ text }: { text: string }) {
+  useUILocale();
   return (
     <div className="agetor-md text-foreground">
       <ReactMarkdown
@@ -6126,10 +6222,11 @@ const AssistantBlock = memo(function AssistantBlock({ text }: { text: string }) 
 });
 
 const RawText = memo(function RawText({ text, muted }: { text: string; muted?: boolean }) {
+  useUILocale();
   return (
     <div
       className={cn(
-        "whitespace-pre-wrap font-mono text-[11px]",
+        "whitespace-pre-wrap font-mono text-[length:var(--text-caption)]",
         muted ? "text-muted-foreground" : "text-foreground",
       )}
     >
@@ -6139,8 +6236,9 @@ const RawText = memo(function RawText({ text, muted }: { text: string; muted?: b
 });
 
 const ErrorBlock = memo(function ErrorBlock({ text }: { text: string }) {
+  useUILocale();
   return (
-    <div className="whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/5 p-2 font-mono text-[11px] text-destructive">
+    <div className="whitespace-pre-wrap rounded-md border border-destructive/40 bg-destructive/5 p-2 font-mono text-[length:var(--text-caption)] text-destructive">
       {text}
     </div>
   );
@@ -6157,9 +6255,10 @@ const ErrorBlock = memo(function ErrorBlock({ text }: { text: string }) {
 // `ExternalLink`, and a no-URL line still renders the identical text node
 // across rerenders.
 const StatusDivider = memo(function StatusDivider({ text }: { text: string }) {
-  const content = useMemo(() => renderLinkified(text), [text]);
+  const { locale: uiLocale } = useUILocale();
+  const content = useMemo(() => renderLinkified(text), [text, uiLocale]);
   return (
-    <div className="flex items-center gap-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+    <div className="flex items-center gap-2 py-1 text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground">
       <span className="h-px flex-1 bg-border" />
       <span>{content}</span>
       <span className="h-px flex-1 bg-border" />
@@ -6174,6 +6273,7 @@ const StatusDivider = memo(function StatusDivider({ text }: { text: string }) {
 const CONTINUATION_BADGE_TITLE = "a turn ForgeOrbit didn't send — its first status line says what started it";
 
 const ThinkingBlock = memo(function ThinkingBlock({ text }: { text: string }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const expand = useCallback(() => setOpen(true), []);
@@ -6184,12 +6284,12 @@ const ThinkingBlock = memo(function ThinkingBlock({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1 text-left text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        className="flex w-full items-center gap-1 text-left text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground hover:text-foreground"
       >
         <span>{open ? "▼" : "▶"}</span>
-        <span>thinking</span>
+        <span><I18nText id="common.thinking" /></span>
       </button>
-      <div className="mt-1 whitespace-pre-wrap text-[11px] italic text-muted-foreground">
+      <div className="mt-1 whitespace-pre-wrap text-[length:var(--text-caption)] italic text-muted-foreground">
         {open ? text : preview}
       </div>
     </div>
@@ -6207,6 +6307,7 @@ const SECONDARY_BADGE_CLASS = badgeVariants({ variant: "secondary" });
  *  *needs to act on them* — claude is blocked waiting for an answer that
  *  agetor's UI doesn't otherwise prompt for. */
 const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: ParsedToolUse; result?: ParsedToolResult }) {
+  useUILocale();
   const summary = formatToolInputSummary(call.name, call.input);
   const isInteractive = call.name === "AskUserQuestion" || call.name === "ExitPlanMode";
   const [open, setOpen] = useState(false);
@@ -6251,7 +6352,7 @@ const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: Parsed
         }}
         aria-expanded={expanded}
         className={cn(
-          "flex w-full select-text items-center gap-2 px-2 py-1.5 text-left text-[11px] hover:bg-muted/30",
+          "flex w-full select-text items-center gap-2 px-2 py-1.5 text-left text-[length:var(--text-caption)] hover:bg-muted/30",
           expanded && "border-b border-border/40",
         )}
       >
@@ -6261,7 +6362,7 @@ const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: Parsed
         <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         {mcpParts && mcpParts.length >= 2 ? (
           <span className="flex items-center gap-1 font-mono">
-            <span className={cn(SECONDARY_BADGE_CLASS, "px-1.5 py-0 text-[10px]")}>mcp · {mcpParts[0]}</span>
+            <span className={cn(SECONDARY_BADGE_CLASS, "px-1.5 py-0 text-[length:var(--text-caption)]")}>mcp · {mcpParts[0]}</span>
             <span className="font-medium">{mcpParts.slice(1).join("__")}</span>
           </span>
         ) : (
@@ -6271,10 +6372,10 @@ const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: Parsed
           <span className="ml-2 min-w-0 truncate text-muted-foreground" data-testid="tool-use-title">{call.title}</span>
         )}
         {call.serverSide && (
-          <span className={cn(SECONDARY_BADGE_CLASS, "px-1 py-0 text-[9px] uppercase")}>server</span>
+          <span className={cn(SECONDARY_BADGE_CLASS, "px-1 py-0 text-[9px] uppercase")}><I18nText id="tasks.server" /></span>
         )}
         {summary && <span className="truncate text-muted-foreground">· {summary}</span>}
-        {!expanded && result?.isError && <span className="shrink-0 text-destructive">· error</span>}
+        {!expanded && result?.isError && <span className="shrink-0 text-destructive"><I18nText id="tasks.error" /></span>}
       </button>
       {expanded && (
         <>
@@ -6283,10 +6384,10 @@ const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: Parsed
         </>
       )}
       {isInteractive && !result && (
-        <div className="border-t border-primary/40 bg-primary/10 px-2 py-1.5 text-[11px] text-foreground">
+        <div className="border-t border-primary/40 bg-primary/10 px-2 py-1.5 text-[length:var(--text-caption)] text-foreground">
           {call.name === "AskUserQuestion"
-            ? "Claude is asking — answer it in the card above (it has a custom-answer field for anything not listed)."
-            : "Claude is waiting for plan approval — use the card above. To reject or request changes, press Stop, then send a message."}
+            ? tr("common.claude_is_asking_answer_it_in_the_card")
+            : tr("common.claude_is_waiting_for_plan_approval_use_the")}
         </div>
       )}
     </div>
@@ -6307,30 +6408,30 @@ const ToolUseBlock = memo(function ToolUseBlock({ call, result }: { call: Parsed
  *  findable when scrolling back through history, but drops the "needs you"
  *  urgency via the badge alone. */
 const PlanCard = memo(function PlanCard({ plan, onOpen }: { plan: TaskPlan; onOpen: () => void }) {
+  useUILocale();
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
-        "flex w-full items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-left text-[11px] hover:bg-muted/30",
+        "flex w-full items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-left text-[length:var(--text-caption)] hover:bg-muted/30",
         plan.status === "pending" ? "border-primary/60 ring-1 ring-primary/40" : "border-border/60",
       )}
     >
       <ClipboardList className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="min-w-0 flex-1 truncate font-medium">{plan.name ?? "Implementation plan"}</span>
+      <span className="min-w-0 flex-1 truncate font-medium">{plan.name ?? tr("common.implementation_plan")}</span>
       <PlanStatusBadge status={plan.status} />
-      <span className="shrink-0 text-muted-foreground">View plan →</span>
+      <span className="shrink-0 text-muted-foreground"><I18nText id="tasks.view_plan" /></span>
     </button>
   );
 });
 
 const ToolResultBlock = memo(function ToolResultBlock({ result }: { result: ParsedToolResult | null }) {
+  useUILocale();
   if (!result) return null;
   return (
     <div className="rounded-md border border-border/40 bg-muted/20">
-      <div className="border-b border-border/30 px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-        tool result (orphan)
-      </div>
+      <div className="border-b border-border/30 px-2 py-1 text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground"><I18nText id="tasks.tool_result_orphan" />{" "}</div>
       <ToolResultBody result={result} />
     </div>
   );
@@ -6341,8 +6442,9 @@ const ToolResultBlock = memo(function ToolResultBlock({ result }: { result: Pars
 
 /** Tiny labeled-row helper for tool input bodies. Keeps the markup terse. */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  useUILocale();
   return (
-    <div className="flex items-start gap-2 text-[11px]">
+    <div className="flex items-start gap-2 text-[length:var(--text-caption)]">
       <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
       <span className="min-w-0 flex-1 break-words">{children}</span>
     </div>
@@ -6367,6 +6469,7 @@ function ExpandableBlock({
   className?: string;
   previewLimit?: number;
 }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const full = (prefix ?? "") + text;
   const isLong = full.length > previewLimit;
@@ -6374,7 +6477,7 @@ function ExpandableBlock({
     <div className="mt-1">
       <pre
         className={cn(
-          "overflow-auto whitespace-pre-wrap break-words rounded p-1.5 font-mono text-[10px]",
+          "overflow-auto whitespace-pre-wrap break-words rounded p-1.5 font-mono text-[length:var(--text-caption)]",
           className ?? "bg-muted/40",
           // Collapsed view caps at ~12 lines via max-height so a
           // monstrous file content doesn't dominate the panel.
@@ -6387,9 +6490,9 @@ function ExpandableBlock({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+          className="mt-0.5 text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground hover:text-foreground"
         >
-          {open ? "Show less" : `Show more (${full.length.toLocaleString()} chars)`}
+          {open ? tr("common.show_less") : tr("m0.showMore", { count: full.length.toLocaleString(intlLocale()) })}
         </button>
       )}
     </div>
@@ -6397,19 +6500,20 @@ function ExpandableBlock({
 }
 
 function ToolInputBody({ name, input }: { name: string; input: unknown }) {
+  useUILocale();
   // Per-tool pretty rendering. Anything not specifically handled falls
   // through to a collapsed JSON block at the bottom.
   if (name === "Bash" && isRecord(input) && typeof input.command === "string") {
     return (
       <div className="px-2 py-1.5">
-        <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-1.5 font-mono text-[11px]">
+        <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-1.5 font-mono text-[length:var(--text-caption)]">
           <span className="select-none text-muted-foreground">$ </span>{input.command}
         </pre>
         {typeof input.description === "string" && input.description && (
-          <div className="pt-1 text-[10px] text-muted-foreground">{input.description}</div>
+          <div className="pt-1 text-[length:var(--text-caption)] text-muted-foreground">{input.description}</div>
         )}
         {input.run_in_background === true && (
-          <Badge variant="secondary" className="mt-1 px-1.5 py-0 text-[9px] uppercase">background</Badge>
+          <Badge variant="secondary" className="mt-1 px-1.5 py-0 text-[9px] uppercase"><I18nText id="tasks.background" /></Badge>
         )}
       </div>
     );
@@ -6418,12 +6522,12 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
     const target = (input.file_path ?? input.path ?? input.pattern) as string | undefined;
     const offset = input.offset, limit = input.limit;
     return target ? (
-      <div className="px-2 py-1.5 font-mono text-[11px]">
+      <div className="px-2 py-1.5 font-mono text-[length:var(--text-caption)]">
         <span className="break-all">{target}</span>
         {(typeof offset === "number" || typeof limit === "number") && (
-          <span className="ml-2 text-[10px] text-muted-foreground">
-            {typeof offset === "number" ? `from line ${offset}` : ""}
-            {typeof limit === "number" ? ` · ${limit} lines` : ""}
+          <span className="ml-2 text-[length:var(--text-caption)] text-muted-foreground">
+            {typeof offset === "number" ? tr("common.from_line", { p0: String(offset) }) : ""}
+            {typeof limit === "number" ? tr("common.lines", { p0: String(limit) }) : ""}
           </span>
         )}
       </div>
@@ -6432,7 +6536,7 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   if ((name === "Write" || name === "Edit" || name === "NotebookEdit") && isRecord(input) && typeof input.file_path === "string") {
     return (
       <div className="px-2 py-1.5">
-        <div className="mb-1 break-all font-mono text-[11px]">{input.file_path}</div>
+        <div className="mb-1 break-all font-mono text-[length:var(--text-caption)]">{input.file_path}</div>
         {typeof input.old_string === "string" && (
           <ExpandableBlock
             text={input.old_string}
@@ -6451,7 +6555,7 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
           <ExpandableBlock text={input.content} />
         )}
         {input.replace_all === true && (
-          <Badge variant="secondary" className="mt-1 px-1.5 py-0 text-[9px] uppercase">replace all</Badge>
+          <Badge variant="secondary" className="mt-1 px-1.5 py-0 text-[9px] uppercase"><I18nText id="tasks.replace_all" /></Badge>
         )}
       </div>
     );
@@ -6459,13 +6563,13 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   if (name === "Grep" && isRecord(input)) {
     return (
       <div className="space-y-1 px-2 py-1.5">
-        <Field label="pattern">
+        <Field label={tr("common.pattern")}>
           <code className="rounded bg-muted/40 px-1 font-mono">{String(input.pattern ?? "")}</code>
         </Field>
-        {typeof input.path === "string" && <Field label="in"><span className="font-mono">{input.path}</span></Field>}
-        {typeof input.glob === "string" && <Field label="glob"><span className="font-mono">{input.glob}</span></Field>}
-        {typeof input.type === "string" && <Field label="type"><span className="font-mono">{input.type}</span></Field>}
-        {typeof input.output_mode === "string" && <Field label="mode"><span className="font-mono">{input.output_mode}</span></Field>}
+        {typeof input.path === "string" && <Field label={tr("common.in")}><span className="font-mono">{input.path}</span></Field>}
+        {typeof input.glob === "string" && <Field label={tr("tasks.glob")}><span className="font-mono">{input.glob}</span></Field>}
+        {typeof input.type === "string" && <Field label={tr("common.type_1303c0")}><span className="font-mono">{input.type}</span></Field>}
+        {typeof input.output_mode === "string" && <Field label={tr("tasks.mode")}><span className="font-mono">{input.output_mode}</span></Field>}
       </div>
     );
   }
@@ -6473,12 +6577,12 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
     return (
       <div className="space-y-1 px-2 py-1.5">
         {typeof input.subagent_type === "string" && (
-          <Field label="subagent">
-            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">{input.subagent_type}</Badge>
+          <Field label={tr("common.subagent")}>
+            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[length:var(--text-caption)]">{input.subagent_type}</Badge>
           </Field>
         )}
         {typeof input.description === "string" && (
-          <Field label="task"><span className="text-foreground">{input.description}</span></Field>
+          <Field label={tr("common.task")}><span className="text-foreground">{input.description}</span></Field>
         )}
         {typeof input.prompt === "string" && (
           <ExpandableBlock text={input.prompt} previewLimit={400} />
@@ -6488,7 +6592,7 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   }
   if (name === "TodoWrite" && isRecord(input) && Array.isArray(input.todos)) {
     return (
-      <ul className="space-y-0.5 px-2 py-1.5 text-[11px]">
+      <ul className="space-y-0.5 px-2 py-1.5 text-[length:var(--text-caption)]">
         {(input.todos as Array<Record<string, unknown>>).map((t, i) => (
           <li key={i} className="flex items-start gap-2">
             <span className="shrink-0 text-muted-foreground">
@@ -6504,7 +6608,7 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   }
   if (name === "AskUserQuestion" && isRecord(input) && Array.isArray(input.questions)) {
     return (
-      <div className="px-2 py-1.5 text-[11px]">
+      <div className="px-2 py-1.5 text-[length:var(--text-caption)]">
         {(input.questions as Array<Record<string, unknown>>).map((q, i) => (
           <div key={i} className={cn(i > 0 && "mt-2 border-t border-border/30 pt-2")}>
             <div className="font-medium">{String(q.question ?? "")}</div>
@@ -6536,11 +6640,11 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   if (name === "ToolSearch" && isRecord(input)) {
     return (
       <div className="space-y-1 px-2 py-1.5">
-        <Field label="query">
+        <Field label={tr("common.query")}>
           <code className="rounded bg-muted/40 px-1 font-mono">{String(input.query ?? "")}</code>
         </Field>
         {typeof input.max_results === "number" && (
-          <Field label="max"><span className="font-mono">{input.max_results}</span></Field>
+          <Field label={tr("tasks.max")}><span className="font-mono">{input.max_results}</span></Field>
         )}
       </div>
     );
@@ -6555,16 +6659,16 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
     return (
       <div className="space-y-1 px-2 py-1.5">
         {rawUrl && (
-          <Field label="url">
+          <Field label={tr("tasks.url")}>
             {safeUrl ? (
               <ExternalLink className="font-mono" href={safeUrl}>{safeUrl}</ExternalLink>
             ) : (
-              <span className="font-mono text-muted-foreground" title="non-http(s) URL — rendered as plain text for safety">{rawUrl}</span>
+              <span className="font-mono text-muted-foreground" title={tr("tasks.non_http_s_url_rendered_as_plain_text")}>{rawUrl}</span>
             )}
           </Field>
         )}
         {typeof input.prompt === "string" && (
-          <Field label="prompt"><ExpandableBlock text={input.prompt} previewLimit={240} /></Field>
+          <Field label={tr("common.prompt")}><ExpandableBlock text={input.prompt} previewLimit={240} /></Field>
         )}
       </div>
     );
@@ -6572,23 +6676,23 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   if (name === "WebSearch" && isRecord(input)) {
     return (
       <div className="space-y-1 px-2 py-1.5">
-        <Field label="query">
+        <Field label={tr("common.query")}>
           <code className="rounded bg-muted/40 px-1 font-mono">{String(input.query ?? "")}</code>
         </Field>
         {Array.isArray(input.allowed_domains) && input.allowed_domains.length > 0 && (
-          <Field label="allow">
+          <Field label={tr("tasks.allow")}>
             <span className="flex flex-wrap gap-1">
               {(input.allowed_domains as unknown[]).map((d, i) => (
-                <Badge key={i} variant="outline" className="px-1.5 py-0 font-mono text-[10px]">{String(d)}</Badge>
+                <Badge key={i} variant="outline" className="px-1.5 py-0 font-mono text-[length:var(--text-caption)]">{String(d)}</Badge>
               ))}
             </span>
           </Field>
         )}
         {Array.isArray(input.blocked_domains) && input.blocked_domains.length > 0 && (
-          <Field label="block">
+          <Field label={tr("common.block")}>
             <span className="flex flex-wrap gap-1">
               {(input.blocked_domains as unknown[]).map((d, i) => (
-                <Badge key={i} variant="destructive" className="px-1.5 py-0 font-mono text-[10px]">{String(d)}</Badge>
+                <Badge key={i} variant="destructive" className="px-1.5 py-0 font-mono text-[length:var(--text-caption)]">{String(d)}</Badge>
               ))}
             </span>
           </Field>
@@ -6598,7 +6702,7 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
   }
   if (name === "SlashCommand" && isRecord(input) && typeof input.command === "string") {
     return (
-      <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-1.5 font-mono text-[11px]">
+      <pre className="overflow-auto whitespace-pre-wrap rounded bg-muted/40 px-2 py-1.5 font-mono text-[length:var(--text-caption)]">
         {input.command}
       </pre>
     );
@@ -6607,25 +6711,26 @@ function ToolInputBody({ name, input }: { name: string; input: unknown }) {
     return (
       <div className="space-y-1 px-2 py-1.5">
         {typeof input.skill === "string" && (
-          <Field label="skill">
-            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">{input.skill}</Badge>
+          <Field label={tr("common.skill")}>
+            <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[length:var(--text-caption)]">{input.skill}</Badge>
           </Field>
         )}
         {typeof input.args === "string" && input.args && (
-          <Field label="args"><span className="whitespace-pre-wrap">{truncateString(input.args, 240)}</span></Field>
+          <Field label={tr("tasks.args")}><span className="whitespace-pre-wrap">{truncateString(input.args, 240)}</span></Field>
         )}
       </div>
     );
   }
   if ((name === "BashOutput" || name === "KillShell") && isRecord(input) && typeof input.shell_id === "string") {
     return (
-      <div className="px-2 py-1.5 font-mono text-[11px]">shell {input.shell_id}</div>
+      <div className="px-2 py-1.5 font-mono text-[length:var(--text-caption)]"><I18nText id="tasks.shell" />{" "}{input.shell_id}</div>
     );
   }
   return <RawJsonBody input={input} />;
 }
 
 function RawJsonBody({ input }: { input: unknown }) {
+  useUILocale();
   // Strings come through when legacy truncated tool-input JSON couldn't be
   // repaired; render them raw rather than re-JSON-stringifying (which would
   // wrap the whole thing in quotes and escape every inner `"` — exactly
@@ -6634,13 +6739,14 @@ function RawJsonBody({ input }: { input: unknown }) {
     ? input
     : JSON.stringify(input, null, 2);
   return (
-    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-[length:var(--text-caption)] text-muted-foreground">
       {body}
     </pre>
   );
 }
 
 function ToolResultBody({ result, openSignal = 0 }: { result: ParsedToolResult; openSignal?: number }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const expand = useCallback(() => setOpen(true), []);
@@ -6665,17 +6771,17 @@ function ToolResultBody({ result, openSignal = 0 }: { result: ParsedToolResult; 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[10px] uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        className="flex w-full items-center gap-1 px-2 py-1 text-left text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground hover:text-foreground"
       >
         <span>{open ? "▼" : "▶"}</span>
-        <span>{result.isError ? "error result" : "result"}</span>
+        <span>{result.isError ? tr("common.error_result") : "result"}</span>
       </button>
       {result.retention?.trimmed === true && (
-        <div className="px-2 pb-1 text-[10px] text-muted-foreground" data-testid="tool-result-trimmed">
+        <div className="px-2 pb-1 text-[length:var(--text-caption)] text-muted-foreground" data-testid="tool-result-trimmed">
           {retentionTrimNote(result.retention)}
         </div>
       )}
-      <pre className="max-h-96 overflow-auto whitespace-pre-wrap px-2 pb-1.5 font-mono text-[11px]">
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap px-2 pb-1.5 font-mono text-[length:var(--text-caption)]">
         {open || !isLong ? text : preview}
       </pre>
     </div>
@@ -6768,13 +6874,13 @@ function formatToolInputSummary(name: string, input: unknown): string {
   if ((name === "Agent" || name === "Task") && typeof input.description === "string") return input.description;
   if (name === "AskUserQuestion" && Array.isArray(input.questions) && input.questions.length > 0) {
     const q0 = input.questions[0] as Record<string, unknown>;
-    return typeof q0?.question === "string" ? truncateString(q0.question, 80) : `${input.questions.length} question(s)`;
+    return typeof q0?.question === "string" ? truncateString(q0.question, 80) : tr("common.question_s", { p0: String(input.questions.length) });
   }
-  if (name === "ExitPlanMode" || name === "createPlanToolCall") return "plan ready for approval";
+  if (name === "ExitPlanMode" || name === "createPlanToolCall") return tr("common.plan_ready_for_approval");
   if (name === "TodoWrite" && Array.isArray(input.todos)) {
     const todos = input.todos as Array<Record<string, unknown>>;
     const done = todos.filter((t) => t.status === "completed").length;
-    return `${done}/${todos.length} done`;
+    return tr("common.done_9b0f9b", { p0: String(done), p1: String(todos.length) });
   }
   if (name === "ToolSearch" && typeof input.query === "string") return truncateString(input.query, 80);
   if (name === "WebFetch" && typeof input.url === "string") return truncateString(input.url, 80);
@@ -6785,7 +6891,7 @@ function formatToolInputSummary(name: string, input: unknown): string {
   // SentFilesCard renders the real card whenever `parseSentFilesToolUse`
   // accepts the input; this only backstops the orphan/unknown-shape case
   // where the card declines (see the tool_use case in RunEventList).
-  if (name === "SendUserFile" && Array.isArray(input.files)) return `${input.files.length} file(s)`;
+  if (name === "SendUserFile" && Array.isArray(input.files)) return tr("common.file_s", { p0: String(input.files.length) });
   // MCP tools: the header already shows `mcp · server / tool` via a Badge
   // pair, so we leave the summary empty to avoid double-labeling.
   return "";
@@ -6800,6 +6906,7 @@ function formatToolInputSummary(name: string, input: unknown): string {
  * here — those touch worktree setup that isn't safe to mutate on the fly.
  */
 function TaskDetails({
+  hideAssignment,
   task,
   agents,
   harnesses,
@@ -6815,6 +6922,7 @@ function TaskDetails({
   tmuxSession,
   hasRun,
 }: {
+  hideAssignment: boolean;
   task: Task;
   agents: AgentStatus[];
   harnesses: Harness[];
@@ -6852,6 +6960,9 @@ function TaskDetails({
    *  `AgentProfileDetailsDialog`'s status line only. */
   hasRun: boolean;
 }) {
+  // Bumped when the staged change set is published, so the QC panels re-read evidence that depends on it.
+  const [qcEpoch, setQcEpoch] = useState(0);
+  const { locale: uiLocale } = useUILocale();
   // Spins the Model row's ↻ button while a manual `onRefreshModels` probe is
   // in flight for this task's harness — mirrors NewTaskForm's affordance.
   const [refreshingModels, setRefreshingModels] = useState(false);
@@ -6884,13 +6995,93 @@ function TaskDetails({
         agentProfile: updated.agentProfile,
       });
     } catch (e) {
-      toast.error("Couldn't detach agent", { description: e instanceof Error ? e.message : String(e) });
+      toast.error(tr("common.couldn_t_detach_agent"), { description: e instanceof Error ? e.message : String(e) });
     } finally {
       setDetaching(false);
     }
   };
   const kind = harnessKindOf(task.agent, harnesses);
   const selectedStatus = agents.find((a) => a.harnessId === task.agent);
+  const fallbackDiagnostics = useMemo<AccessDiagnostics>(
+    () => assessAccessDiagnostics({
+      requestedAccessMode: task.accessMode ?? "workspace",
+      kind,
+      harnessId: task.agent,
+      mode: task.mode ?? defaultModeFor(kind),
+      isolation: task.isolation,
+      workdir: task.workdir,
+      worktreePath: task.worktreePath,
+      branch: task.branch,
+      layout: task.isolation === "worktree" ? "linked-worktree" : "repo-root",
+      predicted: task.isolation === "worktree" && !task.worktreePath,
+      isPipeline: Boolean(task.pipelineId),
+    }),
+    [task.accessMode, kind, task.agent, task.mode, task.isolation, task.workdir, task.worktreePath, task.branch, task.pipelineId],
+  );
+  const [serverDiagnostics, setServerDiagnostics] = useState<AccessDiagnostics | null>(null);
+  const diagSeqRef = useRef(0);
+  useEffect(() => {
+    const mine = ++diagSeqRef.current;
+    if (typeof api.getTaskLaunchDiagnostics !== "function") {
+      setServerDiagnostics(null);
+      return;
+    }
+    void api.getTaskLaunchDiagnostics(task.id).then(
+      (res) => { if (mine === diagSeqRef.current) setServerDiagnostics(res); },
+      () => { if (mine === diagSeqRef.current) setServerDiagnostics(null); },
+    );
+  }, [task.id, task.agent, task.mode, task.isolation, task.accessMode, task.workdir, task.worktreePath, task.column, task.runId, qcEpoch]);
+  const launchDiagnostics = serverDiagnostics ?? fallbackDiagnostics;
+
+  // Urgency is a Kanban ordering attribute, independent of the agent lock: it is editable whenever the task is not
+  // archived, and changing it touches nothing else (no status, assignee, run or grant).
+  const [urgencyBusy, setUrgencyBusy] = useState(false);
+  const changeUrgency = async (next: Urgency) => {
+    if (urgencyBusy || next === normalizeUrgency(task.urgency)) return;
+    setUrgencyBusy(true);
+    try {
+      const updated = await api.setTaskUrgency(task.id, next);
+      onTaskFieldsChanged?.(task.id, { urgency: updated.urgency, boardRank: updated.boardRank });
+      toast.success(tr("kanban.urgency.changed", { n: next, label: tr(urgencyLabelKey(next)) }));
+    } catch (error) {
+      toast.error(tr("kanban.urgency.save_failed", { message: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setUrgencyBusy(false);
+    }
+  };
+
+  // Scheduled availability is independent of urgency, status, and agent lock.
+  // For an already running task, edits control future launches without stopping the active run.
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [recurringEditTemplate, setRecurringEditTemplate] = useState<RecurringTemplateView | null>(null);
+  const [convertRecurringOpen, setConvertRecurringOpen] = useState(false);
+  const openEditFutureTemplate = async (templateId: string) => {
+    try {
+      const res = await api.getRecurringTemplate(templateId);
+      setRecurringEditTemplate(res.template);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const changeAvailability = async (next: string | null) => {
+    if (scheduleBusy || next === (task.availableFromUtc ?? null)) return;
+    setScheduleBusy(true);
+    try {
+      const updated = await api.setTaskAvailability(task.id, next);
+      onTaskFieldsChanged?.(task.id, { availableFromUtc: updated.availableFromUtc ?? null, updatedAt: updated.updatedAt });
+      refreshHandsoff();
+      if (updated.availableFromUtc) {
+        const localeTag: "en" | "ru" = uiLocale === "ru" ? "ru" : "en";
+        toast.success(tr("kanban.schedule.saved", { time: formatUtcTimestamp(updated.availableFromUtc, localeTag) }));
+      } else {
+        toast.success(tr("kanban.schedule.cleared"));
+      }
+    } catch (error) {
+      toast.error(tr("kanban.schedule.save_failed", { message: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
 
   const save = async (patch: Partial<Task>) => {
     try {
@@ -6918,7 +7109,7 @@ function TaskDetails({
       task.model ?? DEFAULT_MODEL[kind],
       selectedStatus?.loggedIn ?? null,
     ),
-    [kind, task.agent, agentModels, harnessModels, task.model, selectedStatus?.loggedIn],
+    [kind, task.agent, agentModels, harnessModels, task.model, selectedStatus?.loggedIn, uiLocale],
   );
 
   // Effort is per (agent, model) — e.g. xhigh isn't valid for Sonnet 4.6,
@@ -6942,19 +7133,19 @@ function TaskDetails({
   // this is the single source that distrust must flow through.
   const discoveredEffortsForTask = useMemo(
     () => discoveredEffortsFor(modelOptions, task.model),
-    [modelOptions, task.model],
+    [modelOptions, task.model, uiLocale],
   );
   const supportedEffortsForModel = useMemo(
     () => supportedEfforts(kind, task.model, discoveredEffortsForTask),
-    [kind, task.model, discoveredEffortsForTask],
+    [kind, task.model, discoveredEffortsForTask, uiLocale],
   );
   const allowedEfforts = useMemo(
     () => new Set(supportedEffortsForModel.map((o) => o.id)),
-    [supportedEffortsForModel],
+    [supportedEffortsForModel, uiLocale],
   );
   const retainable = useMemo(
     () => retainableEfforts(kind, task.model, discoveredEffortsForTask),
-    [kind, task.model, discoveredEffortsForTask],
+    [kind, task.model, discoveredEffortsForTask, uiLocale],
   );
   // Mirrors `mergeModelOptions` rule 6: a task's current effort can be
   // retained (kept valid by the cascade above) without being one the picker
@@ -6974,7 +7165,7 @@ function TaskDetails({
           : {
               ...o,
               unlisted: true,
-              hint: `Not in ${harnessLabel}'s discovered effort menu — kept as you chose it.`,
+              hint: tr("common.not_in_s_discovered_effort_menu_kept_as", { p0: String(harnessLabel) }),
             }
       ));
     // `task.effort` may be an id with no `EFFORT_OPTIONS` row at all (an
@@ -6986,13 +7177,13 @@ function TaskDetails({
         {
           id: task.effort,
           label: task.effort,
-          hint: `Not in ${harnessLabel}'s discovered effort menu — kept as you chose it.`,
+          hint: tr("common.not_in_s_discovered_effort_menu_kept_as", { p0: String(harnessLabel) }),
           unlisted: true,
         },
       ];
     }
     return options;
-  }, [allowedEfforts, retainable, task.effort, harnesses, task.agent, kind]);
+  }, [allowedEfforts, retainable, task.effort, harnesses, task.agent, kind, uiLocale]);
   const maxModeAvailable = kind === "cursor" && cursorModelSupportsMaxMode(task.model);
   const fastAvailable = kind === "cursor" && cursorModelSupportsFast(task.model, task.effort);
   useEffect(() => {
@@ -7096,29 +7287,111 @@ function TaskDetails({
     <>
       <details className="border-b border-border/60 px-3 py-2 text-xs">
         <summary className="cursor-pointer text-muted-foreground">
-          <span className="text-[10px] uppercase tracking-wide">Task details</span>
+          <span className="text-[length:var(--text-caption)] uppercase tracking-wide"><I18nText id="tasks.task_details" /></span>
         </summary>
         <div className="mt-2 space-y-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Prompt</div>
-            <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-[11px] leading-snug">{task.prompt}</p>
+            <div className="text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground"><I18nText id="tasks.prompt" /></div>
+            <p className="max-h-48 overflow-y-auto whitespace-pre-wrap text-[length:var(--text-caption)] leading-snug">{task.prompt}</p>
           </div>
 
           {!editable && (
             <p
-              className="text-[10px] italic text-muted-foreground"
+              className="text-[length:var(--text-caption)] italic text-muted-foreground"
               data-testid={profileLock ? "task-agent-profile-hint" : undefined}
             >
               {profileLock
                 ? (agentProfileHintName
-                  ? `Bound to agent "${agentProfileHintName}" — detach to edit.`
-                  : "Bound to an unknown agent — detach to edit.")
-                : "Stop the run to change agent / mode / model / effort."}
+                  ? tr("common.bound_to_agent_detach_to_edit", { p0: String(agentProfileHintName) })
+                  : tr("common.bound_to_an_unknown_agent_detach_to_edit"))
+                : tr("common.stop_the_run_to_change_agent_mode_model")}
             </p>
           )}
 
-          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-[11px]">
-            <dt className="text-muted-foreground">Agent</dt>
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-[length:var(--text-caption)]">
+            <dt className="text-muted-foreground">{tr("kanban.urgency.field")}</dt>
+            <dd className="min-w-0" data-testid="task-urgency-row">
+              <UrgencySelect
+                testId="task-urgency-select"
+                className="h-7 text-xs"
+                value={task.urgency}
+                disabled={urgencyBusy || task.archivedAt != null}
+                onChange={(next) => void changeUrgency(next)}
+              />
+            </dd>
+            <dt className="self-start pt-1 text-muted-foreground">{tr("kanban.schedule.field")}</dt>
+            <dd className="min-w-0" data-testid="task-schedule-row">
+              <ScheduledAvailabilityControl
+                value={task.availableFromUtc ?? null}
+                onCommit={changeAvailability}
+                disabled={scheduleBusy || task.archivedAt != null}
+                isRunning={task.column === "running"}
+                compact
+                testIdPrefix="task-schedule"
+              />
+            </dd>
+            <dt className="self-start pt-1 text-muted-foreground">{tr("kanban.recurring.task_details_label")}</dt>
+            <dd className="min-w-0 space-y-1" data-testid="task-recurring-row">
+              {task.recurring ? (
+                <>
+                  <div className="font-medium text-foreground">
+                    {formatRecurrenceSummary(task.recurring.schedule, uiLocale === "ru" ? "ru" : "en")}
+                  </div>
+                  {task.recurring.nominalUtc && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {tr("kanban.recurring.task_details_nominal", {
+                        time: formatUtcTimestamp(task.recurring.nominalUtc, uiLocale === "ru" ? "ru" : "en"),
+                      })}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-muted-foreground">
+                    {tr("kanban.recurring.task_details_edit_this")}
+                  </div>
+                  {task.recurring.templateStatus !== "stopped" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      data-testid="task-recurring-edit-future"
+                      onClick={() => void openEditFutureTemplate(task.recurring!.templateId)}
+                    >
+                      {tr("kanban.recurring.task_details_edit_future")}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                !task.archivedAt &&
+                !task.pipelineId &&
+                !task.pipelineParentId &&
+                task.column !== "running" &&
+                task.column !== "done" && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-[11px]"
+                    data-testid="task-make-recurring"
+                    onClick={() => setConvertRecurringOpen(true)}
+                  >
+                    {tr("kanban.recurring.task_details_convert")}
+                  </Button>
+                )
+              )}
+              <RecurringTemplateDialog
+                open={Boolean(recurringEditTemplate)}
+                onClose={() => setRecurringEditTemplate(null)}
+                projectPath={recurringEditTemplate?.projectPath ?? task.workdir}
+                template={recurringEditTemplate}
+              />
+              <RecurringTemplateDialog
+                open={convertRecurringOpen}
+                onClose={() => setConvertRecurringOpen(false)}
+                projectPath={task.workdir}
+                sourceTask={task}
+              />
+            </dd>
+            <dt className="text-muted-foreground"><I18nText id="common.agent" /></dt>
             <dd className="min-w-0">
               {showAgentProfileActions ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -7128,7 +7401,7 @@ function TaskDetails({
                       data-testid="task-agent-profile-open"
                       aria-haspopup="dialog"
                       aria-expanded={profileDialogOpen}
-                      aria-label="View agent details"
+                      aria-label={tr("tasks.view_agent_details")}
                       onClick={() => setProfileDialogOpen(true)}
                       className="min-w-0 max-w-full rounded-full transition-opacity hover:opacity-80"
                     >
@@ -7140,9 +7413,7 @@ function TaskDetails({
                       />
                     </button>
                   ) : (
-                    <span data-testid="task-agent-profile-unknown" className="text-warning">
-                      Unknown agent
-                    </span>
+                    <span data-testid="task-agent-profile-unknown" className="text-warning"><I18nText id="common.unknown_agent" />{" "}</span>
                   )}
                   {/* A step task's profile is frozen — the parent pipeline
                       snapshotted it at run start (D8/D9,
@@ -7153,31 +7424,25 @@ function TaskDetails({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-6 px-2 text-[10px]"
+                      className="h-6 px-2 text-[length:var(--text-caption)]"
                       data-testid="task-agent-profile-detach"
                       disabled={runningLock || detaching}
                       onClick={() => void detachProfile()}
-                    >
-                      Detach
-                    </Button>
+                    ><I18nText id="tasks.detach" />{" "}</Button>
                   )}
                   <button
                     type="button"
                     data-testid="task-agent-profile-manage"
                     onClick={() => onOpenSettingsAgents()}
-                    className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  >
-                    Manage agents…
-                  </button>
+                    className="text-[length:var(--text-caption)] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  ><I18nText id="tasks.manage_agents" />{" "}</button>
                 </div>
               ) : (
-                <span data-testid="task-agent-profile-none" className="text-muted-foreground">
-                  None
-                </span>
+                <span data-testid="task-agent-profile-none" className="text-muted-foreground"><I18nText id="common.none_dc937b" />{" "}</span>
               )}
             </dd>
 
-            <dt className="text-muted-foreground">Harness</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.harness" /></dt>
             <dd className="min-w-0">
               {editable ? (
                 <AgentSelect
@@ -7185,6 +7450,7 @@ function TaskDetails({
                   harnesses={harnesses}
                   agents={agents}
                   onChange={onAgentChange}
+                  label={tr("common.harness")}
                 />
               ) : (
                 <span className="inline-flex items-center gap-1">
@@ -7193,26 +7459,30 @@ function TaskDetails({
               )}
             </dd>
 
-            <dt className="text-muted-foreground">Mode</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.mode" /></dt>
             <dd className="min-w-0">
               {editable ? (
                 <CompactSelect
                   value={task.mode ?? nullModeFallback}
                   options={modeOptions}
                   onChange={(mode) => void save({ mode })}
+                  label={tr("common.mode")}
                 />
               ) : (
-                <span>{task.mode ?? "—"}</span>
+                <span>{staticLabel(modeOptions.find((m) => m.id === (task.mode ?? nullModeFallback))?.label ?? task.mode ?? "—")}</span>
+              )}
+              {kind === "antigravity" && (task.mode ?? nullModeFallback) === "ask" && (
+                <p className="mt-1 text-[length:var(--text-caption)] text-muted-foreground" data-testid="antigravity-file-edits-note">
+                  {tr("models.auto_accept_file_edits_ask_before_executing_commands")}
+                </p>
               )}
             </dd>
 
-            <dt className="flex items-center gap-1 text-muted-foreground">
-              Model
-              {editable && (
-                <Tooltip label="Refresh model list">
+            <dt className="flex items-center gap-1 text-muted-foreground"><I18nText id="common.model" />{" "}{editable && (
+                <Tooltip label={tr("tasks.refresh_model_list")}>
                   <button
                     type="button"
-                    aria-label="Refresh model list"
+                    aria-label={tr("tasks.refresh_model_list")}
                     data-testid="refresh-models-details"
                     disabled={refreshingModels}
                     className={cn(
@@ -7241,13 +7511,14 @@ function TaskDetails({
                   value={task.model ?? DEFAULT_MODEL[kind]}
                   options={modelOptions}
                   onChange={(model) => void save({ model })}
+                  label={tr("common.model")}
                 />
               ) : (
                 <span>{task.model ?? "—"}</span>
               )}
             </dd>
 
-            <dt className="text-muted-foreground">Effort</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.effort" /></dt>
             <dd className="min-w-0">
               {editable ? (
                 <CompactSelect
@@ -7255,7 +7526,8 @@ function TaskDetails({
                   options={effortSelectOptions}
                   onChange={(effort) => void save({ effort })}
                   disabled={supportedEffortsForModel.length === 0}
-                  placeholder="n/a"
+                  placeholder={tr("common.n_a")}
+                  label={tr("common.effort")}
                 />
               ) : (
                 <span>{task.effort ?? "—"}</span>
@@ -7264,17 +7536,17 @@ function TaskDetails({
 
             {kind === "cursor" && (maxModeAvailable || task.maxMode) && (
               <>
-                <dt className="text-muted-foreground">Max Mode</dt>
+                <dt className="text-muted-foreground"><I18nText id="tasks.max_mode" /></dt>
                 <dd className="min-w-0">
                   {editable ? (
                     <Switch
                       checked={task.maxMode}
                       onCheckedChange={(maxMode) => void save({ maxMode })}
                       disabled={!maxModeAvailable}
-                      aria-label="Use Cursor Max Mode context"
+                      aria-label={tr("tasks.use_cursor_max_mode_context")}
                     />
                   ) : (
-                    <span>{task.maxMode ? "on" : "off"}</span>
+                    <span>{task.maxMode ? tr("common.on") : "off"}</span>
                   )}
                 </dd>
               </>
@@ -7282,28 +7554,31 @@ function TaskDetails({
 
             {kind === "cursor" && (fastAvailable || task.fast) && (
               <>
-                <dt className="text-muted-foreground">Fast</dt>
+                <dt className="text-muted-foreground"><I18nText id="tasks.fast" /></dt>
                 <dd className="min-w-0">
                   {editable ? (
                     <Switch
                       checked={task.fast}
                       onCheckedChange={(fast) => void save({ fast })}
                       disabled={!fastAvailable}
-                      aria-label="Use Cursor fast variant"
+                      aria-label={tr("tasks.use_cursor_fast_variant")}
                     />
                   ) : (
-                    <span>{task.fast ? "on" : "off"}</span>
+                    <span>{task.fast ? tr("common.on") : "off"}</span>
                   )}
                 </dd>
               </>
             )}
 
-            <dt className="text-muted-foreground">Project</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.project_985959" /></dt>
             <dd className="min-w-0 truncate font-mono" title={task.workdir}>
               {abbreviateHome(task.workdir, homeDir)}
             </dd>
 
-            <dt className="text-muted-foreground">Isolation</dt>
+            <dt className="text-muted-foreground">{tr("access.label")}</dt>
+            <dd className="min-w-0" data-testid="task-details-access-mode">{accessModeLabel(task.accessMode ?? "workspace")}</dd>
+
+            <dt className="text-muted-foreground"><I18nText id="tasks.isolation" /></dt>
             <dd className="min-w-0">{task.isolation}</dd>
 
             {task.branch && (() => {
@@ -7311,32 +7586,32 @@ function TaskDetails({
               if (!drift.drifted) {
                 return (
                   <>
-                    <dt className="text-muted-foreground">Branch</dt>
+                    <dt className="text-muted-foreground"><I18nText id="common.branch" /></dt>
                     <dd className="min-w-0 truncate font-mono">{task.branch}</dd>
                   </>
                 );
               }
               return (
                 <>
-                  <dt className="text-muted-foreground">Checked out</dt>
+                  <dt className="text-muted-foreground"><I18nText id="tasks.checked_out" /></dt>
                   <dd
                     data-testid="task-details-checkout-branch"
                     className={cn(
                       "min-w-0 truncate font-mono",
                       task.branchSource === "existing" ? "text-warning" : undefined,
                     )}
-                    title={task.branchSource === "existing" ? "Commits here won't land on the pull request" : undefined}
+                    title={task.branchSource === "existing" ? tr("common.commits_here_won_t_land_on_the_pull") : undefined}
                   >
                     {drift.live}
                   </dd>
-                  <dt className="text-muted-foreground">Task branch</dt>
+                  <dt className="text-muted-foreground"><I18nText id="tasks.task_branch" /></dt>
                   <dd data-testid="task-details-task-branch" className="min-w-0 truncate font-mono">{task.branch}</dd>
                 </>
               );
             })()}
             {task.baseRef && (
               <>
-                <dt className="text-muted-foreground">Base</dt>
+                <dt className="text-muted-foreground"><I18nText id="tasks.base" /></dt>
                 <dd className="min-w-0 truncate font-mono">{task.baseRef.slice(0, 12)}</dd>
               </>
             )}
@@ -7350,29 +7625,26 @@ function TaskDetails({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-6 shrink-0 px-2 text-[11px]"
+                    className="h-6 shrink-0 px-2 text-[length:var(--text-caption)]"
                     onClick={() => {
                       void api.openTmux(task.id).catch((err: unknown) => {
                         const msg = err instanceof Error ? err.message : "Could not attach to tmux session";
                         toast.error(msg);
                       });
                     }}
-                    title={`Attach to the tmux session in a new Terminal window (tmux attach -t ${tmuxSession})`}
+                    title={tr("common.attach_to_the_tmux_session_in_a_new", { p0: String(tmuxSession) })}
                   >
-                    <Terminal className="mr-1 size-3" /> Attach
-                  </Button>
+                    <Terminal className="mr-1 size-3" />{" "}<I18nText id="tasks.attach" />{" "}</Button>
                 </dd>
               </>
             )}
             {task.references.length > 0 && (
               <>
-                <dt className="text-muted-foreground self-start">Files</dt>
+                <dt className="text-muted-foreground self-start"><I18nText id="common.files" /></dt>
                 <dd className="min-w-0">
                   <details open>
                     <summary className="cursor-pointer text-muted-foreground">
-                      <span className="font-mono">({task.references.length})</span>{" "}
-                      files / folders
-                    </summary>
+                      <span className="font-mono">({task.references.length})</span>{" "}<I18nText id="tasks.files_folders" />{" "}</summary>
                     <ul className="mt-1 space-y-0.5">
                       {task.references.map((r) => {
                         const Icon = iconForRef(r);
@@ -7403,8 +7675,38 @@ function TaskDetails({
               </>
             )}
           </dl>
+          <TaskSchedulingSection task={task} />
         </div>
       </details>
+      <details
+        open={!launchDiagnostics.launchAllowed || task.column === "ready" || task.column === "backlog" || (task.accessMode ?? "workspace") !== "workspace"}
+        className="border-b border-border/60 px-3 py-2 text-xs"
+      >
+        <summary className="cursor-pointer text-[length:var(--text-caption)] uppercase tracking-wide text-muted-foreground">
+          {tr("access.disclosure.title")} · {accessModeLabel(launchDiagnostics.accessMode)}
+        </summary>
+        <div className="mt-2">
+          <AccessModeDisclosure diagnostics={launchDiagnostics} testId="run-panel-launch-diagnostics" compact />
+        </div>
+      </details>
+      {(["backlog", "inbox", "ready"].includes(task.column)) && !hideAssignment && <TaskAssignmentPanel key={`task-assignment-${task.id}`} task={task} />}
+      <OrchestratedWorkflowPanel key={`orchestrated-${task.id}`} task={task} />
+      {task.column === "ready" && <ResourceRecommendation key={task.id} task={task} harnesses={harnesses} />}
+      <HandsoffTaskPanel key={`handsoff-${task.id}`} task={task} />
+      <TaskWorkspacePanel task={task} onChanged={() => setQcEpoch((n) => n + 1)} />
+      {task.column !== "done" && !task.qcState?.awaitingOwnerApproval && <ProjectTestPermission key={`project-test-${task.id}`} task={task} />}
+      {(["ready", "running", "blocked"].includes(task.column)) && <EmployeeExecution key={`employee-execution-${task.id}`} task={task} harnesses={harnesses} />}
+      {task.column !== "done" && !task.qcState?.awaitingOwnerApproval && <LiveExecutionApproval
+        provider={task.agent}
+        model={task.model}
+        task={task.title}
+        workspace={task.worktreePath ?? task.workdir}
+        role={task.column === "review" ? "reviewer" : "developer"}
+        mode={task.mode}
+      />}
+      <TaskQualityControl task={task} harnesses={harnesses} refreshEpoch={qcEpoch} />
+      {!task.pipelineParentId && (hasRun || task.column === "review" || task.column === "done") &&
+        <TaskForecastActual key={`forecast-actual-${task.id}`} taskId={task.id} refreshKey={`${task.column}:${task.runId ?? ""}`} />}
       <AgentProfileDetailsDialog
         open={profileDialogOpen}
         onClose={() => setProfileDialogOpen(false)}
@@ -7451,8 +7753,11 @@ function CompactSelect({
   onChange,
   disabled,
   placeholder,
+  label,
 }: {
   value: string;
+  /** Accessible name. A bare select announces only its value, so Mode, Model and Effort were indistinguishable. */
+  label?: string;
   // `hint`/`unlisted` are optional so plain `{id,label}` rows (every other
   // call site — Mode, Effort) keep compiling unchanged; only the Model row's
   // `mergedModels()` result actually populates them. Mirrors NewTaskForm's
@@ -7464,18 +7769,20 @@ function CompactSelect({
   disabled?: boolean;
   placeholder?: string;
 }) {
+  useUILocale();
   return (
     <Select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-6 text-[11px]"
+      className="h-6 text-[length:var(--text-caption)]"
       disabled={disabled}
+      aria-label={label}
     >
       {options.length === 0 && placeholder ? (
         <option value="">{placeholder}</option>
       ) : (
         options.map((o) => (
-          <option key={o.id} value={o.id} title={o.unlisted ? o.hint : undefined}>{o.label}</option>
+          <option key={o.id} value={o.id} title={o.unlisted ? o.hint : undefined}>{staticLabel(o.label)}</option>
         ))
       )}
     </Select>
@@ -7487,24 +7794,28 @@ function AgentSelect({
   harnesses,
   agents,
   onChange,
+  label,
 }: {
+  label?: string;
   /** Current harness id stored on the task. */
   value: string;
   harnesses: Harness[];
   agents: AgentStatus[];
   onChange: (next: string) => void;
 }) {
+  useUILocale();
   return (
     <Select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-6 text-[11px]"
+      className="h-6 text-[length:var(--text-caption)]"
+      aria-label={label}
     >
       {harnesses.map((h) => {
         const status = agents.find((a) => a.harnessId === h.id);
         const available = status?.available ?? true;
         const loggedOut = available && status?.loggedIn === false;
-        const suffix = !available ? " (unavailable)" : loggedOut ? " (not logged in)" : "";
+        const suffix = !available ? " (unavailable)" : loggedOut ? tr("common.not_logged_in_ddaea5") : "";
         return (
           <option key={h.id} value={h.id}>
             {h.label}{suffix}
@@ -7554,6 +7865,7 @@ function AskQuestionsCard({
    *  drive-a-numbered-modal path, which can't withhold. */
   onWithheld?: (reason: string) => void;
 }) {
+  useUILocale();
   // One entry per question. selected = picked option labels; custom = optional free-text.
   const [answers, setAnswers] = useState<Array<{ selected: string[]; custom: string }>>(
     () => req.questions.map(() => ({ selected: [], custom: "" })),
@@ -7606,7 +7918,7 @@ function AskQuestionsCard({
       // composer's own withheld branch (toast + backlog refresh); any other
       // failed delivery gets its own toast so the vanished card isn't silent.
       if (res.withheld && res.savedToBacklog) {
-        onWithheld?.(res.reason ?? "claude is waiting on a prompt — your answer was saved to the backlog tray");
+        onWithheld?.(res.reason ?? tr("common.claude_is_waiting_on_a_prompt_your_answer"));
       } else if (!res.ok) {
         // The server's own `reason` is the most specific explanation; the
         // copy below is the fallback when it sent none. `delivery` says what
@@ -7617,13 +7929,13 @@ function AskQuestionsCard({
         // re-collect.
         const reason = res.reason?.trim();
         if (res.delivery === undefined) {
-          toast(reason || "This question was already resolved");
+          toast(reason || tr("common.this_question_was_already_resolved"));
         } else {
           toast.error(
             reason
               || (res.delivery === "message"
-                ? "Answer didn't reach Claude — answer it in the terminal or resend from the composer"
-                : "Answer didn't reach Claude — a fresh card will appear; answer it there or in the terminal"),
+                ? tr("common.answer_didn_t_reach_claude_answer_it_in")
+                : tr("common.answer_didn_t_reach_claude_a_fresh_card")),
           );
         }
       }
@@ -7634,7 +7946,7 @@ function AskQuestionsCard({
       // was sent on our behalf, so this is neutral feedback, and the card
       // goes away — the request that owns it resolves it on the server.
       if (e instanceof ApiError && e.status === 409) {
-        toast(e.message || "This question is already being answered");
+        toast(e.message || tr("common.this_question_is_already_being_answered"));
         onResolved(req.id);
         return;
       }
@@ -7653,20 +7965,20 @@ function AskQuestionsCard({
     const custom = a.custom.trim();
     const pieces = !req.questions[qi]?.multiSelect && custom ? [] : [...a.selected];
     if (custom) pieces.push(custom);
-    return pieces.length ? pieces.join(", ") : "(no answer)";
+    return pieces.length ? pieces.join(", ") : tr("common.no_answer");
   };
 
   return (
     <div className="rounded-md border border-primary/60 bg-card p-3 ring-1 ring-primary/40">
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-primary">
+        <span className="flex items-center gap-1.5 text-[length:var(--text-caption)] uppercase tracking-wide text-primary">
           <HelpCircle className="size-3.5" aria-hidden />
-          {phase === "review" ? "Review your answers" : "Claude is asking"}
+          {phase === "review" ? tr("common.review_your_answers") : tr("common.claude_is_asking")}
         </span>
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="font-mono text-[length:var(--text-caption)] text-muted-foreground">
           {phase === "review"
-            ? "before submitting"
-            : req.questions.length === 1 ? "1 question" : `${req.questions.length} questions`}
+            ? tr("common.before_submitting")
+            : req.questions.length === 1 ? tr("common.1_question") : tr("common.questions", { p0: String(req.questions.length) })}
         </span>
       </div>
 
@@ -7681,11 +7993,9 @@ function AskQuestionsCard({
             ))}
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={() => setPhase("answer")} disabled={submitting}>
-              ← Back
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPhase("answer")} disabled={submitting}><I18nText id="tasks.back" />{" "}</Button>
             <Button onClick={() => void submit()} disabled={!canSubmit || submitting} size="sm">
-              {submitting ? "Submitting…" : "Submit answers"}
+              {submitting ? tr("common.submitting") : tr("common.submit_answers")}
             </Button>
           </div>
         </>
@@ -7716,10 +8026,10 @@ function AskQuestionsCard({
                         <span className="text-[12px]">
                           <span className="font-medium">{opt.label}</span>
                           {opt.description && (
-                            <span className="block text-[11px] text-muted-foreground">{opt.description}</span>
+                            <span className="block text-[length:var(--text-caption)] text-muted-foreground">{opt.description}</span>
                           )}
                           {opt.preview && (
-                            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-1.5 font-mono text-[10px] leading-snug text-muted-foreground">{opt.preview}</pre>
+                            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-1.5 font-mono text-[length:var(--text-caption)] leading-snug text-muted-foreground">{opt.preview}</pre>
                           )}
                         </span>
                       </label>
@@ -7729,7 +8039,7 @@ function AskQuestionsCard({
                 <Textarea
                   value={answers[qi]?.custom ?? ""}
                   onChange={(e) => setCustom(qi, e.target.value)}
-                  placeholder={q.multiSelect ? "Custom answer — added to the selection" : "Custom answer — replaces the selection"}
+                  placeholder={q.multiSelect ? tr("common.custom_answer_added_to_the_selection") : tr("common.custom_answer_replaces_the_selection")}
                   rows={2}
                   className="mt-2 text-[12px]"
                 />
@@ -7737,9 +8047,7 @@ function AskQuestionsCard({
             ))}
           </div>
           <div className="mt-3 flex items-center justify-end">
-            <Button onClick={() => setPhase("review")} disabled={!canSubmit || submitting} size="sm">
-              Review answers →
-            </Button>
+            <Button onClick={() => setPhase("review")} disabled={!canSubmit || submitting} size="sm"><I18nText id="tasks.review_answers" />{" "}</Button>
           </div>
         </>
       )}
@@ -7781,6 +8089,7 @@ function TmuxPromptCard({
    *  than rendering an empty block). */
   planMarkdown?: string | null;
 }) {
+  useUILocale();
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Only used by the unparsable-fallback branch below, but declared here
@@ -7830,12 +8139,9 @@ function TmuxPromptCard({
     };
     return (
       <div className="rounded-md border border-primary/60 bg-card p-3 ring-1 ring-primary/40">
-        <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-primary">
-          <ClipboardList className="size-3.5" aria-hidden /> Claude’s plan is ready
-        </div>
-        <p className="mb-3 text-[12px] text-muted-foreground">
-          Claude finished a plan{planMarkdown ? "" : " (shown above)"} and is ready to execute. How should it proceed?
-        </p>
+        <div className="mb-2 flex items-center gap-1.5 text-[length:var(--text-caption)] uppercase tracking-wide text-primary">
+          <ClipboardList className="size-3.5" aria-hidden />{" "}<I18nText id="tasks.claude_s_plan_is_ready" />{" "}</div>
+        <p className="mb-3 text-[12px] text-muted-foreground"><I18nText id="tasks.claude_finished_a_plan" />{planMarkdown ? "" : " (shown above)"}{" "}<I18nText id="tasks.and_is_ready_to_execute_how_should_it" />{" "}</p>
         {planMarkdown && (
           <div className="agetor-md mb-3 max-h-64 overflow-y-auto rounded-md border border-border/40 bg-muted/20 p-2 text-foreground">
             <ReactMarkdown
@@ -7877,10 +8183,8 @@ function TmuxPromptCard({
             {submitting === "__reject__" ? "Dismissing…" : "Reject — don’t approve"}
           </Button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Rejecting dismisses the plan; then describe your changes in the message box below.
-        </p>
-        {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+        <p className="mt-2 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.rejecting_dismisses_the_plan_then_describe_your_changes" />{" "}</p>
+        {error && <p className="mt-2 text-[length:var(--text-caption)] text-destructive">{error}</p>}
       </div>
     );
   }
@@ -7907,11 +8211,10 @@ function TmuxPromptCard({
     return (
       <div className="rounded-md border border-warning/60 bg-card p-3 ring-1 ring-warning/40">
         <div className="mb-2 flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-warning">
-            <Terminal className="size-3.5" aria-hidden /> Claude is asking something ForgeOrbit can’t read
-          </span>
+          <span className="flex items-center gap-1.5 text-[length:var(--text-caption)] uppercase tracking-wide text-warning">
+            <Terminal className="size-3.5" aria-hidden />{" "}<I18nText id="tasks.claude_is_asking_something_forgeorbit_can_t_read" />{" "}</span>
         </div>
-        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/40 p-2 font-mono text-[11px] leading-snug">
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/40 p-2 font-mono text-[length:var(--text-caption)] leading-snug">
           {cleanPromptPane(req.paneText)}
         </pre>
         <div className="mt-3 flex items-center justify-end gap-2">
@@ -7922,14 +8225,12 @@ function TmuxPromptCard({
             disabled={opening}
           >
             <Terminal className="mr-1 size-3.5" aria-hidden />
-            {opening ? "Opening…" : "Open in Terminal"}
+            {opening ? tr("m0.opening") : tr("m0.openInTerminal")}
           </Button>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Answering the prompt in the terminal resolves this card automatically.
-        </p>
+        <p className="mt-2 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.answering_the_prompt_in_the_terminal_resolves_this" />{" "}</p>
         {openError && (
-          <p className="mt-2 text-right text-[11px] text-destructive">{openError}</p>
+          <p className="mt-2 text-right text-[length:var(--text-caption)] text-destructive">{openError}</p>
         )}
       </div>
     );
@@ -7938,11 +8239,10 @@ function TmuxPromptCard({
   return (
     <div className="rounded-md border border-warning/60 bg-card p-3 ring-1 ring-warning/40">
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-warning">
-          <Terminal className="size-3.5" aria-hidden /> Claude is paused on a prompt
-        </span>
+        <span className="flex items-center gap-1.5 text-[length:var(--text-caption)] uppercase tracking-wide text-warning">
+          <Terminal className="size-3.5" aria-hidden />{" "}<I18nText id="tasks.claude_is_paused_on_a_prompt" />{" "}</span>
       </div>
-      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/40 p-2 font-mono text-[11px] leading-snug">
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/40 p-2 font-mono text-[length:var(--text-caption)] leading-snug">
         {cleanPromptPane(req.paneText)}
       </pre>
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
@@ -7967,7 +8267,7 @@ function TmuxPromptCard({
         })}
       </div>
       {error && (
-        <p className="mt-2 text-right text-[11px] text-destructive">{error}</p>
+        <p className="mt-2 text-right text-[length:var(--text-caption)] text-destructive">{error}</p>
       )}
     </div>
   );
@@ -8000,6 +8300,7 @@ function FxPermissionCard({
   req: Extract<PendingInteraction, { kind: "fx_permission" }>;
   onResolved: (id: string) => void;
 }) {
+  useUILocale();
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -8019,7 +8320,7 @@ function FxPermissionCard({
       await api.answerFxPermission(req.id, { optionId });
       onResolved(req.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send the answer.");
+      setError(e instanceof Error ? e.message : tr("common.failed_to_send_the_answer"));
     } finally {
       setSubmitting(null);
     }
@@ -8035,26 +8336,25 @@ function FxPermissionCard({
       await api.answerFxPermission(req.id, { cancel: true });
       onResolved(req.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to dismiss.");
+      setError(e instanceof Error ? e.message : tr("common.failed_to_dismiss"));
     } finally {
       setSubmitting(null);
     }
   };
 
-  const title = req.toolCall.title || req.toolCall.kind || "tool call";
+  const title = req.toolCall.title || req.toolCall.kind || tr("common.tool_call");
 
   return (
     <div className="rounded-md border border-primary/60 bg-card p-3 ring-1 ring-primary/40">
       <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-primary">
-          <ShieldAlert className="size-3.5" aria-hidden /> Fx is requesting permission
-        </span>
+        <span className="flex items-center gap-1.5 text-[length:var(--text-caption)] uppercase tracking-wide text-primary">
+          <ShieldAlert className="size-3.5" aria-hidden />{" "}<I18nText id="tasks.fx_is_requesting_permission" />{" "}</span>
         {/* The agetor mode (`auto`/`ask`) that caused this to surface as a
          *  card — `yolo` auto-allows and never reaches here, so an auto-mode
          *  user seeing this badge knows fx's own LLM review escalated the
          *  call rather than agetor's mode gating it. */}
         <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[9px] uppercase text-muted-foreground">
-          {req.mode}
+          {codeLabel(req.mode)}
         </Badge>
       </div>
       <div className="rounded-md border border-border/40 bg-muted/20 p-2">
@@ -8067,7 +8367,7 @@ function FxPermissionCard({
           )}
         </div>
         {req.toolCall.rawInput !== undefined && (
-          <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-1.5 font-mono text-[10px] leading-snug text-muted-foreground">
+          <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-1.5 font-mono text-[length:var(--text-caption)] leading-snug text-muted-foreground">
             {typeof req.toolCall.rawInput === "string"
               ? req.toolCall.rawInput
               : JSON.stringify(req.toolCall.rawInput, null, 2)}
@@ -8079,7 +8379,7 @@ function FxPermissionCard({
          *  with zero options — but if it ever happens, Dismiss is the only
          *  affordance the card offers. */}
         {req.options.length === 0 && (
-          <p className="mr-auto text-[11px] text-muted-foreground">fx offered no options</p>
+          <p className="mr-auto text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="tasks.fx_offered_no_options" /></p>
         )}
         {req.options.map((opt) => {
           const isReject = opt.kind?.startsWith("reject") ?? false;
@@ -8091,7 +8391,7 @@ function FxPermissionCard({
               variant={isReject ? "outline" : "default"}
               disabled={submitting !== null}
             >
-              {submitting === opt.optionId ? "Sending…" : opt.name}
+              {submitting === opt.optionId ? tr("common.sending") : opt.name}
             </Button>
           );
         })}
@@ -8101,11 +8401,11 @@ function FxPermissionCard({
           variant="outline"
           disabled={submitting !== null}
         >
-          {submitting === FX_DISMISS_SUBMIT_KEY ? "Dismissing…" : "Dismiss (reject)"}
+          {submitting === FX_DISMISS_SUBMIT_KEY ? tr("common.dismissing") : tr("common.dismiss_reject")}
         </Button>
       </div>
       {error && (
-        <p className="mt-2 text-right text-[11px] text-destructive">{error}</p>
+        <p className="mt-2 text-right text-[length:var(--text-caption)] text-destructive">{error}</p>
       )}
     </div>
   );

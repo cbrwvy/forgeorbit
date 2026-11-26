@@ -682,14 +682,14 @@ test("live-before-first-run: startTask copies down live profile edits + refreshe
   }
 });
 
-test("gemini budget: a profile whose instructions push the RAW prompt+preamble over GEMINI_PROMPT_ARGV_MAX_BYTES takes the pre-existing spawn-throw path, not the '@ file references' overage error", async () => {
+test("gemini stdin accepts existing Agent Profile instructions above the old argv threshold", async () => {
   const { createTask, startTask } = await import("./orchestrator.ts");
   const { tasks, runs, harnesses, agentProfiles } = await import("./db.ts");
   const { GEMINI_PROMPT_ARGV_MAX_BYTES } = await import("./agents.ts");
   // gemini ships disabled by default (migration 037) — enable it for this test.
   harnesses.setEnabled("gemini", true);
 
-  const oversizedInstructions = "x".repeat(GEMINI_PROMPT_ARGV_MAX_BYTES + 200);
+  const oversizedInstructions = "x".repeat(6000);
   const profile = agentProfiles.insert({
     name: uniqueProfileName("gemini-oversized"),
     harness: "gemini",
@@ -713,22 +713,9 @@ test("gemini budget: a profile whose instructions push the RAW prompt+preamble o
 
   try {
     const started = await startTask(taskId);
-    expect("error" in started).toBe(true);
-    if ("error" in started) {
-      expect(started.error).toContain(`prompt exceeds ${GEMINI_PROMPT_ARGV_MAX_BYTES} bytes`);
-      // This must NOT be the client-facing "@ file references" overage
-      // error — that path requires expandedOverage && !rawOverage, which
-      // can't happen here since there are no `@` tokens to expand.
-      expect(started.error).not.toContain("after expanding @ file references");
-    }
-
-    const list = runs.listForTask(taskId);
-    expect(list.length).toBe(1);
-    expect(list[0]?.status).toBe("failed");
-
-    const task = tasks.get(taskId);
-    expect(task?.column).toBe("ready");
-    expect(task?.runId).toBeNull();
+    expect("error" in started).toBe(false);
+    expect(runs.listForTask(taskId).length).toBe(1);
+    await settle(100);
   } finally {
     const { db } = await import("./db.ts");
     db.run(`DELETE FROM tasks WHERE id = ?`, [taskId]);

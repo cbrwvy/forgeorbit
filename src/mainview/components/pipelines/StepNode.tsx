@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Merge, MessageCircleQuestion, Play, Plus, RefreshCw, Split } from "lucide-react";
@@ -56,6 +58,7 @@ const VISUAL_CLASSES: Record<StepVisualState, string> = {
 };
 
 function StepNodeImpl({ data, selected }: NodeProps<StepFlowNodeType>) {
+  useUILocale();
   const { step, visual = "idle", readOnly, reminded, attention, onAppend } = data;
   const { startStepId, resolveProfile } = usePipelineCanvasContext();
   const { profile, profileDeleted } = resolveProfile(step.agentProfileId ?? null);
@@ -89,24 +92,22 @@ function StepNodeImpl({ data, selected }: NodeProps<StepFlowNodeType>) {
         </span>
         {isStart && (
           <span
-            title="Start step"
+            title={tr("pipelines.start_step")}
             data-testid="pipeline-step-start-badge"
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-info/15 px-1.5 py-0.5 text-[10px] font-medium text-info"
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-info/15 px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium text-info"
           >
-            <Play className="size-2.5" aria-hidden />
-            Start
-          </span>
+            <Play className="size-2.5" aria-hidden /><I18nText id="common.start" />{" "}</span>
         )}
         {step.transition === "all" && (
-          <Split className="size-3.5 shrink-0 text-muted-foreground" aria-label="Fans out to all next steps" />
+          <Split className="size-3.5 shrink-0 text-muted-foreground" aria-label={tr("pipelines.fans_out_to_all_next_steps")} />
         )}
         {step.join === "all" && (
-          <Merge className="size-3.5 shrink-0 text-muted-foreground" aria-label="Waits for every incoming step" />
+          <Merge className="size-3.5 shrink-0 text-muted-foreground" aria-label={tr("pipelines.waits_for_every_incoming_step")} />
         )}
         {visual === "active" && reminded && (
           <span
             data-testid="pipeline-step-reminded"
-            title="Reminder sent — waiting for the handoff"
+            title={tr("pipelines.reminder_sent_waiting_for_the_handoff")}
             className="inline-flex shrink-0 items-center text-warning"
           >
             <RefreshCw className="size-3.5" aria-hidden />
@@ -118,8 +119,8 @@ function StepNodeImpl({ data, selected }: NodeProps<StepFlowNodeType>) {
           // already opens the step on click.
           <span
             data-testid="pipeline-step-attention"
-            title={attention.message ?? (attention.kind === "answer" ? "Waiting for your answer" : "Needs your review")}
-            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+            title={attention.message ?? (attention.kind === "answer" ? tr("common.waiting_for_your_answer") : tr("common.needs_your_review"))}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium text-warning"
           >
             <MessageCircleQuestion className="size-2.5" aria-hidden />
             {attention.label}
@@ -131,18 +132,14 @@ function StepNodeImpl({ data, selected }: NodeProps<StepFlowNodeType>) {
         {profile ? (
           <AgentProfileCard profile={profile} variant="chip" deleted={profileDeleted} className="max-w-full" />
         ) : profileDeleted ? (
-          <span data-testid="pipeline-step-profile-deleted" className="text-xs text-danger">
-            Deleted agent
-          </span>
+          <span data-testid="pipeline-step-profile-deleted" className="text-xs text-danger"><I18nText id="pipelines.deleted_agent" />{" "}</span>
         ) : (
-          <span className="text-xs text-warning">No agent</span>
+          <span className="text-xs text-warning"><I18nText id="pipelines.no_agent" /></span>
         )}
       </div>
 
       {parallelWarning && (
-        <p className="mt-1.5 text-[10px] leading-tight text-warning">
-          Shares the worktree with parallel siblings
-        </p>
+        <p className="mt-1.5 text-[length:var(--text-caption)] leading-tight text-warning"><I18nText id="pipelines.shares_the_worktree_with_parallel_siblings" />{" "}</p>
       )}
 
       <Handle
@@ -171,7 +168,7 @@ function StepNodeImpl({ data, selected }: NodeProps<StepFlowNodeType>) {
         <button
           type="button"
           data-testid="pipeline-step-append"
-          title="Add a connected step"
+          title={tr("pipelines.add_a_connected_step")}
           onClick={() => onAppend(step.id)}
           className="absolute -right-9 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
         >

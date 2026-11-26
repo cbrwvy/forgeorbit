@@ -1,3 +1,5 @@
+import { countLabel, getLocale, t as tr } from "@/i18n/core";
+
 /**
  * Pure helpers behind the Agents/Pipelines export and import dialogs
  * (docs/plans/agents-pipelines-import-export.md, T4): the import dialog's
@@ -15,7 +17,7 @@ import type {
   PlannedAgent,
 } from "../../shared/bundle-import.ts";
 
-const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`): string => getLocale() === "ru" ? countLabel(n, one === "Agent" ? "agent" : "pipeline") : `${n} ${n === 1 ? one : many}`;
 
 /**
  * What a failed bundle request says to the user. A request that got no HTTP
@@ -24,8 +26,8 @@ const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n =
  * other error (the core's own answer) keeps its message.
  */
 export function requestFailureText(e: unknown): string {
-  if (e instanceof ApiUnreachableError) return "agetor's core isn't answering";
-  if (e instanceof ApiTransitError) return "The connection to agetor's core dropped before it answered";
+  if (e instanceof ApiUnreachableError) return tr("common.agetor_s_core_isn_t_answering");
+  if (e instanceof ApiTransitError) return tr("common.the_connection_to_agetor_s_core_dropped_before");
   return e instanceof Error ? e.message : String(e);
 }
 
@@ -37,7 +39,7 @@ export function requestFailureText(e: unknown): string {
  * doesn't repeat that.
  */
 export function lostImportText(e: unknown): string {
-  return `${requestFailureText(e)}. Checking it against a refreshed preview…`;
+  return tr("common.checking_it_against_a_refreshed_preview", { p0: String(requestFailureText(e)) });
 }
 
 /**
@@ -67,8 +69,8 @@ export function lostImportLanded(
  */
 export function lostImportVerdictText(cause: string, landed: boolean): string {
   return landed
-    ? `${cause}, and the refreshed preview no longer matches the one you confirmed (the names it would create are now taken). Check your Agents and Pipelines before importing again.`
-    : `${cause}, but the refreshed preview matches the one you confirmed. It's safe to import again.`;
+    ? tr("common.and_the_refreshed_preview_no_longer_matches_the", { p0: String(cause) })
+    : tr("common.but_the_refreshed_preview_matches_the_one_you", { p0: String(cause) });
 }
 
 /**
@@ -77,7 +79,7 @@ export function lostImportVerdictText(cause: string, landed: boolean): string {
  * is nothing to compare against. It may have run, so it says where to look.
  */
 export function lostImportUnsettledText(cause: string): string {
-  return `${cause}, and the options changed before a refreshed preview could tell whether it ran. Check your Agents and Pipelines before importing again.`;
+  return tr("common.and_the_options_changed_before_a_refreshed_preview", { p0: String(cause) });
 }
 
 /**
@@ -87,7 +89,7 @@ export function lostImportUnsettledText(cause: string): string {
  * same advice as an import whose answer is lost after the dialog closed.
  */
 export function lostImportLeftText(cause: string): string {
-  return `${cause}, so the import may already have run — check your Agents and Pipelines before importing the file again.`;
+  return tr("common.so_the_import_may_already_have_run_check", { p0: String(cause) });
 }
 
 /**
@@ -103,9 +105,9 @@ export function lateImportConflictText(
   plan: Pick<BundleImportPlan, "canImport"> & { fingerprint?: string } | null | undefined,
   sent?: { fingerprint: string; message: string },
 ): string {
-  if (plan?.canImport === false) return "The import is blocked. Open Import again to see why.";
+  if (plan?.canImport === false) return tr("common.the_import_is_blocked_open_import_again_to");
   if (sent && plan?.canImport && plan.fingerprint === sent.fingerprint) return lateImportErrorText(sent.message);
-  return "Something on this machine changed since the preview, so the import changed. Open Import again to review it.";
+  return tr("common.something_on_this_machine_changed_since_the_preview");
 }
 
 const IMPORT_FAILED_PREFIX = "import failed — nothing was imported: ";
@@ -118,7 +120,7 @@ const IMPORT_FAILED_PREFIX = "import failed — nothing was imported: ";
  */
 export function lateImportErrorText(message: string): string {
   const detail = message.startsWith(IMPORT_FAILED_PREFIX) ? message.slice(IMPORT_FAILED_PREFIX.length) : message;
-  return `${detail.replace(/[.\s]+$/, "")}. Open Import again to retry.`;
+  return tr("common.open_import_again_to_retry", { p0: String(detail.replace(/[.\s]+$/, "")) });
 }
 
 /**
@@ -131,7 +133,7 @@ export function lateImportErrorText(message: string): string {
  */
 export function importRefusalText(message: string): string {
   const detail = message.startsWith(IMPORT_FAILED_PREFIX) ? message.slice(IMPORT_FAILED_PREFIX.length) : message;
-  return NOTHING_IMPORTED_RE.test(detail) ? detail : `Nothing was imported: ${detail}`;
+  return NOTHING_IMPORTED_RE.test(detail) ? detail : tr("common.nothing_was_imported", { p0: String(detail) });
 }
 const NOTHING_IMPORTED_RE = /^nothing was imported\b/i;
 
@@ -142,14 +144,14 @@ const NOTHING_IMPORTED_RE = /^nothing was imported\b/i;
  * position is added whenever there is more than one row.
  */
 export function rowFieldLabel(
-  field: "Name" | "Harness",
-  kind: "Agent" | "Pipeline",
+  field: string,
+  kind: string,
   sourceName: string,
   index: number,
   total: number,
 ): string {
   const base = `${field}: ${kind} "${sourceName}"`;
-  return total > 1 ? `${base} (${index + 1} of ${total})` : base;
+  return total > 1 ? tr("common.of_8e75af", { p0: String(base), p1: String(index + 1), p2: String(total) }) : base;
 }
 
 /** "2 Agents, 1 Pipeline" — or "nothing" for an empty count. */
@@ -157,12 +159,12 @@ export function countsSummary(counts: { agents: number; pipelines: number }): st
   const parts: string[] = [];
   if (counts.agents > 0) parts.push(plural(counts.agents, "Agent"));
   if (counts.pipelines > 0) parts.push(plural(counts.pipelines, "Pipeline"));
-  return parts.join(", ") || "nothing";
+  return parts.join(", ") || (getLocale() === "ru" ? tr("common.none") : "nothing");
 }
 
 /** Toast title after a successful import. */
 export function importSuccessText(result: Pick<BundleImportResponse, "agents" | "pipelines">): string {
-  return `Imported ${countsSummary({ agents: result.agents.length, pipelines: result.pipelines.length })}`;
+  return tr("common.imported", { p0: String(countsSummary({ agents: result.agents.length, pipelines: result.pipelines.length })) });
 }
 
 // ── import options ─────────────────────────────────────────────────────────
@@ -266,7 +268,7 @@ export const BUNDLE_OPTIONS_HEADROOM_BYTES = 64 * 1024;
 
 const mb = (bytes: number, decimals = 1): string => {
   const scale = 10 ** decimals;
-  return `${Math.round((bytes / (1024 * 1024)) * scale) / scale} MB`;
+  return tr("common.mb", { p0: String(Math.round((bytes / (1024 * 1024)) * scale) / scale) });
 };
 
 /**
@@ -291,9 +293,9 @@ export function bundleRequestBytes(text: string, options: BundleImportOptions = 
  * picked 0-byte file would otherwise open nothing at all.
  */
 export function bundleTextTooLarge(text: string, what: string): string | null {
-  if (text.trim() === "") return `${what} is empty.`;
+  if (text.trim() === "") return tr("common.is_empty", { p0: String(what) });
   if (utf8Bytes(text, BUNDLE_MAX_BYTES) > BUNDLE_MAX_BYTES) {
-    return `${what} is too large — the limit is ${mb(BUNDLE_MAX_BYTES)}.`;
+    return tr("common.is_too_large_the_limit_is", { p0: String(what), p1: String(mb(BUNDLE_MAX_BYTES)) });
   }
   // The body is measured with empty options, so leave room for the ones the
   // user adds later (names, harness picks) and the import's fingerprint: a
@@ -308,8 +310,8 @@ export function bundleTextTooLarge(text: string, what: string): string | null {
   // past that say "just over" rather than print two equal numbers.
   const limit = mb(budget);
   const size = mb(body) !== limit ? mb(body) : mb(body, 2) !== mb(budget, 2) ? mb(body, 2) : null;
-  const comesTo = size ? `${size}, over the ${limit} limit for sending` : `just over the ${limit} limit for sending`;
-  return `${what} is too large to send: escaped for sending it comes to ${comesTo} — it likely holds many control characters.`;
+  const comesTo = size ? tr("common.over_the_limit_for_sending", { p0: String(size), p1: String(limit) }) : tr("common.just_over_the_limit_for_sending", { p0: String(limit) });
+  return tr("common.is_too_large_to_send_escaped_for_sending", { p0: String(what), p1: String(comesTo) });
 }
 
 /** Why pasted text can't be previewed, or null (`bundleTextTooLarge`). */
@@ -349,7 +351,7 @@ export function harnessChoices(agent: PlannedAgent, plan: Pick<BundleImportPlan,
 /** A harness's select-option text: label, id when it differs, and status. */
 export function harnessOptionLabel(h: BundleLocalHarness): string {
   const name = h.label && h.label !== h.id ? `${h.label} (${h.id})` : h.id;
-  return h.enabled ? name : `${name} — disabled`;
+  return h.enabled ? name : tr("common.disabled_1c9dfa", { p0: String(name) });
 }
 
 /**
@@ -365,13 +367,13 @@ export type LostImportOutcome = "unknown" | "ran" | "not-run";
 export function importErrorPrefix(outcome: LostImportOutcome | undefined): string {
   switch (outcome) {
     case "unknown":
-      return "Import may have run:";
+      return tr("common.import_may_have_run");
     case "ran":
-      return "Import most likely ran:";
+      return tr("common.import_most_likely_ran");
     case "not-run":
-      return "Import didn't run:";
+      return tr("common.import_didn_t_run");
     default:
-      return "Import failed:";
+      return tr("common.import_failed");
   }
 }
 
@@ -400,14 +402,14 @@ export function importStatusText(s: {
   importError: { message: string; outcome?: LostImportOutcome; lost?: unknown } | null;
 }): string {
   if (!s.showPreview) return s.pasteError ?? "";
-  if (s.importing) return "Importing…";
+  if (s.importing) return tr("common.importing");
   // A failed preview is announced even over an import error: Confirm waits
   // on it (the plan is out of date), so it is the news. A lost import's
   // verdict was riding on that preview, so say it is still unknown.
   if (s.previewError) {
     const failed = `Preview failed: ${s.previewError.message}`;
     return s.importError?.lost !== undefined
-      ? `${failed}. Whether the import ran is still unknown — retry the preview to find out.`
+      ? tr("common.whether_the_import_ran_is_still_unknown_retry", { p0: String(failed) })
       : failed;
   }
   const outcome = s.plan ? planOutcomeText(s.plan) : null;
@@ -420,19 +422,19 @@ export function importStatusText(s: {
         ? s.importError.message
         : `${importErrorPrefix(undefined)} ${s.importError.message}`;
     if (!outcome || s.importError.lost !== undefined) return error;
-    return `${/[.!?…]$/.test(error) ? error : `${error}.`} Current plan: ${outcome}`;
+    return tr("common.current_plan", { p0: String(/[.!?…]$/.test(error) ? error : `${error}.`), p1: String(outcome) });
   }
-  if (!outcome) return s.previewing ? "Reading the file…" : "";
+  if (!outcome) return s.previewing ? tr("common.reading_the_file") : "";
   return s.planChanged
-    ? `Nothing was imported: the import changed since the preview. Updated plan: ${outcome}`
-    : `Preview ready: ${outcome}`;
+    ? tr("common.nothing_was_imported_the_import_changed_since_the", { p0: String(outcome) })
+    : tr("common.preview_ready", { p0: String(outcome) });
 }
 
 /** "1 Agent, ready to import" / "1 Agent, 2 blocking issues". */
 function planOutcomeText(plan: Pick<BundleImportPlan, "agents" | "pipelines" | "blocking">): string {
   const what = countsSummary({ agents: plan.agents.length, pipelines: plan.pipelines.length });
   const blocking = plan.blocking.length;
-  return blocking > 0 ? `${what}, ${blocking} blocking issue${blocking === 1 ? "" : "s"}` : `${what}, ready to import`;
+  return blocking > 0 ? tr("common.blocking_issue", { p0: String(what), p1: String(blocking), p2: String(blocking === 1 ? "" : "s") }) : tr("common.ready_to_import", { p0: String(what) });
 }
 
 /** The footer note while a failed re-preview leaves the plan on screen out
@@ -441,8 +443,8 @@ function planOutcomeText(plan: Pick<BundleImportPlan, "agents" | "pipelines" | "
  *  again, and only other options can get past it. */
 export function previewOutdatedNote(previewError: { retryable: boolean }): string {
   return previewError.retryable
-    ? "The preview is out of date — retry it to import"
-    : "The preview is out of date — change the options to import";
+    ? tr("common.the_preview_is_out_of_date_retry_it")
+    : tr("common.the_preview_is_out_of_date_change_the");
 }
 
 // ── list selection ─────────────────────────────────────────────────────────
@@ -474,13 +476,13 @@ export function dragHasFiles(types: readonly string[] | DOMStringList | null | u
 export function pickBundleDropFile(files: ArrayLike<File> | null | undefined): { file: File } | { error: string } {
   const list = files ? Array.from(files) : [];
   const file = list[0];
-  if (!file) return { error: "Drop a .json bundle file to import it." };
-  if (list.length > 1) return { error: `Drop one file at a time — ${list.length} files were dropped.` };
+  if (!file) return { error: tr("common.drop_a_json_bundle_file_to_import_it") };
+  if (list.length > 1) return { error: tr("common.drop_one_file_at_a_time_files_were", { p0: String(list.length) }) };
   if (!file.name.toLowerCase().endsWith(".json")) {
-    return { error: `"${file.name}" isn't a .json file — drop an agetor bundle (.agetor.json).` };
+    return { error: tr("common.isn_t_a_json_file_drop_an_agetor", { p0: String(file.name) }) };
   }
   if (file.size > BUNDLE_MAX_BYTES) {
-    return { error: `"${file.name}" is too large — the limit is ${BUNDLE_MAX_BYTES / (1024 * 1024)} MB.` };
+    return { error: tr("common.is_too_large_the_limit_is_mb", { p0: String(file.name), p1: String(BUNDLE_MAX_BYTES / (1024 * 1024)) }) };
   }
   return { file };
 }

@@ -89,7 +89,7 @@ async function openSettingsAgents(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Agents", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   await expect(dialog.getByTestId("agent-profiles-section")).toBeVisible();
   return dialog;
 }
@@ -99,7 +99,7 @@ async function openSettingsHarnesses(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Harnesses", exact: true }).click();
+  await dialog.getByRole("button", { name: "AI providers and accounts", exact: true }).click();
   return dialog;
 }
 
@@ -251,13 +251,13 @@ test.describe("agent profiles — Settings surface", () => {
 
     // Only Claude Code is enabled at this point (cursor ships disabled by
     // migration 032, and this is the very first test in the suite) — one
-    // harness button, selected by default ("default" variant = bg-primary).
+    // harness button, selected by default ("default" variant = bg-brand-solid).
     // The harness buttons render off TaskLaunchPickers' own `/harnesses`
     // fetch (one probe per harness), which under parallel-run load outlasts
     // the 5s default — the form itself is up long before the buttons are.
     const claudeButton = harnessButton(form, "Claude Code");
     await expect(claudeButton).toBeVisible({ timeout: CONVERGE_TIMEOUT });
-    await expect(claudeButton).toHaveClass(/bg-primary/);
+    await expect(claudeButton).toHaveClass(/bg-brand-solid/);
 
     // Switch model first, then mode, then effort — in that order — so each
     // later pick lands after any auto-reset effect the earlier one could
@@ -324,7 +324,7 @@ test.describe("agent profiles — Settings surface", () => {
     await expect(form.getByTestId("agent-profile-instructions")).toHaveValue(WIDGET_BUILDER_INSTRUCTIONS);
     // Harness buttons render only once TaskLaunchPickers' `/harnesses` fetch
     // lands (one probe per harness) — past the 5s default under load.
-    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
     await expect(form.locator('[data-testid="skills-picker-chip"]')).toHaveCount(0);
 
     await form.getByTestId("agent-profile-save").click();
@@ -469,7 +469,7 @@ test.describe("agent profiles — Settings surface", () => {
     await expect(modal.getByRole("heading", { name: "Add agent" })).toBeVisible();
     await expect(form.getByTestId("agent-profile-name")).toHaveValue(draftName);
     await expect(form.getByTestId("agent-profile-instructions")).toHaveValue(draftInstructions);
-    await expect(modal.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(modal.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-current", "page");
 
     // Accept navigates to General…
     await modal.getByRole("button", { name: "General", exact: true }).click();
@@ -482,7 +482,7 @@ test.describe("agent profiles — Settings surface", () => {
 
     // …and coming back to Agents shows the LIST, not the old draft; a fresh
     // Add form is empty.
-    await modal.getByRole("button", { name: "Agents", exact: true }).click();
+    await modal.getByRole("button", { name: "Library", exact: true }).click();
     await expectAgentsList(modal);
     await modal.getByTestId("agent-profile-add").click();
     const fresh = modal.getByTestId("agent-profile-form");
@@ -508,13 +508,13 @@ test.describe("agent profiles — Settings surface", () => {
     await expect(modal.getByRole("button", { name: "Back", exact: true })).toBeVisible();
     await expect(modal.getByRole("heading", { name: "Settings" })).toHaveCount(0);
     // The sidebar stays and keeps Agents highlighted.
-    await expect(modal.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(modal.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-current", "page");
 
     // Untouched form: Back pops straight to the list, no confirm.
     await modal.getByRole("button", { name: "Back", exact: true }).click();
     await expectAgentsList(modal);
     await expect(discardConfirm(page)).toHaveCount(0);
-    await expect(modal.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(modal.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-current", "page");
   });
 
   test("Edit opens the editor subpage for that row; an untouched (even fully seeded) form pops on Back, Escape and backdrop with no confirm", async ({
@@ -531,11 +531,11 @@ test.describe("agent profiles — Settings surface", () => {
     await expect(modal.getByRole("heading", { name: "Edit agent" })).toBeVisible();
     await expect(modal.getByTestId("agent-profile-editor")).toBeVisible();
     await expect(modal.getByTestId("agent-profiles-section")).toHaveCount(0);
-    await expect(modal.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(modal.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(form.getByTestId("agent-profile-name")).toHaveValue(WIDGET_BUILDER_NAME);
     // Wait for the async launch seeding (harness fetch, preference reads) to
     // fully settle — an untouched Edit form must not read dirty afterwards.
-    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
     await expect(launchSelect(form, "Model")).toHaveValue("sonnet-5");
     await expect(launchSelect(form, "Mode")).toHaveValue("plan");
 
@@ -547,7 +547,7 @@ test.describe("agent profiles — Settings surface", () => {
     // Escape pops (does NOT close the modal), still no confirm.
     await row.getByTestId("agent-profile-edit").click();
     await expect(modal.getByRole("heading", { name: "Edit agent" })).toBeVisible();
-    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
     await page.keyboard.press("Escape");
     await expectAgentsList(modal);
     await expect(discardConfirm(page)).toHaveCount(0);
@@ -770,7 +770,7 @@ test.describe("agent profiles — Settings surface", () => {
     const { modal, form } = await openAddSubpage(page);
     // Name and every text field stay untouched. Let the picker block finish
     // its async seeding first, so the pick below is unambiguously the user's.
-    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
     await expect(form.getByTestId("agent-profile-name")).toHaveValue("");
     await launchSelect(form, "Mode").selectOption("plan");
     await expect(launchSelect(form, "Mode")).toHaveValue("plan");
@@ -807,7 +807,7 @@ test.describe("agent profiles — Settings surface", () => {
     await form.getByTestId("agent-profile-name").fill(cursorName);
 
     await harnessButton(form, "Cursor").click();
-    await expect(harnessButton(form, "Cursor")).toHaveClass(/bg-primary/);
+    await expect(harnessButton(form, "Cursor")).toHaveClass(/bg-brand-solid/);
 
     // "Codex 5.3" (CURSOR_MODEL_SPECS["gpt-5.3-codex"]) supports BOTH the
     // fast variant and Max Mode at the default cursor effort ("high") — see
@@ -1108,7 +1108,7 @@ test.describe("agent profiles — Settings surface", () => {
     await expect(launchSelect(form, "Model")).toHaveValue("sonnet-5");
     await expect(launchSelect(form, "Effort")).toHaveValue("medium");
     await expect(launchSelect(form, "Mode")).toHaveValue("plan");
-    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+    await expect(harnessButton(form, "Claude Code")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
     await modal.getByRole("button", { name: "Back", exact: true }).click();
     await expect(discardConfirm(page)).toHaveCount(0);
     await expectAgentsList(modal);
@@ -1169,7 +1169,7 @@ test.describe("agent profiles — Settings surface", () => {
       await expect(form).toBeVisible();
       await expect(modal.locator("#settings-dialog-title")).toHaveText("Duplicate agent");
       await expect(form.getByTestId("agent-profile-name")).toHaveValue(`${sourceName} (copy)`);
-      await expect(harnessButton(form, "Cursor")).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
+      await expect(harnessButton(form, "Cursor")).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
       await expect(launchSelect(form, "Model")).toHaveValue("gpt-5.3-codex");
       await expect(launchSelect(form, "Mode")).toHaveValue("ask");
       await expect(form.getByTestId("launch-max-mode-toggle").getByRole("switch")).toHaveAttribute("aria-checked", "true");

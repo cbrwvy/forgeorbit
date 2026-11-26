@@ -30,6 +30,7 @@ import {
   type ChunkHandler,
   type SpawnedAgent,
 } from "./claude-tmux.ts";
+import { makeTerminator, type TerminationEvidence } from "./process-termination.ts";
 
 /**
  * Driver that hosts a single `agy -p` turn inside a per-task tmux
@@ -152,6 +153,10 @@ export function mapAntigravityEvent(
 
   switch (event) {
     case "init": {
+      // `init.model` is the CLI's own report of the launch model. It is not
+      // copied onto employee `actual.model`: the checked live run echoed the
+      // `--model` flag, and the same object reported a permission mode that
+      // did not match `--mode accept-edits` or the file write.
       return { sessionId };
     }
 
@@ -244,6 +249,8 @@ interface AntigravitySessionState {
   onSessionId?: (id: string) => void;
   sessionIdSent: boolean;
   resolved: boolean;
+  /** Set once a Stop begins: the vanished session is the Owner's doing, not a crash. */
+  terminating?: boolean;
   lastCode: number | null;
   resolveDone: (code: number) => void;
 }
@@ -372,6 +379,7 @@ function startAntigravityTailer(state: AntigravitySessionState): Promise<number>
       tickInFlight = true;
       void (async () => {
         try {
+          if (state.terminating) return;
           const liveness = await probe.probe();
           const outcome = deathTickOutcome({
             liveness,
@@ -413,6 +421,7 @@ function sq(s: string): string {
 }
 
 export interface AntigravityLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   runId: string;
   argv: string[];
@@ -449,7 +458,7 @@ export async function spawnAntigravityViaTmux(opts: AntigravityLaunchOptions): P
     ...envArgs,
     "--", "sh", "-c", inner, "sh", ...opts.argv,
   ];
-  const res = await spawnTmuxNewSession(tmux, args);
+  const res = await spawnTmuxNewSession(tmux, args, opts.authorize);
 
   const state: AntigravitySessionState = {
     taskId: opts.taskId,
@@ -484,15 +493,32 @@ export async function spawnAntigravityViaTmux(opts: AntigravityLaunchOptions): P
 
   const done = startAntigravityTailer(state);
   return {
-    kill: () => killAntigravityState(state),
+    kill: () => { void killAntigravityState(state); },
+    terminate: () => antigravityTerminator(state)(),
     writeInput: () => false,
     done,
   };
 }
 
+const antigravityTerminators = new WeakMap<AntigravitySessionState, () => Promise<TerminationEvidence>>();
+
+/** One terminator per session: a stop kills the tmux session, escalates, and settles only when the process is gone. */
+function antigravityTerminator(state: AntigravitySessionState): () => Promise<TerminationEvidence> {
+  let terminator = antigravityTerminators.get(state);
+  if (!terminator) {
+    terminator = makeTerminator({
+      sessionName: state.sessionName,
+      begin: () => { state.terminating = true; },
+      settle: () => resolveSession(state, 1),
+    });
+    antigravityTerminators.set(state, terminator);
+  }
+  return terminator;
+}
+
+/** `kill` is a synchronous `SpawnedAgent` field; the confirmed stop is `terminate`. */
 async function killAntigravityState(state: AntigravitySessionState): Promise<void> {
-  await killSessionByName(state.sessionName);
-  resolveSession(state, 1);
+  await antigravityTerminator(state)().catch(() => undefined);
 }
 
 export interface AntigravityReattachOptions {
@@ -528,7 +554,8 @@ export async function reattachAntigravitySession(opts: AntigravityReattachOption
   };
   const done = startAntigravityTailer(state);
   return {
-    kill: () => killAntigravityState(state),
+    kill: () => { void killAntigravityState(state); },
+    terminate: () => antigravityTerminator(state)(),
     writeInput: () => false,
     done,
   };

@@ -1,16 +1,29 @@
 import { Database } from "bun:sqlite";
+import { DEEPSEEK_INSTALLATION_ID } from "../shared/harness-installation.ts";
 import { randomUUID } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { mkdtempSync, statSync } from "node:fs";
 import path from "node:path";
-import { AGENT_OPTIONS, PIPELINE_LIMITS, type AgentKind, type AgentProfile, type AgentProfileSnapshot, type BacklogMessage, type BranchNamingConfig, type Handoff, type Harness, type HarnessQuota, type HarnessUsage, type Pipeline, type PipelineActiveStep, type PipelineBlock, type PipelineBlockKind, type PipelineGraph, type PipelineInput, type PipelineJoinArrival, type PipelineRunSnapshot, type PipelineRunState, type PipelineRunStatus, type PipelineStepRecord, type Project, type SavedPrompt, type SentFileEntry, type Task, type TaskDraft, type TaskFxRecovery, type TaskPlan, type TaskReference, type TaskType, type Run, type RunEventStream, type Subagent, type SubagentStatus } from "../shared/types.ts";
+import { AGENT_OPTIONS, PIPELINE_LIMITS, type AgentKind, type AgentProfile, type AgentProfileSnapshot, type BacklogMessage, type BranchNamingConfig, type Handoff, type Harness, type HarnessQuota, type HarnessUsage, type Pipeline, type PipelineActiveStep, type PipelineBlock, type PipelineBlockKind, type PipelineGraph, type PipelineInput, type PipelineJoinArrival, type PipelineRunSnapshot, type PipelineRunState, type PipelineRunStatus, type PipelineStepRecord, type Project, type ProjectRule, type ProjectRulesSnapshot, type QcVerdict, type SavedPrompt, type SentFileEntry, type Task, type TaskDraft, type TaskFxRecovery, type TaskPlan, type TaskQcReview, type TaskQcState, type TaskReference, type TaskType, type Run, type RunEventStream, type Subagent, type SubagentStatus } from "../shared/types.ts";
+import { endRank, normalizeUrgency } from "../shared/board-order.ts";
+import { parseProjectRulesSnapshot } from "../shared/project-rules.ts";
+import { parseKnowledgeSnapshot } from "../shared/knowledge/effective.ts";
+import { parseQcState } from "../shared/task-quality-control.ts";
 import { mergeSentFiles as mergeSentFilesShared } from "../shared/sent-files.ts";
 import { parseTaskFxRecovery } from "../shared/fx-recovery.ts";
 import { AGENT_PROFILE_LIMITS, normalizeSkillName } from "../shared/agent-profile.ts";
 import { PIPELINE_CONTROL_CHAR_RE, validatePipelineGraph } from "../shared/pipeline.ts";
-import { migrate } from "./migrate.ts";
+import { journalLegacyUsage } from "./account-usage-bridge.ts";
+import { ownerProjectOf } from "./project-ownership.ts";
+import { scopeFor } from "./usage-analytics/scope.ts";
+import { migrate, SchemaAheadError, unknownAppliedMigrationIds } from "./migrate.ts";
 import { migrations } from "./migrations/index.ts";
+import { normalizeAccessMode } from "../shared/execution/access-mode.ts";
 import { coreCredsPath } from "./core-creds.ts";
+import { resolveDataDir } from "./data-dir.ts";
+import { ensurePrivateDataDir, createPrivateSqliteFile } from "./private-storage.ts";
+import { markProfileStartupFailure, resolveStartupProfile } from "./profile-activation.ts";
+import { pinRuntimeProfileRoots } from "./profile-paths.ts";
 // Interactions live in-memory in `interactions.ts`. The import creates a
 // cycle: db.ts → interactions.ts → db.ts (for `tasks`). It is safe ONLY
 // because both modules access each other's exports exclusively from
@@ -28,11 +41,11 @@ import { countTerminals, terminalCountsByTask } from "./terminals.ts";
 // Hard guard against test fixtures silently leaking into the user's real
 // SQLite db. `bun test` runs every *.test.ts file in one process, so the
 // first import of db.ts wins — any test file that sets AGETOR_DATA_DIR in
-// `beforeAll` (instead of at top level) loses the race and writes to
-// ~/.agetor/agetor.sqlite. We discovered this the painful way: 10 fixture
+// `beforeAll` (instead of at top level) loses the race and writes to the
+// user's default profile. We discovered this the painful way: 10 fixture
 // tasks + dozens of phantom projects polluted the production kanban.
 // Under NODE_ENV=test, if no AGETOR_DATA_DIR was set we auto-allocate a
-// throwaway dir — guarantees we never touch ~/.agetor under tests even if
+// throwaway dir — guarantees we never touch the default profile under tests even if
 // some test file forgot the top-level setup. Logged so the gap is visible
 // in CI output.
 if (process.env.NODE_ENV === "test" && !process.env.FORGEORBIT_DATA_DIR && !process.env.AGETOR_DATA_DIR) {
@@ -43,12 +56,36 @@ if (process.env.NODE_ENV === "test" && !process.env.FORGEORBIT_DATA_DIR && !proc
     + `(not in beforeAll) to silence this warning.`,
   );
 }
-const DATA_DIR = process.env.FORGEORBIT_DATA_DIR
-  ?? process.env.AGETOR_DATA_DIR
-  ?? path.join(homedir(), ".agetor");
-mkdirSync(DATA_DIR, { recursive: true });
+const BASE_DATA_DIR = resolveDataDir();
 
+// FO-P2-005-A: resolve (and recover) the durable activation selection before
+// any SQLite database or migration is opened. With no activation control
+// directory this returns the unchanged base data directory and creates
+// nothing. A corrupt/unresolvable journal deliberately throws here, so the
+// process refuses to boot instead of opening an ambiguous profile.
+const startupProfile = resolveStartupProfile({ baseDataDir: BASE_DATA_DIR });
+pinRuntimeProfileRoots(startupProfile.activeDataDir, startupProfile.baseDataDir);
+const DATA_DIR = startupProfile.activeDataDir;
+if (startupProfile.selection === null) {
+  // Ordinary startup / first run: keep the historical behavior of creating
+  // the base profile directory.
+  ensurePrivateDataDir(DATA_DIR);
+}
+// A selected profile is never created implicitly: resolveStartupProfile has
+// already required it to exist. If it vanished in the meantime, opening the
+// database below fails closed instead of materializing an empty profile.
+
+export const baseDataDir = BASE_DATA_DIR;
 export const dataDir = DATA_DIR;
+/** Non-secret startup outcome, exposed for the backend/UI status surface. */
+export const startupProfileInfo = {
+  baseDataDir: startupProfile.baseDataDir,
+  activeDataDir: startupProfile.activeDataDir,
+  recovered: startupProfile.recovered,
+  recoveredFrom: startupProfile.recoveredFrom,
+  pendingTransition: startupProfile.pendingTransition,
+  warnings: startupProfile.warnings,
+} as const;
 
 /** Pidfile path. Written at boot by `index.ts`, read by `wipe-dev.ts` for
  *  liveness checks. Single source of truth so a future rename doesn't
@@ -60,7 +97,46 @@ export const pidFilePath = path.join(DATA_DIR, "agetor.pid");
  *  and authenticate to the running core. See `core-creds.ts`. */
 export const credsFilePath = coreCredsPath(DATA_DIR);
 
-export const db = new Database(path.join(DATA_DIR, "agetor.sqlite"));
+/** Read the migration ledger before any persistent pragma. A newer schema is refused unread. */
+function refuseSchemaAhead(dbPath: string): void {
+  let size = 0;
+  try {
+    const st = statSync(dbPath);
+    if (!st.isFile()) return;
+    size = st.size;
+  } catch {
+    return;
+  }
+  if (size === 0) return;
+  let probe: Database | null = null;
+  try {
+    try {
+      probe = new Database(dbPath, { readonly: true });
+    } catch {
+      // A WAL profile can refuse a read-only open when its sidecar is missing.
+      // This fallback does not run migrations and does not change journal mode.
+      probe = new Database(dbPath, { readwrite: true, create: false });
+    }
+    const unknown = unknownAppliedMigrationIds(probe, migrations);
+    if (unknown.length > 0) throw new SchemaAheadError(unknown);
+  } finally {
+    try { probe?.close(); } catch { /* the original error is the one that matters */ }
+  }
+}
+
+export const db = (() => {
+  try {
+    const dbPath = path.join(DATA_DIR, "agetor.sqlite");
+    createPrivateSqliteFile(dbPath);
+    refuseSchemaAhead(dbPath);
+    return new Database(dbPath);
+  } catch (error) {
+    // If a freshly activated profile cannot even be opened, remember that so
+    // the next controlled startup can roll back to the still-intact original.
+    markProfileStartupFailure(error);
+    throw error;
+  }
+})();
 db.exec("PRAGMA journal_mode = WAL;");
 // WAL + NORMAL is SQLite's documented sweet spot for a local single-writer
 // app. WAL already makes every transaction atomic and the database consistent
@@ -74,12 +150,33 @@ db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA synchronous = NORMAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 
-const applied = migrate(db, migrations);
+let applied: string[];
+try {
+  applied = migrate(db, migrations);
+} catch (error) {
+  // Schema incompatibility is an activation failure, not a permanent brick:
+  // record it durably and let the next startup roll back to the original.
+  markProfileStartupFailure(error);
+  throw error;
+}
 if (applied.length) console.log(`[agetor] applied migrations: ${applied.join(", ")}`);
 
 type TaskRow = {
+  urgency?: number | null;
+  board_rank?: number | null;
+  available_from_utc?: string | null;
+  recurring_template_id?: string | null;
+  recurring_occurrence_id?: string | null;
+  recurring_nominal_utc?: string | null;
+  rt_recurrence_type?: string | null;
+  rt_schedule_json?: string | null;
+  rt_status?: string | null;
+  rt_next_due_utc?: string | null;
+  rt_submission_mode?: string | null;
+  objective_mission_id?: string | null;
+  computer_workflow_revision?: string | null;
   id: string; title: string; prompt: string; column: string; agent: string;
-  workdir: string; isolation: string;
+  workdir: string; isolation: string; access_mode?: string | null;
   task_type: string;
   branch: string | null; worktree_path: string | null; base_ref: string | null;
   branch_source: string;
@@ -136,6 +233,7 @@ type TaskRow = {
   // the generic `insert`/`update` paths (see those methods for why).
   last_assistant_event_id: number | null;
   last_seen_event_id: number | null;
+  qc_state: string | null;
   run_id: string | null; created_at: number; updated_at: number;
   archived_at: number | null;
   /** SQLite EXISTS returns 0/1; we map to boolean in toTask. Computed via
@@ -755,6 +853,44 @@ interface TaskCounts {
 }
 
 const toTask = (r: TaskRow, counts?: TaskCounts): Task => ({
+  urgency: normalizeUrgency(r.urgency),
+  boardRank: typeof r.board_rank === "number" && Number.isFinite(r.board_rank) ? r.board_rank : 0,
+  availableFromUtc: typeof r.available_from_utc === "string" && r.available_from_utc.length > 0 ? r.available_from_utc : null,
+  ...(r.recurring_template_id ? { recurringTemplateId: r.recurring_template_id } : {}),
+  ...(r.recurring_occurrence_id ? { recurringOccurrenceId: r.recurring_occurrence_id } : {}),
+  ...(r.recurring_nominal_utc ? { recurringNominalUtc: r.recurring_nominal_utc } : {}),
+  ...(r.recurring_template_id && r.rt_schedule_json && r.rt_recurrence_type ? {
+    recurring: (() => {
+      try {
+        const parsed = JSON.parse(r.rt_schedule_json) as import("../shared/recurring-tasks.ts").RecurringScheduleConfig;
+        return {
+          templateId: r.recurring_template_id,
+          occurrenceId: r.recurring_occurrence_id ?? null,
+          nominalUtc: r.recurring_nominal_utc ?? null,
+          recurrenceType: r.rt_recurrence_type as import("../shared/recurring-tasks.ts").RecurrenceType,
+          schedule: {
+            recurrenceType: parsed.recurrenceType,
+            interval: parsed.interval,
+            intervalUnit: parsed.intervalUnit,
+            weekdays: parsed.weekdays,
+            monthlyMode: parsed.monthlyMode,
+            dayOfMonth: parsed.dayOfMonth,
+            missingDayPolicy: parsed.missingDayPolicy,
+            startDateUtc: parsed.startDateUtc,
+            startTimeUtc: parsed.startTimeUtc,
+            startUtc: parsed.startUtc,
+          },
+          templateStatus: (r.rt_status ?? "active") as import("../shared/recurring-tasks.ts").RecurringTemplateStatus,
+          templateNextDueUtc: r.rt_next_due_utc ?? null,
+          submissionMode: (r.rt_submission_mode ?? "generate_only") as import("../shared/recurring-tasks.ts").RecurringSubmissionMode,
+        };
+      } catch {
+        return null;
+      }
+    })(),
+  } : {}),
+  ...(r.objective_mission_id ? { objectiveMissionId: r.objective_mission_id } : {}),
+  ...(r.computer_workflow_revision ? { computerWorkflowRevision: r.computer_workflow_revision } : {}),
   id: r.id,
   title: r.title,
   prompt: r.prompt,
@@ -762,6 +898,7 @@ const toTask = (r: TaskRow, counts?: TaskCounts): Task => ({
   agent: r.agent as Task["agent"],
   workdir: r.workdir,
   isolation: r.isolation as Task["isolation"],
+  accessMode: normalizeAccessMode(r.access_mode) ?? "workspace",
   taskType: r.task_type as TaskType,
   branch: r.branch,
   branchSource: r.branch_source as Task["branchSource"],
@@ -788,6 +925,14 @@ const toTask = (r: TaskRow, counts?: TaskCounts): Task => ({
   todoProgress: parseTodoProgress(r.todo_progress),
   sentFiles: parseSentFiles(r.sent_files),
   fxRecovery: parseTaskFxRecovery(r.fx_recovery),
+  qcState: (() => {
+    if (!r.qc_state) return null;
+    try {
+      return parseQcState(JSON.parse(r.qc_state));
+    } catch {
+      return null;
+    }
+  })(),
   agentProfileId: r.agent_profile_id ?? null,
   agentProfile: parseAgentProfileSnapshot(r.agent_profile),
   pipelineId: r.pipeline_id ?? null,
@@ -813,11 +958,26 @@ const toTask = (r: TaskRow, counts?: TaskCounts): Task => ({
 // per task row. `MAX(...)` over a boolean gives us 1 if any matching run
 // exists for the task, 0 otherwise (NULL coalesces to 0 via COALESCE).
 const TASKS_SELECT = `
-  SELECT tasks.*,
+  SELECT tasks.*, objective_mission_tasks.mission_id AS objective_mission_id,
+         task_computer_workflows.revision AS computer_workflow_revision,
+         recurring_templates.recurrence_type AS rt_recurrence_type,
+         recurring_templates.schedule_json AS rt_schedule_json,
+         recurring_templates.status AS rt_status,
+         recurring_templates.next_due_utc AS rt_next_due_utc,
+         recurring_templates.submission_mode AS rt_submission_mode,
          COALESCE(MAX(runs.status IN ${OPENABLE_STATUSES_SQL}), 0) AS has_openable_run
     FROM tasks
     LEFT JOIN runs ON runs.task_id = tasks.id
+    LEFT JOIN objective_mission_tasks ON objective_mission_tasks.task_id = tasks.id
+    LEFT JOIN task_computer_workflows ON task_computer_workflows.task_id = tasks.id
+    LEFT JOIN recurring_templates ON recurring_templates.id = tasks.recurring_template_id
 `;
+
+/** The rank that puts a task at the end of its (column, urgency) group (across projects: a larger rank is always later). */
+function nextBoardRank(column: string, urgency: number): number {
+  const row = db.query<{ top: number | null }, [string, number]>(`SELECT MAX(board_rank) AS top FROM tasks WHERE "column" = ? AND urgency = ?`).get(column, urgency);
+  return endRank([row?.top ?? 0]);
+}
 
 export const tasks = {
   // Computes the pending-interaction and open-terminal grouped counts ONCE
@@ -886,19 +1046,28 @@ export const tasks = {
     return rows.map((r) => toTask(r));
   },
   insert(t: Task): Task {
+    const accessMode = normalizeAccessMode(t.accessMode) ?? "workspace";
+    const urgency = normalizeUrgency(t.urgency);
     db.run(
       `INSERT INTO tasks
-         (id, title, prompt, "column", agent, workdir, isolation, task_type,
+         (id, title, prompt, "column", agent, workdir, isolation, access_mode, task_type,
+          urgency, board_rank, available_from_utc,
+          recurring_template_id, recurring_occurrence_id, recurring_nominal_utc,
           branch, branch_source, worktree_path, base_ref, pr_url, issue_url, mode, model, effort, fast, max_mode, refs, backlog, draft, plans, todo_progress,
           agent_profile_id, agent_profile,
           pipeline_id, pipeline_run, pipeline_parent_id, pipeline_step_id,
           checkout_branch,
           last_assistant_event_id, last_seen_event_id,
           run_id, created_at, updated_at, archived_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        t.id, t.title, t.prompt, t.column, t.agent, t.workdir, t.isolation,
+        t.id, t.title, t.prompt, t.column, t.agent, t.workdir, t.isolation, accessMode,
         t.taskType,
+        urgency, typeof t.boardRank === "number" && Number.isFinite(t.boardRank) ? t.boardRank : nextBoardRank(t.column, urgency),
+        t.availableFromUtc ?? null,
+        t.recurringTemplateId ?? null,
+        t.recurringOccurrenceId ?? null,
+        t.recurringNominalUtc ?? null,
         t.branch, t.branchSource, t.worktreePath, t.baseRef, t.prUrl ?? null, t.issueUrl ?? null, t.mode, t.model, t.effort, t.fast ? 1 : 0, t.maxMode ? 1 : 0,
         JSON.stringify(t.references ?? []),
         JSON.stringify(t.backlog ?? []),
@@ -921,12 +1090,18 @@ export const tasks = {
     // Round-trip via `get` so the returned shape carries the computed
     // hasOpenableRun field (false for a brand-new task — but callers
     // that mutate t shouldn't accidentally get a stale shape).
-    return this.get(t.id) ?? { ...t, hasOpenableRun: false, pendingInteractionCount: 0, openTerminalCount: 0, todoProgress: t.todoProgress ?? null, sentFiles: null, fxRecovery: null, agentProfileId: t.agentProfileId ?? null, agentProfile: t.agentProfile ?? null, pipelineId: t.pipelineId ?? null, pipelineRun: t.pipelineRun ?? null, pipelineParentId: t.pipelineParentId ?? null, pipelineStepId: t.pipelineStepId ?? null, checkoutBranch: t.checkoutBranch ?? null, unread: false, hasAssistantMessages: false, archivedAt: null };
+    return this.get(t.id) ?? { ...t, accessMode, hasOpenableRun: false, pendingInteractionCount: 0, openTerminalCount: 0, todoProgress: t.todoProgress ?? null, sentFiles: null, fxRecovery: null, agentProfileId: t.agentProfileId ?? null, agentProfile: t.agentProfile ?? null, pipelineId: t.pipelineId ?? null, pipelineRun: t.pipelineRun ?? null, pipelineParentId: t.pipelineParentId ?? null, pipelineStepId: t.pipelineStepId ?? null, checkoutBranch: t.checkoutBranch ?? null, unread: false, hasAssistantMessages: false, archivedAt: null };
   },
   update(id: string, patch: Partial<Task>): Task | null {
     const current = this.get(id);
     if (!current) return null;
     const next: Task = { ...current, ...patch, id, updatedAt: Date.now() };
+    // Urgency is validated by the route; anything else read here is Normal. A change of column or urgency puts the
+    // task at the END of its new group (rank is never taken from a caller's stale copy); a task that stays in its
+    // group keeps its rank, so an unrelated edit can never reorder the board.
+    const nextUrgency = normalizeUrgency(next.urgency);
+    const groupChanged = next.column !== current.column || nextUrgency !== normalizeUrgency(current.urgency);
+    const nextRank = groupChanged ? nextBoardRank(next.column, nextUrgency) : (current.boardRank ?? 0);
     // Deliberately does NOT touch last_assistant_event_id/last_seen_event_id
     // — those two columns are written exclusively by `noteAssistantEvent` /
     // `markSeen` below via their own targeted UPDATEs. `Task` only exposes
@@ -971,13 +1146,13 @@ export const tasks = {
     // server-managed column above) the write never bumps `updated_at`.
     db.run(
       `UPDATE tasks SET
-         title=?, prompt=?, "column"=?, agent=?, workdir=?, isolation=?, task_type=?,
+         title=?, prompt=?, "column"=?, agent=?, workdir=?, isolation=?, task_type=?, urgency=?, board_rank=?, available_from_utc=?,
          branch=?, branch_source=?, worktree_path=?, base_ref=?, pr_url=?, issue_url=?, mode=?, model=?, effort=?, fast=?, max_mode=?, refs=?, backlog=?, draft=?, plans=?, todo_progress=?,
          run_id=?, updated_at=?, archived_at=?
        WHERE id=?`,
       [
         next.title, next.prompt, next.column, next.agent, next.workdir, next.isolation,
-        next.taskType,
+        next.taskType, nextUrgency, nextRank, next.availableFromUtc ?? null,
         next.branch, next.branchSource, next.worktreePath, next.baseRef, next.prUrl ?? null, next.issueUrl ?? null, next.mode, next.model, next.effort, next.fast ? 1 : 0, next.maxMode ? 1 : 0,
         JSON.stringify(next.references ?? []),
         JSON.stringify(next.backlog ?? []),
@@ -1123,6 +1298,9 @@ export const tasks = {
       [value ? JSON.stringify(value) : null, taskId],
     );
   },
+  setQcState(taskId: string, value: TaskQcState | null): void {
+    db.run(`UPDATE tasks SET qc_state = ? WHERE id = ?`, [value ? JSON.stringify(value) : null, taskId]);
+  },
   /**
    * Record the branch agetor last observed checked out in a task's worktree
    * (`checkout_branch`, migration 063; `null` = detached HEAD / unknown) in
@@ -1195,6 +1373,20 @@ export const tasks = {
     db.run(
       `UPDATE tasks SET pipeline_run = ? WHERE id = ?`,
       [run ? JSON.stringify(run) : null, taskId],
+    );
+    return this.get(taskId);
+  },
+  /**
+   * Bind (or unbind) a pipeline on a task that has never run its pipeline
+   * — the project manager's supervised execution (FO-005B), approved by the
+   * owner. Same targeted-UPDATE pattern as `setPipelineRun`; the caller
+   * checks the task is not a step, not live and has no pipeline history.
+   * `pipelineId: null` clears both columns.
+   */
+  setPipelineBinding(taskId: string, pipelineId: string | null, run: PipelineRunState | null): Task | null {
+    db.run(
+      `UPDATE tasks SET pipeline_id = ?, pipeline_run = ? WHERE id = ? AND pipeline_parent_id IS NULL`,
+      [pipelineId, pipelineId && run ? JSON.stringify(run) : null, taskId],
     );
     return this.get(taskId);
   },
@@ -1330,7 +1522,24 @@ export const drafts = {
   },
 };
 
-type ProjectRow = { path: string; name: string; added_at: number; branch_config: string | null };
+type ProjectRow = {
+  path: string;
+  name: string;
+  added_at: number;
+  branch_config: string | null;
+  lifecycle_state: string;
+  lifecycle_updated_at: number | null;
+  lifecycle_reason: string | null;
+  workspace_development: number;
+};
+
+export interface ProjectLifecycleRow {
+  path: string;
+  name: string;
+  lifecycleState: string;
+  lifecycleUpdatedAt: number | null;
+  lifecycleReason: string | null;
+}
 
 /** Parse the stored branch-config JSON, tolerating legacy NULLs and bad data. */
 function parseBranchConfig(raw: string | null): BranchNamingConfig | null {
@@ -1349,7 +1558,10 @@ const toProject = (r: ProjectRow): Project => ({
   name: r.name,
   addedAt: r.added_at,
   branchConfig: parseBranchConfig(r.branch_config),
+  workspaceDevelopment: r.workspace_development !== 0,
 });
+
+let projectsVersion = 0;
 
 export const projects = {
   list(): Project[] {
@@ -1376,6 +1588,7 @@ export const projects = {
        ON CONFLICT(path) DO UPDATE SET added_at = excluded.added_at`,
       [path, name, now],
     );
+    projectsVersion += 1;
     return this.get(path)!;
   },
   /**
@@ -1389,8 +1602,267 @@ export const projects = {
     );
     return this.get(path);
   },
+  /**
+   * Persist whether this registered project allows Developer working-copy
+   * development for subsequent launches. Returns the refreshed row, or null
+   * when the project is not registered.
+   */
+  setWorkspaceDevelopment(path: string, enabled: boolean): Project | null {
+    db.run(
+      `UPDATE projects SET workspace_development = ? WHERE path = ?`,
+      [enabled ? 1 : 0, path],
+    );
+    return this.get(path);
+  },
   delete(path: string) {
+    db.run(`DELETE FROM project_rules WHERE project_path = ?`, [path]);
     db.run(`DELETE FROM projects WHERE path = ?`, [path]);
+    projectsVersion += 1;
+  },
+  /** Bumped on every registry write, so cached task ownership is dropped. */
+  version(): number {
+    return projectsVersion;
+  },
+  getLifecycleRaw(path: string): ProjectLifecycleRow | null {
+    const row = db.query<ProjectRow, [string]>(
+      `SELECT * FROM projects WHERE path = ?`,
+    ).get(path);
+    if (!row) return null;
+    return {
+      path: row.path,
+      name: row.name,
+      lifecycleState: row.lifecycle_state,
+      lifecycleUpdatedAt: row.lifecycle_updated_at,
+      lifecycleReason: row.lifecycle_reason,
+    };
+  },
+  listLifecycleRaw(): ProjectLifecycleRow[] {
+    return db.query<ProjectRow, []>(
+      `SELECT * FROM projects ORDER BY added_at DESC`,
+    ).all().map((row) => ({
+      path: row.path,
+      name: row.name,
+      lifecycleState: row.lifecycle_state,
+      lifecycleUpdatedAt: row.lifecycle_updated_at,
+      lifecycleReason: row.lifecycle_reason,
+    }));
+  },
+  setLifecycleState(path: string, state: string, reason: string | null, updatedAt = Date.now()): ProjectLifecycleRow | null {
+    db.run(
+      `UPDATE projects SET lifecycle_state = ?, lifecycle_updated_at = ?, lifecycle_reason = ? WHERE path = ?`,
+      [state, updatedAt, reason, path],
+    );
+    return this.getLifecycleRaw(path);
+  },
+};
+
+type ProjectRuleRow = {
+  id: string;
+  project_path: string;
+  name: string;
+  body: string;
+  enabled: number;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+};
+
+const toProjectRule = (r: ProjectRuleRow): ProjectRule => ({
+  id: r.id,
+  projectPath: r.project_path,
+  name: r.name,
+  body: r.body,
+  enabled: r.enabled !== 0,
+  sortOrder: r.sort_order,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+type TaskQualityReviewRow = {
+  id: string;
+  task_id: string;
+  project_path: string;
+  round: number;
+  status: string;
+  verdict: string | null;
+  summary: string | null;
+  findings_json: string | null;
+  feedback: string | null;
+  reviewer_employee_id: string | null;
+  reviewer_role_slug: string | null;
+  reviewer_harness: string;
+  reviewer_model: string;
+  reviewer_profile_id: string | null;
+  implementation_run_id: string | null;
+  review_run_id: string | null;
+  evidence_state: string | null;
+  saved_task_json: string;
+  requested_at: number;
+  started_at: number | null;
+  completed_at: number | null;
+};
+
+const parseQcReviewEvidenceState = (value: string | null): TaskQcReview["evidenceState"] => {
+  if (value === "complete" || value === "missing-test" || value === "missing-source") return value;
+  return null;
+};
+
+const toTaskQcReview = (r: TaskQualityReviewRow): TaskQcReview & { savedTaskJson: string } => ({
+  id: r.id,
+  taskId: r.task_id,
+  projectPath: r.project_path,
+  round: r.round,
+  status: r.status as TaskQcReview["status"],
+  verdict: (r.verdict as QcVerdict | null) ?? null,
+  summary: r.summary,
+  findings: (() => {
+    if (!r.findings_json) return [];
+    try {
+      const parsed = JSON.parse(r.findings_json) as unknown;
+      return Array.isArray(parsed) ? (parsed as TaskQcReview["findings"]) : [];
+    } catch {
+      return [];
+    }
+  })(),
+  feedback: r.feedback,
+  reviewerEmployeeId: r.reviewer_employee_id,
+  reviewerRoleSlug: r.reviewer_role_slug,
+  reviewerHarness: r.reviewer_harness,
+  reviewerModel: r.reviewer_model,
+  reviewerProfileId: r.reviewer_profile_id,
+  implementationRunId: r.implementation_run_id,
+  reviewRunId: r.review_run_id,
+  evidenceState: parseQcReviewEvidenceState(r.evidence_state),
+  requestedAt: r.requested_at,
+  startedAt: r.started_at,
+  completedAt: r.completed_at,
+  savedTaskJson: r.saved_task_json,
+});
+
+export const taskQualityReviews = {
+  listForTask(taskId: string): TaskQcReview[] {
+    return db.query<TaskQualityReviewRow, [string]>(
+      `SELECT * FROM task_quality_reviews WHERE task_id = ? ORDER BY round ASC`,
+    ).all(taskId).map((r) => {
+      const { savedTaskJson: _s, ...pub } = toTaskQcReview(r);
+      return pub;
+    });
+  },
+  get(id: string): (TaskQcReview & { savedTaskJson: string }) | null {
+    const row = db.query<TaskQualityReviewRow, [string]>(`SELECT * FROM task_quality_reviews WHERE id = ?`).get(id);
+    return row ? toTaskQcReview(row) : null;
+  },
+  getActive(taskId: string): (TaskQcReview & { savedTaskJson: string }) | null {
+    const row = db.query<TaskQualityReviewRow, [string]>(
+      `SELECT * FROM task_quality_reviews WHERE task_id = ? AND status IN ('pending', 'running') ORDER BY round DESC LIMIT 1`,
+    ).get(taskId);
+    return row ? toTaskQcReview(row) : null;
+  },
+  insert(row: {
+    id: string;
+    taskId: string;
+    projectPath: string;
+    round: number;
+    status: string;
+    findings: TaskQcReview["findings"];
+    reviewerEmployeeId: string | null;
+    reviewerRoleSlug: string | null;
+    reviewerHarness: string;
+    reviewerModel: string;
+    reviewerProfileId: string | null;
+    implementationRunId: string | null;
+    savedTaskJson: string;
+    requestedAt: number;
+  }): TaskQcReview {
+    db.run(
+      `INSERT INTO task_quality_reviews (id, task_id, project_path, round, status, verdict, summary, findings_json, feedback,
+        reviewer_employee_id, reviewer_role_slug, reviewer_harness, reviewer_model, reviewer_profile_id,
+        implementation_run_id, review_run_id, saved_task_json, requested_at, started_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)`,
+      [
+        row.id, row.taskId, row.projectPath, row.round, row.status,
+        JSON.stringify(row.findings),
+        row.reviewerEmployeeId, row.reviewerRoleSlug, row.reviewerHarness, row.reviewerModel,
+        row.reviewerProfileId, row.implementationRunId, row.savedTaskJson, row.requestedAt,
+      ],
+    );
+    const { savedTaskJson: _s, ...pub } = toTaskQcReview(db.query<TaskQualityReviewRow, [string]>(`SELECT * FROM task_quality_reviews WHERE id = ?`).get(row.id)!);
+    return pub;
+  },
+  markRunning(id: string, startedAt: number): void {
+    db.run(`UPDATE task_quality_reviews SET status = 'running', started_at = ? WHERE id = ? AND status = 'pending'`, [startedAt, id]);
+  },
+  linkReviewRun(id: string, runId: string): void {
+    db.run(`UPDATE task_quality_reviews SET review_run_id = ? WHERE id = ?`, [runId, id]);
+    db.run(`UPDATE runs SET qc_review_id = ? WHERE id = ?`, [id, runId]);
+  },
+  setEvidenceState(id: string, state: NonNullable<TaskQcReview["evidenceState"]>): void {
+    db.run(`UPDATE task_quality_reviews SET evidence_state = ? WHERE id = ?`, [state, id]);
+  },
+  markCancelled(id: string, completedAt: number): void {
+    db.run(`UPDATE task_quality_reviews SET status = 'cancelled', completed_at = ? WHERE id = ?`, [completedAt, id]);
+  },
+  complete(id: string, patch: {
+    verdict: QcVerdict | null;
+    summary: string | null;
+    findings: TaskQcReview["findings"];
+    feedback: string | null;
+    completedAt: number;
+    status: "complete";
+  }): void {
+    db.run(
+      `UPDATE task_quality_reviews SET status = ?, verdict = ?, summary = ?, findings_json = ?, feedback = ?, completed_at = ? WHERE id = ?`,
+      [patch.status, patch.verdict, patch.summary, JSON.stringify(patch.findings), patch.feedback, patch.completedAt, id],
+    );
+  },
+};
+
+export const projectRules = {
+  list(projectPath: string): ProjectRule[] {
+    return db.query<ProjectRuleRow, [string]>(
+      `SELECT * FROM project_rules WHERE project_path = ? ORDER BY sort_order ASC, name ASC, id ASC`,
+    ).all(projectPath).map(toProjectRule);
+  },
+  get(id: string, projectPath: string): ProjectRule | null {
+    const row = db.query<ProjectRuleRow, [string, string]>(
+      `SELECT * FROM project_rules WHERE id = ? AND project_path = ?`,
+    ).get(id, projectPath);
+    return row ? toProjectRule(row) : null;
+  },
+  count(projectPath: string): number {
+    return db.query<{ n: number }, [string]>(
+      `SELECT COUNT(*) AS n FROM project_rules WHERE project_path = ?`,
+    ).get(projectPath)?.n ?? 0;
+  },
+  insert(row: Omit<ProjectRule, "createdAt" | "updatedAt"> & { createdAt?: number; updatedAt?: number }): ProjectRule {
+    const now = row.createdAt ?? Date.now();
+    const updated = row.updatedAt ?? now;
+    db.run(
+      `INSERT INTO project_rules (id, project_path, name, body, enabled, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.projectPath, row.name, row.body, row.enabled ? 1 : 0, row.sortOrder, now, updated],
+    );
+    return { ...row, createdAt: now, updatedAt: updated };
+  },
+  update(id: string, projectPath: string, patch: Partial<Pick<ProjectRule, "name" | "body" | "enabled" | "sortOrder">>): ProjectRule | null {
+    const current = this.get(id, projectPath);
+    if (!current) return null;
+    const next: ProjectRule = {
+      ...current,
+      name: patch.name ?? current.name,
+      body: patch.body ?? current.body,
+      enabled: patch.enabled ?? current.enabled,
+      sortOrder: patch.sortOrder ?? current.sortOrder,
+      updatedAt: Date.now(),
+    };
+    db.run(
+      `UPDATE project_rules SET name = ?, body = ?, enabled = ?, sort_order = ?, updated_at = ? WHERE id = ? AND project_path = ?`,
+      [next.name, next.body, next.enabled ? 1 : 0, next.sortOrder, next.updatedAt, id, projectPath],
+    );
+    return next;
+  },
+  delete(id: string, projectPath: string): boolean {
+    return db.run(`DELETE FROM project_rules WHERE id = ? AND project_path = ?`, [id, projectPath]).changes === 1;
   },
 };
 
@@ -1422,6 +1894,565 @@ export const preferences = {
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
       [key, value, Date.now()],
     );
+  },
+};
+
+/**
+ * AI project interview drafts (migration 068), keyed by the folder the
+ * wizard will register. Written only by the `/project-interviews/draft`
+ * routes; the caller validates `data` (`sanitizeInterviewState`).
+ */
+export const projectInterviews = {
+  get(projectPath: string): string | null {
+    const row = db.query<{ data: string }, [string]>(
+      `SELECT data FROM project_interviews WHERE project_path = ?`,
+    ).get(projectPath);
+    return row?.data ?? null;
+  },
+  set(projectPath: string, data: string): void {
+    db.run(
+      `INSERT INTO project_interviews (project_path, data, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(project_path) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      [projectPath, data, Date.now()],
+    );
+  },
+  delete(projectPath: string): boolean {
+    return db.run(`DELETE FROM project_interviews WHERE project_path = ?`, [projectPath]).changes > 0;
+  },
+};
+
+/**
+ * Project manager storage (FO-005A, migration 070), keyed by project path.
+ * `data`/`config` are JSON written by `src/bun/project-manager.ts`, which
+ * sanitizes them on read (`sanitizeManagerConfig`, `sanitizeStored*`).
+ */
+export const projectManagers = {
+  getConfig(projectPath: string): { config: string; lastActivityAt: number | null } | null {
+    const row = db.query<{ config: string; last_activity_at: number | null }, [string]>(
+      `SELECT config, last_activity_at FROM project_managers WHERE project_path = ?`,
+    ).get(projectPath);
+    return row ? { config: row.config, lastActivityAt: row.last_activity_at } : null;
+  },
+  setConfig(projectPath: string, config: string): void {
+    db.run(
+      `INSERT INTO project_managers (project_path, config, last_activity_at, updated_at) VALUES (?, ?, NULL, ?)
+       ON CONFLICT(project_path) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at`,
+      [projectPath, config, Date.now()],
+    );
+  },
+  touch(projectPath: string, at = Date.now()): void {
+    db.run(
+      `INSERT INTO project_managers (project_path, config, last_activity_at, updated_at) VALUES (?, '{}', ?, ?)
+       ON CONFLICT(project_path) DO UPDATE SET last_activity_at = excluded.last_activity_at`,
+      [projectPath, at, at],
+    );
+  },
+  listMessages(projectPath: string): string[] {
+    return db.query<{ data: string }, [string]>(
+      `SELECT data FROM project_manager_messages WHERE project_path = ? ORDER BY seq ASC`,
+    ).all(projectPath).map((row) => row.data);
+  },
+  /** Append, then drop the oldest rows past `keep`. */
+  appendMessage(projectPath: string, id: string, data: string, keep: number): void {
+    const now = Date.now();
+    db.transaction(() => {
+      const next = (db.query<{ seq: number | null }, [string]>(
+        `SELECT MAX(seq) AS seq FROM project_manager_messages WHERE project_path = ?`,
+      ).get(projectPath)?.seq ?? 0) + 1;
+      db.run(
+        `INSERT INTO project_manager_messages (id, project_path, seq, data, created_at) VALUES (?, ?, ?, ?, ?)`,
+        [id, projectPath, next, data, now],
+      );
+      db.run(
+        `DELETE FROM project_manager_messages WHERE project_path = ? AND seq <= ?`,
+        [projectPath, next - keep],
+      );
+    })();
+  },
+  updateMessage(projectPath: string, id: string, data: string): boolean {
+    return db.run(
+      `UPDATE project_manager_messages SET data = ? WHERE id = ? AND project_path = ?`,
+      [data, id, projectPath],
+    ).changes > 0;
+  },
+  getMessage(projectPath: string, id: string): string | null {
+    return db.query<{ data: string }, [string, string]>(
+      `SELECT data FROM project_manager_messages WHERE id = ? AND project_path = ?`,
+    ).get(id, projectPath)?.data ?? null;
+  },
+  listProposals(projectPath: string): string[] {
+    return db.query<{ data: string }, [string]>(
+      `SELECT data FROM project_manager_proposals WHERE project_path = ? ORDER BY created_at ASC`,
+    ).all(projectPath).map((row) => row.data);
+  },
+  /** Scoped by project: a proposal id from another project reads as missing. */
+  getProposal(projectPath: string, id: string): string | null {
+    return db.query<{ data: string }, [string, string]>(
+      `SELECT data FROM project_manager_proposals WHERE id = ? AND project_path = ?`,
+    ).get(id, projectPath)?.data ?? null;
+  },
+  putProposal(projectPath: string, id: string, status: string, data: string, createdAt: number): void {
+    db.run(
+      `INSERT INTO project_manager_proposals (id, project_path, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at
+       WHERE project_manager_proposals.project_path = excluded.project_path`,
+      [id, projectPath, status, data, createdAt, Date.now()],
+    );
+  },
+  listDecisions(projectPath: string): { id: string; text: string; source: string; created_at: number }[] {
+    return db.query<{ id: string; text: string; source: string; created_at: number }, [string]>(
+      `SELECT id, text, source, created_at FROM project_manager_decisions WHERE project_path = ? ORDER BY created_at ASC, rowid ASC`,
+    ).all(projectPath);
+  },
+  addDecision(projectPath: string, id: string, text: string, source: string): void {
+    db.run(
+      `INSERT INTO project_manager_decisions (id, project_path, text, source, created_at) VALUES (?, ?, ?, ?, ?)`,
+      [id, projectPath, text, source, Date.now()],
+    );
+  },
+  deleteDecision(projectPath: string, id: string): boolean {
+    return db.run(
+      `DELETE FROM project_manager_decisions WHERE id = ? AND project_path = ?`,
+      [id, projectPath],
+    ).changes > 0;
+  },
+};
+
+/**
+ * Global portfolio manager (FO-008C, migration 075). A single logical
+ * manager: config is the one 'global' row. Delegations copy `status` out of
+ * the JSON so `claimDelegation` can flip it with one compare-and-set.
+ */
+const PORTFOLIO_MANAGER_ID = "global";
+
+export const portfolioManagerStore = {
+  getConfig(): { config: string; lastActivityAt: number | null } | null {
+    const row = db.query<{ config: string; last_activity_at: number | null }, [string]>(
+      `SELECT config, last_activity_at FROM portfolio_manager WHERE id = ?`,
+    ).get(PORTFOLIO_MANAGER_ID);
+    return row ? { config: row.config, lastActivityAt: row.last_activity_at } : null;
+  },
+  setConfig(config: string): void {
+    db.run(
+      `INSERT INTO portfolio_manager (id, config, last_activity_at, updated_at) VALUES (?, ?, NULL, ?)
+       ON CONFLICT(id) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at`,
+      [PORTFOLIO_MANAGER_ID, config, Date.now()],
+    );
+  },
+  touch(at = Date.now()): void {
+    db.run(
+      `INSERT INTO portfolio_manager (id, config, last_activity_at, updated_at) VALUES (?, '{}', ?, ?)
+       ON CONFLICT(id) DO UPDATE SET last_activity_at = excluded.last_activity_at`,
+      [PORTFOLIO_MANAGER_ID, at, at],
+    );
+  },
+  listMessages(): string[] {
+    return db.query<{ data: string }, []>(`SELECT data FROM portfolio_manager_messages ORDER BY seq ASC`).all().map((row) => row.data);
+  },
+  appendMessage(id: string, data: string, keep: number): void {
+    const now = Date.now();
+    db.transaction(() => {
+      const next = (db.query<{ seq: number | null }, []>(`SELECT MAX(seq) AS seq FROM portfolio_manager_messages`).get()?.seq ?? 0) + 1;
+      db.run(`INSERT INTO portfolio_manager_messages (id, seq, data, created_at) VALUES (?, ?, ?, ?)`, [id, next, data, now]);
+      db.run(`DELETE FROM portfolio_manager_messages WHERE seq <= ?`, [next - keep]);
+    })();
+  },
+  updateMessage(id: string, data: string): boolean {
+    return db.run(`UPDATE portfolio_manager_messages SET data = ? WHERE id = ?`, [data, id]).changes > 0;
+  },
+  getMessage(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM portfolio_manager_messages WHERE id = ?`).get(id)?.data ?? null;
+  },
+  listPlans(): string[] {
+    return db.query<{ data: string }, []>(`SELECT data FROM portfolio_manager_plans ORDER BY created_at ASC, rowid ASC`).all().map((row) => row.data);
+  },
+  getPlan(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM portfolio_manager_plans WHERE id = ?`).get(id)?.data ?? null;
+  },
+  putPlan(id: string, messageId: string, status: string, data: string, createdAt: number): void {
+    db.run(
+      `INSERT INTO portfolio_manager_plans (id, message_id, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at`,
+      [id, messageId, status, data, createdAt, Date.now()],
+    );
+  },
+  listDelegations(): string[] {
+    return db.query<{ data: string }, []>(`SELECT data FROM portfolio_manager_delegations ORDER BY created_at ASC, rowid ASC`).all().map((row) => row.data);
+  },
+  getDelegation(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM portfolio_manager_delegations WHERE id = ?`).get(id)?.data ?? null;
+  },
+  putDelegation(id: string, projectPath: string, messageId: string, status: string, data: string, createdAt: number): void {
+    db.run(
+      `INSERT INTO portfolio_manager_delegations (id, project_path, message_id, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at
+       WHERE portfolio_manager_delegations.project_path = excluded.project_path`,
+      [id, projectPath, messageId, status, data, createdAt, Date.now()],
+    );
+  },
+  /** Flip `status` from one of `from` to `to` and store `data`, only when the
+   *  row is still in an allowed state. True when this call won the row. */
+  claimDelegation(id: string, from: readonly string[], to: string, data: string): boolean {
+    if (from.length === 0) return false;
+    return db.run(
+      `UPDATE portfolio_manager_delegations SET status = ?, data = ?, updated_at = ?
+       WHERE id = ? AND status IN (${placeholders(from.length)})`,
+      [to, data, Date.now(), id, ...from],
+    ).changes > 0;
+  },
+  listDecisions(): { id: string; text: string; source: string; created_at: number }[] {
+    return db.query<{ id: string; text: string; source: string; created_at: number }, []>(
+      `SELECT id, text, source, created_at FROM portfolio_manager_decisions ORDER BY created_at ASC, rowid ASC`,
+    ).all();
+  },
+  addDecision(id: string, text: string, source: string): void {
+    db.run(`INSERT INTO portfolio_manager_decisions (id, text, source, created_at) VALUES (?, ?, ?, ?)`, [id, text, source, Date.now()]);
+  },
+  deleteDecision(id: string): boolean {
+    return db.run(`DELETE FROM portfolio_manager_decisions WHERE id = ?`, [id]).changes > 0;
+  },
+};
+
+/** FO-HEAD02 cross-project initiatives (JSON blob + status for listing). */
+export const headPmInitiatives = {
+  list(): string[] {
+    return db.query<{ data: string }, []>(
+      `SELECT data FROM head_pm_initiatives WHERE status != 'cancelled' ORDER BY updated_at DESC, rowid DESC`,
+    ).all().map((row) => row.data);
+  },
+  listAll(): string[] {
+    return db.query<{ data: string }, []>(
+      `SELECT data FROM head_pm_initiatives ORDER BY updated_at DESC, rowid DESC`,
+    ).all().map((row) => row.data);
+  },
+  get(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM head_pm_initiatives WHERE id = ?`).get(id)?.data ?? null;
+  },
+  put(id: string, status: string, data: string, createdAt: number): void {
+    db.run(
+      `INSERT INTO head_pm_initiatives (id, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at`,
+      [id, status, data, createdAt, Date.now()],
+    );
+  },
+};
+
+/** FO-HEAD03 initiative proposals from Head chat (one row per portfolio message). */
+export const headPmInitiativeProposals = {
+  list(): string[] {
+    return db.query<{ data: string }, []>(
+      `SELECT data FROM head_pm_initiative_proposals ORDER BY updated_at DESC, rowid DESC`,
+    ).all().map((row) => row.data);
+  },
+  get(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM head_pm_initiative_proposals WHERE id = ?`).get(id)?.data ?? null;
+  },
+  getByMessageId(messageId: string): string | null {
+    return db.query<{ data: string }, [string]>(
+      `SELECT data FROM head_pm_initiative_proposals WHERE message_id = ?`,
+    ).get(messageId)?.data ?? null;
+  },
+  put(id: string, messageId: string, status: string, data: string, createdAt: number): void {
+    db.run(
+      `INSERT INTO head_pm_initiative_proposals (id, message_id, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at`,
+      [id, messageId, status, data, createdAt, Date.now()],
+    );
+  },
+};
+
+/**
+ * Supervised execution proposals (FO-005B, migration 071). `data` is the
+ * JSON ExecutionProposal; `status`/`run_id`/`task_id` are copied out for the
+ * open-per-task unique index and lookups. Every read is scoped by project
+ * path, so an id from another project reads as missing.
+ */
+export const projectExecutions = {
+  list(projectPath: string, limit: number): string[] {
+    return db.query<{ data: string }, [string, number]>(
+      `SELECT data FROM project_manager_executions WHERE project_path = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+    ).all(projectPath, limit).map((row) => row.data);
+  },
+  get(projectPath: string, id: string): string | null {
+    return db.query<{ data: string }, [string, string]>(
+      `SELECT data FROM project_manager_executions WHERE id = ? AND project_path = ?`,
+    ).get(id, projectPath)?.data ?? null;
+  },
+  /** The newest unstarted (proposed, starting or start-failed) proposal for
+   *  a task, if any — a failed start is retried, not proposed again. */
+  openForTask(projectPath: string, taskId: string): string | null {
+    return db.query<{ data: string }, [string, string]>(
+      `SELECT data FROM project_manager_executions
+       WHERE project_path = ? AND task_id = ? AND status IN ('proposed', 'starting', 'start-failed')
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    ).get(projectPath, taskId)?.data ?? null;
+  },
+  /** Another proposed/starting proposal for the same task (the unique index
+   *  allows one), so an approval can refuse instead of hitting it. */
+  otherOpenForTask(taskId: string, exceptId: string): string | null {
+    return db.query<{ id: string }, [string, string]>(
+      `SELECT id FROM project_manager_executions WHERE task_id = ? AND id != ? AND status IN ('proposed', 'starting')`,
+    ).get(taskId, exceptId)?.id ?? null;
+  },
+  /** Every proposal left `starting` (the app may have closed mid-start). */
+  listStarting(projectPath: string): string[] {
+    return db.query<{ data: string }, [string]>(
+      `SELECT data FROM project_manager_executions WHERE project_path = ? AND status = 'starting'`,
+    ).all(projectPath).map((row) => row.data);
+  },
+  /** Insert or replace. Throws on a second open proposal for the same task
+   *  (the unique index), which callers treat as "already proposed". */
+  put(row: { id: string; projectPath: string; taskId: string; status: string; runId: string | null; data: string; createdAt: number }): void {
+    db.run(
+      `INSERT INTO project_manager_executions (id, project_path, task_id, status, run_id, data, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, run_id = excluded.run_id, data = excluded.data, updated_at = excluded.updated_at
+       WHERE project_manager_executions.project_path = excluded.project_path`,
+      [row.id, row.projectPath, row.taskId, row.status, row.runId, row.data, row.createdAt, Date.now()],
+    );
+  },
+};
+
+/** One workdir or a list of them, deduplicated, as query parameters. */
+function workdirList(value: string | readonly string[]): string[] {
+  return [...new Set(typeof value === "string" ? [value] : value)];
+}
+
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(", ");
+}
+
+/**
+ * Structured task dependencies and priorities (FO-005C.1, migration 072).
+ * Pure storage: validation (self, other project, cycles) lives in
+ * `src/bun/task-scheduling.ts` and runs synchronously right before the
+ * write, so no await can interleave between the check and the insert. Both
+ * tables cascade with their tasks.
+ */
+export const taskScheduling = {
+  dependenciesOf(taskId: string): string[] {
+    return db.query<{ depends_on_id: string }, [string]>(
+      `SELECT depends_on_id FROM task_dependencies WHERE task_id = ? ORDER BY created_at ASC, depends_on_id ASC`,
+    ).all(taskId).map((row) => row.depends_on_id);
+  },
+  dependentsOf(taskId: string): string[] {
+    return db.query<{ task_id: string }, [string]>(
+      `SELECT task_id FROM task_dependencies WHERE depends_on_id = ? ORDER BY task_id ASC`,
+    ).all(taskId).map((row) => row.task_id);
+  },
+  /** Every link whose dependent task belongs to `projectPath` (or to any of
+   *  the given workdirs — the portfolio passes a project's subfolders too). */
+  edgesForProject(projectPath: string | readonly string[]): { taskId: string; dependsOn: string }[] {
+    const workdirs = workdirList(projectPath);
+    if (workdirs.length === 0) return [];
+    return db.query<{ task_id: string; depends_on_id: string }, string[]>(
+      `SELECT d.task_id, d.depends_on_id FROM task_dependencies d
+       JOIN tasks t ON t.id = d.task_id
+       WHERE t.workdir IN (${placeholders(workdirs.length)})
+       ORDER BY d.task_id ASC, d.created_at ASC, d.depends_on_id ASC`,
+    ).all(...workdirs).map((row) => ({ taskId: row.task_id, dependsOn: row.depends_on_id }));
+  },
+  /** Replace a task's dependencies in one transaction. */
+  replaceDependencies(taskId: string, dependsOn: string[]): void {
+    const now = Date.now();
+    db.transaction(() => {
+      db.run(`DELETE FROM task_dependencies WHERE task_id = ?`, [taskId]);
+      for (const id of dependsOn) {
+        db.run(`INSERT INTO task_dependencies (task_id, depends_on_id, created_at) VALUES (?, ?, ?)`, [taskId, id, now]);
+      }
+    })();
+  },
+  /** Add links, keeping the existing ones (idempotent). */
+  addDependencies(taskId: string, dependsOn: string[]): void {
+    const now = Date.now();
+    db.transaction(() => {
+      for (const id of dependsOn) {
+        db.run(`INSERT OR IGNORE INTO task_dependencies (task_id, depends_on_id, created_at) VALUES (?, ?, ?)`, [taskId, id, now]);
+      }
+    })();
+  },
+  /** Links whose prerequisite was deleted (migration 093). They keep the
+   *  dependent blocked until the Owner clears them. */
+  tombstonesOf(taskId: string): { missingId: string; title: string; column: string | null; deletedAt: number }[] {
+    return db.query<{ missing_id: string; missing_title: string; missing_column: string | null; deleted_at: number }, [string]>(
+      `SELECT missing_id, missing_title, missing_column, deleted_at FROM task_dependency_tombstones WHERE task_id = ? AND cleared_at IS NULL ORDER BY deleted_at ASC, missing_id ASC`,
+    ).all(taskId).map((row) => ({ missingId: row.missing_id, title: row.missing_title, column: row.missing_column, deletedAt: row.deleted_at }));
+  },
+  /** Title a deleted task had, for messages about it. */
+  deletedTitle(taskId: string): string | null {
+    return db.query<{ missing_title: string }, [string]>(
+      `SELECT missing_title FROM task_dependency_tombstones WHERE missing_id = ? ORDER BY deleted_at DESC LIMIT 1`,
+    ).get(taskId)?.missing_title ?? null;
+  },
+  /** Live links plus deleted ones: everything a start must wait for. */
+  blockingDependenciesOf(taskId: string): string[] {
+    const ids = this.dependenciesOf(taskId);
+    for (const row of this.tombstonesOf(taskId)) if (!ids.includes(row.missingId)) ids.push(row.missingId);
+    return ids;
+  },
+  /** Deleted prerequisites the Owner explicitly cleared. */
+  clearedMissingOf(taskId: string): string[] {
+    return db.query<{ missing_id: string }, [string]>(
+      `SELECT missing_id FROM task_dependency_tombstones WHERE task_id = ? AND cleared_at IS NOT NULL ORDER BY missing_id ASC`,
+    ).all(taskId).map((row) => row.missing_id);
+  },
+  /** The Owner's explicit decision that a deleted prerequisite no longer
+   *  matters. The row stays as the record; it just stops blocking. */
+  clearTombstones(taskId: string, missingIds: readonly string[]): number {
+    let removed = 0;
+    const now = Date.now();
+    db.transaction(() => {
+      for (const id of missingIds) {
+        removed += db.run(
+          `UPDATE task_dependency_tombstones SET cleared_at = ? WHERE task_id = ? AND missing_id = ? AND cleared_at IS NULL`,
+          [now, taskId, id],
+        ).changes;
+      }
+    })();
+    return removed;
+  },
+  /** `normal` for a task without a row. */
+  priorityOf(taskId: string): "critical" | "high" | "normal" | "low" {
+    const row = db.query<{ priority: string }, [string]>(`SELECT priority FROM task_priorities WHERE task_id = ?`).get(taskId);
+    return (row?.priority as "critical" | "high" | "normal" | "low" | undefined) ?? "normal";
+  },
+  setPriority(taskId: string, priority: "critical" | "high" | "normal" | "low"): void {
+    db.run(
+      `INSERT INTO task_priorities (task_id, priority, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(task_id) DO UPDATE SET priority = excluded.priority, updated_at = excluded.updated_at`,
+      [taskId, priority, Date.now()],
+    );
+  },
+};
+
+/**
+ * Owner-controlled execution queues of task plans (FO-ORCH05, migration 094).
+ * Stores the Owner's order and pause/stop decision only; every state shown
+ * for an entry is derived from the plan on read.
+ */
+export interface TaskQueueRow {
+  id: string;
+  projectPath: string;
+  proposalId: string;
+  taskIds: string[];
+  status: "active" | "paused" | "stopped";
+  revision: number;
+  reviewedPlanKey: string;
+  /** Parsed JSON of the plan the Owner confirmed (FO-ORCH06), sanitized by task-queue.ts. */
+  reviewedSnapshot: unknown | null;
+  autoPrepare: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const taskQueues = {
+  get(projectPath: string, id: string): TaskQueueRow | null {
+    return rowToQueue(db.query<QueueSql, [string, string]>(`SELECT * FROM task_plan_queues WHERE id = ? AND project_path = ?`).get(id, projectPath));
+  },
+  forProposal(projectPath: string, proposalId: string): TaskQueueRow | null {
+    return rowToQueue(db.query<QueueSql, [string, string]>(`SELECT * FROM task_plan_queues WHERE project_path = ? AND proposal_id = ?`).get(projectPath, proposalId));
+  },
+  insert(row: TaskQueueRow): void {
+    db.run(
+      `INSERT INTO task_plan_queues (id, project_path, proposal_id, task_ids, status, revision, reviewed_plan_key, reviewed_snapshot, auto_prepare, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.id, row.projectPath, row.proposalId, JSON.stringify(row.taskIds), row.status, row.revision, row.reviewedPlanKey,
+        row.reviewedSnapshot == null ? null : JSON.stringify(row.reviewedSnapshot), row.autoPrepare ? 1 : 0, row.createdAt, row.updatedAt],
+    );
+  },
+  /** Compare-and-set on the revision; false when someone else changed it. */
+  update(row: TaskQueueRow, expectedRevision: number): boolean {
+    return db.run(
+      `UPDATE task_plan_queues SET task_ids = ?, status = ?, revision = ?, reviewed_plan_key = ?, reviewed_snapshot = ?, auto_prepare = ?, updated_at = ?
+       WHERE id = ? AND project_path = ? AND revision = ?`,
+      [JSON.stringify(row.taskIds), row.status, row.revision, row.reviewedPlanKey,
+        row.reviewedSnapshot == null ? null : JSON.stringify(row.reviewedSnapshot), row.autoPrepare ? 1 : 0,
+        row.updatedAt, row.id, row.projectPath, expectedRevision],
+    ).changes === 1;
+  },
+};
+
+interface QueueSql {
+  id: string; project_path: string; proposal_id: string; task_ids: string; status: string;
+  revision: number; reviewed_plan_key: string; reviewed_snapshot: string | null; auto_prepare: number;
+  created_at: number; updated_at: number;
+}
+
+function rowToQueue(row: QueueSql | null): TaskQueueRow | null {
+  if (!row) return null;
+  let taskIds: string[] = [];
+  try {
+    const parsed = JSON.parse(row.task_ids);
+    if (Array.isArray(parsed)) taskIds = parsed.filter((id): id is string => typeof id === "string");
+  } catch {
+    taskIds = [];
+  }
+  const status = row.status === "paused" || row.status === "stopped" ? row.status : "active";
+  let reviewedSnapshot: unknown | null = null;
+  try {
+    reviewedSnapshot = row.reviewed_snapshot ? JSON.parse(row.reviewed_snapshot) : null;
+  } catch {
+    reviewedSnapshot = null;
+  }
+  return {
+    id: row.id, projectPath: row.project_path, proposalId: row.proposal_id, taskIds, status,
+    revision: row.revision, reviewedPlanKey: row.reviewed_plan_key, reviewedSnapshot, autoPrepare: row.auto_prepare === 1,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Approved execution batches (FO-005C.1, migration 073). `data` is the JSON
+ * ExecutionBatch written by `src/bun/execution-batches.ts`, which sanitizes
+ * it on read. Every read by id is scoped by project path.
+ */
+export const executionBatches = {
+  get(projectPath: string, id: string): string | null {
+    return db.query<{ data: string }, [string, string]>(
+      `SELECT data FROM project_execution_batches WHERE id = ? AND project_path = ?`,
+    ).get(id, projectPath)?.data ?? null;
+  },
+  getAny(id: string): string | null {
+    return db.query<{ data: string }, [string]>(`SELECT data FROM project_execution_batches WHERE id = ?`).get(id)?.data ?? null;
+  },
+  list(projectPath: string, limit: number): string[] {
+    return db.query<{ data: string }, [string, number]>(
+      `SELECT data FROM project_execution_batches WHERE project_path = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
+    ).all(projectPath, limit).map((row) => row.data);
+  },
+  /** Every batch (any status) whose entries name this task, oldest first. */
+  listContainingTask(taskId: string): string[] {
+    return db.query<{ data: string }, [string]>(
+      `SELECT data FROM project_execution_batches WHERE instr(data, ?) > 0 ORDER BY created_at ASC, rowid ASC`,
+    ).all(`"taskId":${JSON.stringify(taskId)}`).map((row) => row.data);
+  },
+  listByStatus(statuses: string[]): string[] {
+    if (statuses.length === 0) return [];
+    return db.query<{ data: string }, string[]>(
+      `SELECT data FROM project_execution_batches WHERE status IN (${statuses.map(() => "?").join(", ")}) ORDER BY created_at ASC, rowid ASC`,
+    ).all(...statuses).map((row) => row.data);
+  },
+  put(row: { id: string; projectPath: string; status: string; data: string; createdAt: number }): void {
+    db.run(
+      `INSERT INTO project_execution_batches (id, project_path, status, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data, updated_at = excluded.updated_at
+       WHERE project_execution_batches.project_path = excluded.project_path`,
+      [row.id, row.projectPath, row.status, row.data, row.createdAt, Date.now()],
+    );
+  },
+  appendEvent(batchId: string, kind: string, text: string, taskId: string | null = null, at = Date.now()): void {
+    db.run(
+      `INSERT INTO project_execution_batch_events (batch_id, at, kind, task_id, text) VALUES (?, ?, ?, ?, ?)`,
+      [batchId, at, kind, taskId, text],
+    );
+  },
+  /** Oldest first, the newest `limit`. */
+  events(batchId: string, limit: number): { id: number; at: number; kind: string; taskId: string | null; text: string }[] {
+    return db.query<{ id: number; at: number; kind: string; task_id: string | null; text: string }, [string, number]>(
+      `SELECT id, at, kind, task_id, text FROM (
+         SELECT id, at, kind, task_id, text FROM project_execution_batch_events WHERE batch_id = ? ORDER BY id DESC LIMIT ?
+       ) ORDER BY id ASC`,
+    ).all(batchId, limit).map((row) => ({ id: row.id, at: row.at, kind: row.kind, taskId: row.task_id, text: row.text }));
   },
 };
 
@@ -1458,6 +2489,100 @@ export const retentionSweeps = {
          (SELECT id FROM tasks WHERE archived_at IS NOT NULL AND archived_at <= ?)`,
       [cutoff],
     );
+  },
+};
+
+/**
+ * Manual estimation inputs (FO-006B, migration 074), one JSON document per
+ * project path. `settings` is parsed by `parseEstimationSettings` before it
+ * is written. This module does not log the document.
+ */
+export const projectEstimation = {
+  get(projectPath: string): { settings: string; backlogFingerprint: string; updatedAt: number } | null {
+    const row = db.query<{ settings: string; backlog_fingerprint: string; updated_at: number }, [string]>(
+      `SELECT settings, backlog_fingerprint, updated_at FROM project_estimation WHERE project_path = ?`,
+    ).get(projectPath);
+    return row
+      ? { settings: row.settings, backlogFingerprint: row.backlog_fingerprint, updatedAt: row.updated_at }
+      : null;
+  },
+  set(projectPath: string, settings: string, backlogFingerprint: string): void {
+    db.run(
+      `INSERT INTO project_estimation (project_path, settings, backlog_fingerprint, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(project_path) DO UPDATE SET
+         settings = excluded.settings,
+         backlog_fingerprint = excluded.backlog_fingerprint,
+         updated_at = excluded.updated_at`,
+      [projectPath, settings, backlogFingerprint, Date.now()],
+    );
+  },
+  /** Board facts for one workdir (or several). Prompts are not selected. */
+  facts(workdir: string | readonly string[]): Array<{
+    id: string;
+    title: string;
+    column: string;
+    taskType: string;
+    harnessId: string;
+    modelId: string | null;
+    updatedAt: number;
+    archived: boolean;
+    pipelineParentId: string | null;
+  }> {
+    const workdirs = workdirList(workdir);
+    if (workdirs.length === 0) return [];
+    return db.query<{
+      id: string;
+      title: string;
+      column: string;
+      task_type: string;
+      agent: string;
+      model: string | null;
+      updated_at: number;
+      archived_at: number | null;
+      pipeline_parent_id: string | null;
+    }, string[]>(
+      `SELECT id, title, column, task_type, agent, model, updated_at, archived_at, pipeline_parent_id
+         FROM tasks WHERE workdir IN (${placeholders(workdirs.length)})`,
+    ).all(...workdirs).map((row) => ({
+      id: row.id,
+      title: row.title,
+      column: row.column,
+      taskType: row.task_type,
+      harnessId: row.agent,
+      modelId: row.model,
+      updatedAt: row.updated_at,
+      archived: row.archived_at != null,
+      pipelineParentId: row.pipeline_parent_id,
+    }));
+  },
+  /**
+   * Finished runs only, as wall-clock durations. Session ids and transcripts
+   * stay out of this projection.
+   */
+  observations(workdir: string | readonly string[], limit: number): Array<{
+    taskId: string;
+    runId: string;
+    startedAt: number;
+    endedAt: number;
+    status: string;
+  }> {
+    const workdirs = workdirList(workdir);
+    if (workdirs.length === 0) return [];
+    return db.query<{
+      taskId: string;
+      runId: string;
+      startedAt: number;
+      endedAt: number;
+      status: string;
+    }, Array<string | number>>(
+      `SELECT r.task_id AS taskId, r.id AS runId, r.started_at AS startedAt, r.ended_at AS endedAt, r.status AS status
+         FROM runs r
+         JOIN tasks t ON t.id = r.task_id
+        WHERE t.workdir IN (${placeholders(workdirs.length)})
+          AND r.ended_at IS NOT NULL AND r.ended_at >= r.started_at
+        ORDER BY r.ended_at DESC
+        LIMIT ?`,
+    ).all(...workdirs, limit);
   },
 };
 
@@ -1587,6 +2712,9 @@ export const harnesses = {
     return null;
   },
   insert(input: HarnessInsertInput): Harness {
+    if (input.id === DEEPSEEK_INSTALLATION_ID) {
+      throw new Error("DeepSeek DSH execution is unsupported; its diagnostic identity cannot alias another harness.");
+    }
     if (!HARNESS_ID_RE.test(input.id)) {
       throw new Error(
         `invalid harness id "${input.id}" — must match ${HARNESS_ID_RE}`,
@@ -1743,12 +2871,16 @@ export const harnessUsage = {
     return out;
   },
   upsert(quota: HarnessQuota): void {
-    db.run(
-      `INSERT INTO harness_usage (harness_id, snapshot_json, updated_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(harness_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, updated_at = excluded.updated_at`,
-      [quota.harnessId, JSON.stringify(quota), Date.now()],
-    );
+    db.transaction(() => {
+      // Same observation stream; the compatibility cache and its sanitized history commit together.
+      journalLegacyUsage(db, quota);
+      db.run(
+        `INSERT INTO harness_usage (harness_id, snapshot_json, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(harness_id) DO UPDATE SET snapshot_json = excluded.snapshot_json, updated_at = excluded.updated_at`,
+        [quota.harnessId, JSON.stringify(quota), Date.now()],
+      );
+    })();
   },
   delete(harnessId: string): void {
     db.run(`DELETE FROM harness_usage WHERE harness_id = ?`, [harnessId]);
@@ -2313,6 +3445,10 @@ type RunRow = {
   fx_session_id: string | null;
   antigravity_session_id: string | null;
   origin: string | null;
+  project_rules_snapshot: string | null;
+  knowledge_snapshot: string | null;
+  brain_context_snapshot: string | null;
+  qc_review_id: string | null;
 };
 
 /**
@@ -2408,6 +3544,31 @@ const toRun = (r: RunRow): Run => ({
   fxSessionId: r.fx_session_id,
   antigravitySessionId: r.antigravity_session_id,
   origin: (r.origin as Run["origin"]) ?? null,
+  projectRulesSnapshot: (() => {
+    if (!r.project_rules_snapshot) return null;
+    try {
+      return parseProjectRulesSnapshot(JSON.parse(r.project_rules_snapshot));
+    } catch {
+      return null;
+    }
+  })(),
+  knowledgeSnapshot: (() => {
+    if (!r.knowledge_snapshot) return null;
+    try {
+      return parseKnowledgeSnapshot(JSON.parse(r.knowledge_snapshot));
+    } catch {
+      return null;
+    }
+  })(),
+  brainContextSnapshot: (() => {
+    if (!r.brain_context_snapshot) return null;
+    try {
+      return JSON.parse(r.brain_context_snapshot);
+    } catch {
+      return null;
+    }
+  })(),
+  qcReviewId: r.qc_review_id ?? null,
 });
 
 /**
@@ -2420,7 +3581,43 @@ export const TOOL_RESULT_TRIM_SQL = `SELECT id, data FROM run_events
     AND substr(data, 1, 13) != '{"retention":' AND id > ?
   ORDER BY id LIMIT ?`;
 
+/**
+ * A check run synchronously right before every `runs.insert` (FO-ORCH08). It
+ * may throw to refuse the write. Installed by `autonomy.ts`; unset in tests
+ * that don't import it. Only Runs ForgeOrbit starts on its own authority are
+ * ever refused (see `autonomy.ts`' origin context) — the Owner's own clicks
+ * and messages never reach a refusal.
+ */
+/** Clear a task's unaccepted QC PASS when a new non-review run starts. Verdicts of other kinds are left as they are. */
+function withdrawStaleQcPass(taskId: string): void {
+  const row = db.query<{ qc_state: string | null }, [string]>(`SELECT qc_state FROM tasks WHERE id = ?`).get(taskId);
+  if (!row?.qc_state) return;
+  let state: TaskQcState;
+  try { state = parseQcState(JSON.parse(row.qc_state)); } catch { return; }
+  if (!state.awaitingOwnerApproval && state.latestVerdict !== "PASS") return;
+  if (state.activeReviewId) return;
+  db.run(`UPDATE tasks SET qc_state = ? WHERE id = ?`, [JSON.stringify({ ...state, awaitingOwnerApproval: false, latestVerdict: null }), taskId]);
+}
+let runInsertGuard: ((run: Run) => void) | null = null;
+export function setRunInsertGuard(guard: ((run: Run) => void) | null): void {
+  runInsertGuard = guard;
+}
+
 export const runs = {
+  /** Run rows recorded for these tasks since `since` (every status, failed starts included). */
+  countForTasksSince(taskIds: readonly string[], since: number): number {
+    if (taskIds.length === 0) return 0;
+    return db.query<{ n: number }, (string | number)[]>(
+      `SELECT COUNT(*) AS n FROM runs WHERE started_at >= ? AND task_id IN (${taskIds.map(() => "?").join(", ")})`,
+    ).get(since, ...taskIds)?.n ?? 0;
+  },
+  /** Run rows of these tasks that are still `running`. */
+  countRunningForTasks(taskIds: readonly string[]): number {
+    if (taskIds.length === 0) return 0;
+    return db.query<{ n: number }, string[]>(
+      `SELECT COUNT(*) AS n FROM runs WHERE status = 'running' AND task_id IN (${taskIds.map(() => "?").join(", ")})`,
+    ).get(...taskIds)?.n ?? 0;
+  },
   listForTask(taskId: string): Run[] {
     return db.query<RunRow, [string]>(
       `SELECT * FROM runs WHERE task_id = ? ORDER BY started_at DESC`,
@@ -2449,11 +3646,18 @@ export const runs = {
    *  user-initiated run's row explicitly NULL rather than the JS `undefined`
    *  bun:sqlite would otherwise bind. */
   insert(r: Run): Run {
+    runInsertGuard?.(r);
+    const task = tasks.get(r.taskId);
+    const usageScope = task ? scopeFor(db, task, ownerProjectOf(task.workdir)) : null;
     db.run(
-      `INSERT INTO runs (id, task_id, agent, status, started_at, ended_at, exit_code, tmux_session, claude_session_id, codex_session_id, cursor_session_id, gemini_session_id, fx_session_id, antigravity_session_id, origin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [r.id, r.taskId, r.agent, r.status, r.startedAt, r.endedAt, r.exitCode, r.tmuxSession, r.claudeSessionId, r.codexSessionId, r.cursorSessionId, r.geminiSessionId, r.fxSessionId ?? null, r.antigravitySessionId ?? null, r.origin ?? null],
+      `INSERT INTO runs (id, task_id, agent, status, started_at, ended_at, exit_code, tmux_session, claude_session_id, codex_session_id, cursor_session_id, gemini_session_id, fx_session_id, antigravity_session_id, origin, project_rules_snapshot, knowledge_snapshot, brain_context_snapshot, qc_review_id, usage_scope)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [r.id, r.taskId, r.agent, r.status, r.startedAt, r.endedAt, r.exitCode, r.tmuxSession, r.claudeSessionId, r.codexSessionId, r.cursorSessionId, r.geminiSessionId, r.fxSessionId ?? null, r.antigravitySessionId ?? null, r.origin ?? null, r.projectRulesSnapshot ? JSON.stringify(r.projectRulesSnapshot) : null, r.knowledgeSnapshot ? JSON.stringify(r.knowledgeSnapshot) : null, r.brainContextSnapshot ? JSON.stringify(r.brainContextSnapshot) : null, r.qcReviewId ?? null, usageScope ? JSON.stringify(usageScope) : null],
     );
+    // A new implementation run changes the output a review verdict was about. A PASS the Owner has not yet accepted
+    // described the earlier output, so it is withdrawn: the Owner is never shown, or allowed to act on, an approval
+    // that belongs to a run that is no longer the latest. The review itself stays on record with the run it reviewed.
+    if (!r.qcReviewId) withdrawStaleQcPass(r.taskId);
     return { ...r, origin: r.origin ?? null };
   },
   update(id: string, patch: Partial<Run>): Run | null {
@@ -2467,16 +3671,35 @@ export const runs = {
     );
     return next;
   },
+  /** Bounded source captured when a non-QC run succeeds. Null for historical rows. */
+  readSourceEvidence(id: string): string | null {
+    const row = db.query<{ source_evidence_json: string | null }, [string]>(
+      `SELECT source_evidence_json FROM runs WHERE id = ?`,
+    ).get(id);
+    return row?.source_evidence_json ?? null;
+  },
+  writeSourceEvidence(id: string, json: string): void {
+    db.run(`UPDATE runs SET source_evidence_json = ? WHERE id = ?`, [json, id]);
+  },
+  readBrainContextSnapshot(id: string): string | null {
+    const row = db.query<{ brain_context_snapshot: string | null }, [string]>(
+      `SELECT brain_context_snapshot FROM runs WHERE id = ?`,
+    ).get(id);
+    return row?.brain_context_snapshot ?? null;
+  },
+  writeBrainContextSnapshot(id: string, json: string): void {
+    db.run(`UPDATE runs SET brain_context_snapshot = ? WHERE id = ?`, [json, id]);
+  },
   /** Events for a single run, in event-id order. `runId` is the same as
    *  the argument — included on every row so the shape matches
    *  `eventsForTask`, keeping the two helpers interchangeable to a
    *  caller that just wants `{ runId, stream, data, ts }`. */
   events(runId: string) {
     return db.query<
-      { runId: string; stream: string; data: string; ts: number; subagentId: string | null },
+      { runId: string; stream: string; data: string; ts: number; lineUuid: string | null; subagentId: string | null },
       [string]
     >(
-      `SELECT run_id as runId, stream, data, ts, subagent_id as subagentId
+      `SELECT run_id as runId, stream, data, ts, line_uuid as lineUuid, subagent_id as subagentId
        FROM run_events
        WHERE run_id = ?
        ORDER BY id ASC`,
@@ -2522,6 +3745,27 @@ export const runs = {
        WHERE run_id = ? AND stream = 'tool_use' AND subagent_id IS NULL ORDER BY id DESC LIMIT 1`,
     ).get(runId);
     return row ? row.data : null;
+  },
+  /** The most recent MAIN-stream `assistant` event's text for a run, or
+   *  `null` — the supervised-execution result's "final message" (FO-005B).
+   *  `INDEXED BY idx_run_events_run` for the same reason as
+   *  `lastToolUseData`: the planner would otherwise walk every run's
+   *  `assistant` rows through `idx_run_events_user_history`. */
+  lastAssistantData(runId: string): string | null {
+    const row = db.query<{ data: string }, [string]>(
+      `SELECT data FROM run_events INDEXED BY idx_run_events_run
+       WHERE run_id = ? AND stream = 'assistant' AND subagent_id IS NULL ORDER BY id DESC LIMIT 1`,
+    ).get(runId);
+    return row ? row.data : null;
+  },
+  /** The last `limit` MAIN-stream `status`/`stderr` lines of a run, oldest
+   *  first — the supervised-execution result's error lines (FO-005B). Same
+   *  index pin as `lastAssistantData`. */
+  recentStatusLines(runId: string, limit: number): { stream: string; data: string }[] {
+    return db.query<{ stream: string; data: string }, [string, number]>(
+      `SELECT stream, data FROM run_events INDEXED BY idx_run_events_run
+       WHERE run_id = ? AND stream IN ('status', 'stderr') AND subagent_id IS NULL ORDER BY id DESC LIMIT ?`,
+    ).all(runId, limit).reverse();
   },
   /**
    * Find a run's persisted `tool_use` event by its `id` (claude-tmux's
@@ -2952,6 +4196,18 @@ export const runs = {
        WHERE r.task_id = ? AND e.line_uuid IS NOT NULL AND e.subagent_id IS NULL`,
     ).all(taskId);
     return new Set(rows.map((r) => r.line_uuid));
+  },
+  /** Main-stream (no subagent) `line_uuid`s persisted under ONE run, in
+   *  insertion order. Pinned to `idx_run_events_run` like every run-scoped
+   *  `run_events` read, so the planner can't pick the stream-first index. */
+  mainStreamLineUuidsForRun(runId: string): string[] {
+    return db
+      .query<{ line_uuid: string }, [string]>(
+        `SELECT line_uuid FROM run_events INDEXED BY idx_run_events_run
+         WHERE run_id = ? AND line_uuid IS NOT NULL AND subagent_id IS NULL`,
+      )
+      .all(runId)
+      .map((r) => r.line_uuid);
   },
   /** Line uuids already persisted for a single subagent's stream. Seeds the
    *  subagent tailer's in-memory dedup set on reattach so re-reading

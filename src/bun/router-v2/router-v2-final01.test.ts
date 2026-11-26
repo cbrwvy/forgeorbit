@@ -1,0 +1,6 @@
+import { test } from "bun:test";
+import { runIsolatedMissionSuite } from "../test-support/mission-file-isolation.ts";
+
+test("FO-ROUTER-FINAL01 company scenario", () => {
+  runIsolatedMissionSuite(new URL("./router-v2-final01.suite.ts", import.meta.url), 180_000);
+});

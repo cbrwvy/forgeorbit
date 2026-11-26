@@ -14,9 +14,8 @@ import type { HarnessQuota } from "../src/shared/types.ts";
 export interface GotoAppOptions {
   /**
    * Defaults to `true`: before navigating, seeds `onboardingDismissed="true"`
-   * directly against the backend this `url` points at, so the first-run
-   * welcome dialog / "Getting started" checklist (docs/plans/onboarding-
-   * first-run.md) never appears for a spec that isn't testing it. Every
+   * directly against the backend this `url` points at, so the
+   * "Getting started" block on Home (FO-UX-SIMPLIFY02-M7) never appears for a spec that isn't testing it. Every
    * fresh per-worker backend (e2e/fixtures.ts's `backend`) starts with that
    * preference absent — which is exactly the "show onboarding" state — so
    * without this default, theme/font-size/quote specs would get a welcome
@@ -24,10 +23,18 @@ export interface GotoAppOptions {
    * needs the real first-run state, via `{ seedOnboardingDismissed: false }`.
    */
   seedOnboardingDismissed?: boolean;
+  /**
+   * Defaults to `true`: pins the New task panel (`agetor:newTaskPinned=1`,
+   * src/mainview/lib/new-task-presentation.ts). Since FO-UX02-D stage 1 the
+   * shipped default is a sheet opened by ⌘N, but most specs drive the form
+   * that used to be always open, so they run against the still-supported
+   * pinned mode. Specs about the sheet pass `{ newTaskPinned: false }`.
+   */
+  newTaskPinned?: boolean;
 }
 
 /** Preference key onboarding's visibility logic reads
- *  (`ONBOARDING_DISMISSED_PREF` in src/mainview/lib/onboarding.ts) — kept as
+ *  (`ONBOARDING_DISMISSED_PREF` in src/mainview/lib/getting-started.ts) — kept as
  *  a literal here rather than imported so this file has no dependency on
  *  mainview source. */
 const ONBOARDING_DISMISSED_KEY = "onboardingDismissed";
@@ -55,7 +62,12 @@ function backendFromBootUrl(url: string): { apiBase: string; token: string } | n
  *  hash params, e.g. font-size.spec's `&fontSize=`). See `GotoAppOptions`
  *  for the default onboarding-dismissal seeding. */
 export async function gotoApp(page: Page, url: string, options: GotoAppOptions = {}): Promise<void> {
-  const { seedOnboardingDismissed = true } = options;
+  const { seedOnboardingDismissed = true, newTaskPinned = true } = options;
+  if (newTaskPinned) {
+    await page.addInitScript(() => {
+      try { localStorage.setItem("agetor:newTaskPinned", "1"); } catch { /* storage unavailable */ }
+    });
+  }
   if (seedOnboardingDismissed) {
     const backend = backendFromBootUrl(url);
     if (backend) {
@@ -71,7 +83,74 @@ export async function gotoApp(page: Page, url: string, options: GotoAppOptions =
     }
   }
   await page.goto(url);
-  await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
+  // The Settings control carries a stable test id. Waiting on its English
+  // accessible name made every RU-locale caller (e.g. the M1 Russian spec)
+  // race the preference being applied: once the UI rendered "Настройки" the
+  // helper could never see "Settings".
+  //
+  // 20 s, not Playwright's 5 s default: the shared Vite server compiles the
+  // module graph on the first page request, and on a loaded machine that
+  // alone can outlast 5 s — the window is blank, not failed. This only
+  // widens the wait for real rendered content; it adds no sleep or retry.
+  await expect(page.getByTestId("open-settings")).toBeVisible({ timeout: 20_000 });
+}
+
+/** Home → All tasks. The global board left the rail; Home still opens it. */
+export async function openAllTasks(page: Page): Promise<void> {
+  const bar = page.getByTestId("all-tasks-bar");
+  if (await bar.isVisible().catch(() => false)) return;
+  const opener = page.getByTestId("global-open-board");
+  if (!(await opener.isVisible().catch(() => false))) {
+    await page.getByTestId("workspace-overview").click();
+    await expect(page.getByTestId("global-open-board")).toBeVisible();
+  }
+  await page.getByTestId("global-open-board").click();
+  await expect(bar).toBeVisible();
+}
+
+/** Workspaces rail: the spaces list. */
+export async function openWorkspaces(page: Page): Promise<void> {
+  await page.getByTestId("workspace-workspaces").click();
+  await expect(page.getByTestId("clusters-page")).toBeVisible();
+}
+
+/** Portfolio, from the Workspaces more menu. */
+export async function openPortfolio(page: Page): Promise<void> {
+  if (await page.getByTestId("portfolio-dashboard").isVisible().catch(() => false)) return;
+  if (!(await page.getByTestId("clusters-more").isVisible().catch(() => false))) await openWorkspaces(page);
+  await page.getByTestId("clusters-more").click();
+  await page.getByTestId("clusters-more-menu-portfolio").click();
+  await expect(page.getByTestId("portfolio-dashboard")).toBeVisible();
+}
+
+/** Settings → Execution plans. Opening the page does not start work. */
+export async function openExecutionPlans(page: Page): Promise<void> {
+  if (!(await page.getByTestId("settings-nav-plans").isVisible().catch(() => false))) {
+    await page.getByTestId("open-settings").click();
+  }
+  await page.getByTestId("settings-nav-plans").click();
+  await expect(page.getByTestId("mission-control-page")).toBeVisible();
+}
+
+/**
+ * A registered project's Analytics tab, with the existing filters and views open.
+ * Analytics is no longer a rail item; the figures stay limited to this project.
+ */
+export async function openProjectAnalytics(page: Page, projectPath: string): Promise<void> {
+  await page.locator(`[data-testid="project-nav-item"][data-path="${projectPath}"]`).click();
+  await page.getByTestId("project-page-analytics").click();
+  await expect(page.getByTestId("project-analytics")).toBeVisible();
+  const details = page.getByTestId("project-analytics-details");
+  if ((await details.getAttribute("open")) === null) await details.locator("summary").first().click();
+  await expect(page.getByTestId("usage-page")).toBeVisible();
+}
+
+/** Explicit board entry for specs whose subject is a card or column.
+ * FO-001 deliberately boots into Overview; do not change the app default
+ * (or gotoApp) just to satisfy older board tests. */
+export async function gotoBoard(page: Page, url: string): Promise<void> {
+  await gotoApp(page, url);
+  await openAllTasks(page);
 }
 
 /** Opens Settings → General (the default section on open — no tab click

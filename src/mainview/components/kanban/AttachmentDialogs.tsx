@@ -1,3 +1,4 @@
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 // The two "click failed" dialogs shared by every attachment-rendering
 // surface (`AttachmentChips`, `SentFilesCard`): the path is genuinely gone
 // (a 404 from the server) vs. the server found it but couldn't open it (OS
@@ -27,6 +28,7 @@ export function AttachmentNotFoundDialog({
   path: string | null;
   onClose: () => void;
 }) {
+  useUILocale();
   return (
     <Dialog
       open={path !== null}
@@ -34,14 +36,10 @@ export function AttachmentNotFoundDialog({
       labelledBy={ATTACHMENT_NOT_FOUND_TITLE_ID}
       className="max-w-md"
     >
-      <h2 id={ATTACHMENT_NOT_FOUND_TITLE_ID} className="text-sm font-semibold">
-        Attachment not found
-      </h2>
+      <h2 id={ATTACHMENT_NOT_FOUND_TITLE_ID} className="text-sm font-semibold"><I18nText id="tasks.attachment_not_found" />{" "}</h2>
       <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{path}</p>
       <div className="mt-4 flex justify-end">
-        <Button size="sm" variant="outline" onClick={onClose}>
-          Close
-        </Button>
+        <Button size="sm" variant="outline" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
       </div>
     </Dialog>
   );
@@ -58,6 +56,7 @@ export function AttachmentOpenErrorDialog({
   message: string | null;
   onClose: () => void;
 }) {
+  useUILocale();
   return (
     <Dialog
       open={path !== null}
@@ -65,15 +64,11 @@ export function AttachmentOpenErrorDialog({
       labelledBy={ATTACHMENT_OPEN_ERROR_TITLE_ID}
       className="max-w-md"
     >
-      <h2 id={ATTACHMENT_OPEN_ERROR_TITLE_ID} className="text-sm font-semibold">
-        Couldn't open attachment
-      </h2>
+      <h2 id={ATTACHMENT_OPEN_ERROR_TITLE_ID} className="text-sm font-semibold"><I18nText id="tasks.couldn_t_open_attachment" />{" "}</h2>
       <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{path}</p>
       <p className="mt-2 text-xs text-muted-foreground">{message}</p>
       <div className="mt-4 flex justify-end">
-        <Button size="sm" variant="outline" onClick={onClose}>
-          Close
-        </Button>
+        <Button size="sm" variant="outline" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
       </div>
     </Dialog>
   );

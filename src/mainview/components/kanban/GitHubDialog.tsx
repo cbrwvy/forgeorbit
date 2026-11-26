@@ -1,3 +1,7 @@
+import { codeLabel, staticLabel } from "@/i18n/presentation";
+import { englishPluralSuffix, intlLocale, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -87,41 +91,8 @@ import {
   type GitHubDialogView,
   type GitHubPanelKind,
 } from "@/lib/github-dialog-view";
-import type {
-  DiffFile,
-  GitHubCheckRun,
-  GitHubChecksResult,
-  GitHubComment,
-  GitHubCommitStatusResult,
-  GitHubDiscussion,
-  GitHubDiscussionCategory,
-  GitHubDiscussionComment,
-  GitHubDiscussionDetail,
-  GitHubLinkedIssue,
-  GitHubListItem,
-  GitHubNotification,
-  GitHubPullCommit,
-  GitHubPullLineComment,
-  GitHubPullMergeability,
-  GitHubProjectField,
-  GitHubProjectItem,
-  GitHubProjectV2,
-  GitHubRateLimit,
-  GitHubRelease,
-  GitHubRepoLabel,
-  GitHubRepoMilestone,
-  GitHubReviewThread,
-  GitHubSubIssue,
-  GitHubTag,
-  GitHubUser,
-  GitHubWorkflow,
-  GitHubWorkflowRun,
-  GitProvider,
-  Project,
-  ProviderCaps,
-  TaskDiff,
-} from "../../../shared/types.ts";
-import { GIT_HOST_TOKENS_SECTION } from "../../../shared/types.ts";
+import { GIT_HOST_TOKENS_SECTION, type DiffFile, type GitHubCheckRun, type GitHubChecksResult, type GitHubComment, type GitHubCommitStatusResult, type GitHubDiscussion, type GitHubDiscussionCategory, type GitHubDiscussionComment, type GitHubDiscussionDetail, type GitHubLinkedIssue, type GitHubListItem, type GitHubNotification, type GitHubProjectField, type GitHubProjectItem, type GitHubProjectV2, type GitHubPullCommit, type GitHubPullLineComment, type GitHubPullMergeability, type GitHubRateLimit, type GitHubRelease, type GitHubRepoLabel, type GitHubRepoMilestone, type GitHubReviewThread, type GitHubSubIssue, type GitHubTag, type GitHubUser, type GitHubWorkflow, type GitHubWorkflowRun, type GitProvider, type Project, type ProviderCaps, type TaskDiff } from "../../../shared/types.ts";
+
 import {
   displayCaps,
   itemProvider,
@@ -292,7 +263,7 @@ const fmtDate = (value: string) => {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(d);
+  return new Intl.DateTimeFormat(intlLocale(), { month: "short", day: "numeric", year: "numeric" }).format(d);
 };
 
 // A coarse "today" / "3d ago" for compact commit rows; falls back to the plain
@@ -305,7 +276,7 @@ const fmtRelativeDate = (value: string) => {
   const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
   if (diffDays <= 0) return "today";
   if (diffDays === 1) return "yesterday";
-  if (diffDays < 30) return `${diffDays}d ago`;
+  if (diffDays < 30) return tr("common.d_ago", { p0: String(diffDays) });
   return fmtDate(value);
 };
 
@@ -358,8 +329,9 @@ function LabelAssigneeMilestoneFields({
   onAssigneeDraftChange: (body: string) => void;
   onMilestoneDraftChange: (body: string) => void;
 }) {
-  const selectedLabels = useMemo(() => new Set(splitLabels(labelDraft)), [labelDraft]);
-  const selectedAssignees = useMemo(() => new Set(splitLabels(assigneeDraft)), [assigneeDraft]);
+  const { locale: uiLocale } = useUILocale();
+  const selectedLabels = useMemo(() => new Set(splitLabels(labelDraft)), [labelDraft, uiLocale]);
+  const selectedAssignees = useMemo(() => new Set(splitLabels(assigneeDraft)), [assigneeDraft, uiLocale]);
 
   const toggleLabel = (name: string) => {
     const next = new Set(selectedLabels);
@@ -379,18 +351,18 @@ function LabelAssigneeMilestoneFields({
   const labelNames = useMemo(() => {
     const names = repoLabels.map((l) => l.name);
     return [...names, ...[...selectedLabels].filter((n) => !names.includes(n))];
-  }, [repoLabels, selectedLabels]);
+  }, [repoLabels, selectedLabels, uiLocale]);
   const assigneeLogins = useMemo(() => {
     const logins = repoAssignees.map((u) => u.login);
     return [...logins, ...[...selectedAssignees].filter((l) => !logins.includes(l))];
-  }, [repoAssignees, selectedAssignees]);
+  }, [repoAssignees, selectedAssignees, uiLocale]);
   const milestoneOptions = useMemo(() => {
     const opts = repoMilestones.map((m) => ({ value: String(m.number), label: m.title }));
     if (milestoneDraft && !opts.some((o) => o.value === milestoneDraft)) {
       opts.push({ value: milestoneDraft, label: `#${milestoneDraft}` });
     }
     return opts;
-  }, [repoMilestones, milestoneDraft]);
+  }, [repoMilestones, milestoneDraft, uiLocale]);
 
   const chipCls = (active: boolean) =>
     cn(
@@ -405,7 +377,7 @@ function LabelAssigneeMilestoneFields({
       {showLabels && (repoLabels.length > 0 ? (
         <div
           className="flex h-8 flex-wrap items-center gap-1 overflow-y-auto rounded-md border border-input bg-transparent px-1.5 py-1"
-          title="Labels"
+          title={tr("tasks.labels")}
         >
           {labelNames.map((name) => (
             <button
@@ -424,7 +396,7 @@ function LabelAssigneeMilestoneFields({
           {...IDENTIFIER_INPUT_PROPS}
           value={labelDraft}
           onChange={(e) => onLabelDraftChange(e.target.value)}
-          placeholder="Labels, comma separated"
+          placeholder={tr("tasks.labels_comma_separated")}
           className="h-8 text-xs"
           disabled={disabled}
         />
@@ -432,7 +404,7 @@ function LabelAssigneeMilestoneFields({
       {repoAssignees.length > 0 ? (
         <div
           className="flex h-8 flex-wrap items-center gap-1 overflow-y-auto rounded-md border border-input bg-transparent px-1.5 py-1"
-          title="Assignees"
+          title={tr("tasks.assignees")}
         >
           {assigneeLogins.map((login) => (
             <button
@@ -451,7 +423,7 @@ function LabelAssigneeMilestoneFields({
           {...IDENTIFIER_INPUT_PROPS}
           value={assigneeDraft}
           onChange={(e) => onAssigneeDraftChange(e.target.value)}
-          placeholder="Assignees, comma separated"
+          placeholder={tr("tasks.assignees_comma_separated")}
           className="h-8 text-xs"
           disabled={disabled}
         />
@@ -462,9 +434,9 @@ function LabelAssigneeMilestoneFields({
           onChange={(e) => onMilestoneDraftChange(e.target.value)}
           className="h-8 text-xs"
           disabled={disabled}
-          aria-label="Milestone"
+          aria-label={tr("tasks.milestone")}
         >
-          <option value="">— none —</option>
+          <option value=""><I18nText id="tasks.none" /></option>
           {milestoneOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -476,7 +448,7 @@ function LabelAssigneeMilestoneFields({
           {...IDENTIFIER_INPUT_PROPS}
           value={milestoneDraft}
           onChange={(e) => onMilestoneDraftChange(e.target.value)}
-          placeholder="Milestone number"
+          placeholder={tr("tasks.milestone_number")}
           className="h-8 text-xs"
           disabled={disabled}
         />
@@ -543,11 +515,12 @@ const PANEL_TITLES: Record<GitHubPanelKind, string> = {
  *  the Search API's ~30/min ceiling is small enough that this can trip during
  *  normal use, which is the point of surfacing it at all. */
 function RateLimitBadge({ rateLimit }: { rateLimit: GitHubRateLimit }) {
+  useUILocale();
   const low = rateLimit.limit > 0 && rateLimit.remaining / rateLimit.limit < 0.1;
   return (
     <span
       className={cn("shrink-0 text-[11px]", low ? "font-medium text-warning" : "text-muted-foreground")}
-      title={`GitHub API rate limit (${rateLimit.resource}): ${rateLimit.remaining} of ${rateLimit.limit} requests remaining`}
+      title={tr("common.github_api_rate_limit_of_requests_remaining", { p0: String(rateLimit.resource), p1: String(rateLimit.remaining), p2: String(rateLimit.limit) })}
     >
       {rateLimit.resource}: {rateLimit.remaining}/{rateLimit.limit}
     </span>
@@ -565,17 +538,18 @@ function RateLimitBadge({ rateLimit }: { rateLimit: GitHubRateLimit }) {
 function credentialSetupStep1(provider: GitProvider | "mixed" | null): string {
   switch (provider) {
     case "bitbucket":
-      return "Create an Atlassian API token with scopes at id.atlassian.com — Bitbucket credentials are saved as email:api_token.";
+      return tr("common.create_an_atlassian_api_token_with_scopes_at");
     case "github":
-      return "Create a personal access token (classic or fine-grained) on github.com.";
+      return tr("common.create_a_personal_access_token_classic_or_fine");
     case "gitlab":
-      return "Create a personal access token with the api scope on gitlab.com (or your self-hosted GitLab instance).";
+      return tr("common.create_a_personal_access_token_with_the_api");
     default:
-      return "Create a token on your git host.";
+      return tr("common.create_a_token_on_your_git_host");
   }
 }
 
 export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, itemDetailPrefill, onClose, onOpenSettings }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const [projectPath, setProjectPath] = useState("");
   // "All repositories" (G8/F15) — see AGGREGATE_PROJECT_PATH.
   const isAggregate = projectPath === AGGREGATE_PROJECT_PATH;
@@ -957,7 +931,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
   // the single-repo path (where this stays a constant "").
   const aggregatePathsKey = useMemo(
     () => (isAggregate ? projects.map((p) => p.path).join("\n") : ""),
-    [isAggregate, projects],
+    [isAggregate, projects, uiLocale],
   );
 
   // Resolve provider-info (T5) whenever the selected project (or, in aggregate
@@ -1270,11 +1244,11 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         const item = await (async () => {
           if (pending.kind === "pulls") {
             const result = await api.getGitHubPullDetail(pending.projectPath, pending.number);
-            if (!result?.ok || !result.item) throw new Error("Pull request not found");
+            if (!result?.ok || !result.item) throw new Error(tr("common.pull_request_not_found"));
             return result.item;
           }
           const result = await api.getGitHubIssueThread(pending.projectPath, pending.number, { includeComments: false });
-          if (!result?.ok || !result.item) throw new Error("Issue not found");
+          if (!result?.ok || !result.item) throw new Error(tr("common.issue_not_found"));
           return result.item;
         })();
         if (cancelled || viewRef.current.kind !== "list") return;
@@ -1284,8 +1258,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         if (!sameItem) {
           throw new Error(
             pending.kind === "pulls"
-              ? "That pull request URL points at a different repository — opening in browser."
-              : "That issue URL points at a different repository — opening in browser.",
+              ? tr("common.that_pull_request_url_points_at_a_different")
+              : tr("common.that_issue_url_points_at_a_different_repository"),
           );
         }
         // This fetch already IS a fresh detail fetch — mark the entry-refresh
@@ -1302,11 +1276,11 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           err instanceof Error
             ? err.message
             : pending.kind === "pulls"
-              ? "Could not load the pull request"
-              : "Could not load the issue",
+              ? tr("common.could_not_load_the_pull_request")
+              : tr("common.could_not_load_the_issue"),
         );
         void api.openExternal(pending.url).catch((e: unknown) => {
-          toast.error(e instanceof Error ? e.message : "Could not open the browser");
+          toast.error(e instanceof Error ? e.message : tr("common.could_not_open_the_browser"));
         });
       }
     })();
@@ -1346,7 +1320,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       for (const label of item.labels) names.add(label.name);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [result, repoLabels]);
+  }, [result, repoLabels, uiLocale]);
 
   const projectOptions = useMemo(() => {
     const opts = projects.map((p) => ({ path: p.path, label: p.name || basename(p.path) || p.path }));
@@ -1355,9 +1329,9 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     }
     // "All repositories" (G8/F15) always leads the list — the backend filters
     // the candidate paths down to the ones with a GitHub remote.
-    opts.unshift({ path: AGGREGATE_PROJECT_PATH, label: "All repositories" });
+    opts.unshift({ path: AGGREGATE_PROJECT_PATH, label: tr("common.all_repositories") });
     return opts;
-  }, [projects, projectPath]);
+  }, [projects, projectPath, uiLocale]);
 
   const expandedItem = useMemo(() => {
     if (view.kind !== "detail") return null;
@@ -1366,7 +1340,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     // old accordion did; fall back to the snapshot captured on navigation if
     // the item has since dropped out of the filtered results.
     return result?.items.find((candidate) => itemKey(candidate) === itemKey(view.item)) ?? view.item;
-  }, [view, result]);
+  }, [view, result, uiLocale]);
   // Resolved path for the currently-expanded item's per-item data fetches
   // (diff/checks/mergeability/commits/linkedIssues/comments/reviewComments) —
   // falls back to `projectPath` in single-repo mode; in aggregate mode every
@@ -1467,13 +1441,13 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
   const sortLabels = (ls: GitHubRepoLabel[]) => [...ls].sort((a, b) => a.name.localeCompare(b.name));
 
   const createLabel = async (name: string, color: string, description: string) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { label } = await api.createGitHubLabel({ path: projectPath, name, color, description });
     setRepoLabels((cur) => sortLabels([...cur.filter((l) => l.name !== label.name), label]));
   };
 
   const editLabel = async (name: string, patch: { newName?: string; color?: string; description?: string }) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { label } = await api.updateGitHubLabel({ path: projectPath, name, ...patch });
     setRepoLabels((cur) => sortLabels([...cur.filter((l) => l.name !== name), label]));
     // Reconcile the renamed/recolored label on any loaded item so its badge
@@ -1488,7 +1462,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
   };
 
   const removeLabel = async (name: string) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     await api.deleteGitHubLabel({ path: projectPath, name });
     setRepoLabels((cur) => cur.filter((l) => l.name !== name));
     // Drop the deleted label from any loaded item that carried it.
@@ -1535,7 +1509,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
   };
 
   const createMilestone = async (title: string, description: string, dueOn: string) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { milestone } = await api.createGitHubMilestone({ path: projectPath, title, description, dueOn: dueOn || undefined });
     setRepoMilestones((cur) => sortMilestones([...cur, milestone]));
   };
@@ -1544,7 +1518,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     number: number,
     patch: { title?: string; description?: string; dueOn?: string | null; state?: "open" | "closed" },
   ) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { milestone } = await api.updateGitHubMilestone({ path: projectPath, number, ...patch });
     setRepoMilestones((cur) => sortMilestones(cur.map((m) => (m.number === number ? milestone : m))));
     // Reconcile the renamed milestone on any loaded item so its badge stays fresh.
@@ -1559,7 +1533,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
   };
 
   const removeMilestone = async (number: number) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     await api.deleteGitHubMilestone({ path: projectPath, number });
     setRepoMilestones((cur) => cur.filter((m) => m.number !== number));
     // Drop the deleted milestone from any loaded item that carried it.
@@ -1612,7 +1586,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     draft: boolean,
     prerelease: boolean,
   ) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { release } = await api.createGitHubRelease({ path: projectPath, tagName, name, body, draft, prerelease });
     setRepoReleases((cur) => sortReleases([...cur, release]));
   };
@@ -1621,13 +1595,13 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     id: number,
     patch: { name?: string; body?: string; draft?: boolean; prerelease?: boolean; tagName?: string },
   ) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { release } = await api.updateGitHubRelease({ path: projectPath, id, ...patch });
     setRepoReleases((cur) => sortReleases(cur.map((r) => (r.id === id ? release : r))));
   };
 
   const removeRelease = async (id: number) => {
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     await api.deleteGitHubRelease({ path: projectPath, id });
     setRepoReleases((cur) => cur.filter((r) => r.id !== id));
   };
@@ -2713,7 +2687,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
   const editConversationComment = async (item: GitHubListItem, commentId: number, body: string) => {
     const itemPath = item.sourcePath ?? projectPath;
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { comment } = await api.updateGitHubComment({ path: itemPath, commentId, kind: "issue", body });
     setComments((cur) => ({
       ...cur,
@@ -2723,7 +2697,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
   const deleteConversationComment = async (item: GitHubListItem, commentId: number) => {
     const itemPath = item.sourcePath ?? projectPath;
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     await api.deleteGitHubComment({ path: itemPath, commentId, kind: "issue" });
     setComments((cur) => ({
       ...cur,
@@ -2733,7 +2707,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
   const editReviewComment = async (item: GitHubListItem, commentId: number, body: string) => {
     const itemPath = item.sourcePath ?? projectPath;
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const { comment } = await api.updateGitHubComment({ path: itemPath, commentId, kind: "review", body });
     // Keep the line-comment's path/line/side; only body + updatedAt change.
     setReviewComments((cur) => ({
@@ -2746,7 +2720,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
   const deleteReviewComment = async (item: GitHubListItem, commentId: number) => {
     const itemPath = item.sourcePath ?? projectPath;
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     await api.deleteGitHubComment({ path: itemPath, commentId, kind: "review" });
     setReviewComments((cur) => ({
       ...cur,
@@ -2756,7 +2730,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
   const toggleThreadResolved = async (item: GitHubListItem, thread: GitHubReviewThread) => {
     const itemPath = item.sourcePath ?? projectPath;
-    if (!projectPath) throw new Error("no project selected");
+    if (!projectPath) throw new Error(tr("common.no_project_selected_0473ab"));
     const result = await api.setGitHubReviewThreadResolved({
       path: itemPath,
       threadId: thread.threadId,
@@ -2846,7 +2820,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     if (event !== "APPROVE" && !body && pending.length === 0) {
       setActionErrors((cur) => ({
         ...cur,
-        [itemKey(item)]: event === "COMMENT" ? "A review comment requires a note." : "Request changes requires a comment.",
+        [itemKey(item)]: event === "COMMENT" ? tr("common.a_review_comment_requires_a_note") : tr("common.request_changes_requires_a_comment"),
       }));
       return;
     }
@@ -2865,8 +2839,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       setActionMessages((cur) => ({
         ...cur,
         [itemKey(item)]: result.message ?? (event === "APPROVE"
-          ? "Pull request approved."
-          : event === "COMMENT" ? "Review submitted." : "Changes requested."),
+          ? tr("common.pull_request_approved")
+          : event === "COMMENT" ? tr("common.review_submitted") : tr("common.changes_requested")),
       }));
       setReviewDrafts((cur) => ({ ...cur, [itemKey(item)]: "" }));
       // The pending inline comments were posted with the review — clear them and
@@ -2908,7 +2882,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       const result = await api.mergeGitHubPull({ path: itemPath, number: item.number, method });
       if (result.merged) {
         markPullClosed(item, mergedPullReplacement(item));
-        setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Pull request merged." }));
+        setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.pull_request_merged") }));
         // Any queued (unsubmitted) review note is now moot — mirrors
         // `runPullClose` clearing `closeDrafts` on success.
         setReviewDrafts((cur) => ({ ...cur, [itemKey(item)]: "" }));
@@ -2919,7 +2893,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         // claiming "Pull request merged." and clearing the review draft.
         setActionErrors((cur) => ({
           ...cur,
-          [itemKey(item)]: result.message ?? "GitHub did not merge the pull request.",
+          [itemKey(item)]: result.message ?? tr("common.github_did_not_merge_the_pull_request"),
         }));
       }
     } catch (e) {
@@ -2938,7 +2912,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     setActionMessages((cur) => ({ ...cur, [itemKey(item)]: undefined }));
     try {
       const result = await api.updateGitHubPullBranch({ path: itemPath, number: item.number });
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Branch update started." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.branch_update_started") }));
       // update-branch is async (202 Accepted) — GitHub merges the base into the
       // head in the background. Give it a moment before invalidating the caches,
       // otherwise the refetch races the merge and shows a stale "behind" verdict.
@@ -2976,7 +2950,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     try {
       const result = await api.closeGitHubPull({ path: itemPath, number: item.number, comment });
       markPullClosed(item, result.item);
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Pull request closed." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.pull_request_closed") }));
       setCloseDrafts((cur) => ({ ...cur, [itemKey(item)]: "" }));
       if (comment && result.commentPosted !== false) {
         setComments((cur) => ({ ...cur, [itemKey(item)]: undefined }));
@@ -3005,7 +2979,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       // comment) — a deep-linked PR reopened from detail may not be in the
       // loaded list.
       patchDetailView(result.item);
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Pull request reopened." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.pull_request_reopened") }));
       // Now open again — let the mergeability effect fetch a fresh verdict.
       mergeabilityRetries.current[itemKey(item)] = 0;
     } catch (e) {
@@ -3031,7 +3005,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       // comment) — a deep-linked PR toggled from detail may not be in the
       // loaded list.
       patchDetailView(next);
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Draft state updated." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.draft_state_updated") }));
       // Draft ↔ ready flips mergeable_state (draft PRs report "draft"), so refresh.
       mergeabilityRetries.current[itemKey(item)] = 0;
       setMergeability((cur) => ({ ...cur, [itemKey(item)]: undefined }));
@@ -3054,7 +3028,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     setActionMessages((cur) => ({ ...cur, [itemKey(item)]: undefined }));
     try {
       const result = await api.setGitHubPullAutoMerge({ path: itemPath, number: item.number, enable, mergeMethod });
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Auto-merge updated." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.auto_merge_updated") }));
       // Optimistically flip the cached mergeability rather than refetching —
       // GitHub's mergeable computation isn't affected by this toggle.
       setMergeability((cur) => {
@@ -3090,7 +3064,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       // comment) — a deep-linked PR/issue locked from detail may not be in
       // the loaded list.
       patchDetailView(next);
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Lock state updated." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.lock_state_updated") }));
     } catch (e) {
       setActionErrors((cur) => ({ ...cur, [itemKey(item)]: e instanceof Error ? e.message : String(e) }));
     } finally {
@@ -3116,7 +3090,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     setActionMessages((cur) => ({ ...cur, [itemKey(item)]: undefined }));
     try {
       const result = await api.transferGitHubIssue({ path: itemPath, number: item.number, targetRepo });
-      setTransferNotice({ message: result.message ?? `Issue transferred to ${targetRepo}.`, url: result.url });
+      setTransferNotice({ message: result.message ?? tr("common.issue_transferred_to", { p0: String(targetRepo) }), url: result.url });
       // The issue no longer lives in this repo — drop it from the list rather
       // than reconciling it in place.
       mutateItems((cur) => ({ ...cur, items: cur.items.filter((it) => !sameItem(it, item)) }));
@@ -3217,7 +3191,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     setNewPullPushMessage(null);
     try {
       const res = await api.gitPush(projectPath, head);
-      setNewPullPushMessage(res.remote ? `Pushed ${head} to ${res.remote}.` : `Pushed ${head}.`);
+      setNewPullPushMessage(res.remote ? tr("common.pushed_to", { p0: String(head), p1: String(res.remote) }) : tr("common.pushed", { p0: String(head) }));
     } catch (e) {
       setNewPullPushError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -3251,7 +3225,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       // Keyed by itemKey (not the bare number) to match every other
       // actionMessages writer/reader — a bare-number key would silently miss
       // in aggregate mode where two repos can share PR #N.
-      setActionMessages((cur) => ({ ...cur, [itemKey(result.item)]: result.message ?? "Pull request created." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(result.item)]: result.message ?? tr("common.pull_request_created") }));
     } catch (e) {
       setNewPullError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -3272,7 +3246,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       // longer matches — mirrors pull merge/close and reopen so the open detail
       // subpage reflects the close immediately instead of a frozen snapshot.
       upsertListItem(result.item, false, true);
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Issue updated." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.issue_updated") }));
     } catch (e) {
       setActionErrors((cur) => ({ ...cur, [itemKey(item)]: e instanceof Error ? e.message : String(e) }));
     } finally {
@@ -3338,7 +3312,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
       setEditorOpen((cur) => ({ ...cur, [itemKey(item)]: false }));
       setTitleDrafts((cur) => ({ ...cur, [itemKey(item)]: undefined }));
       setBodyDrafts((cur) => ({ ...cur, [itemKey(item)]: undefined }));
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: `${item.kind === "pulls" ? caps.pullNoun : "Issue"} updated.` }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: `${item.kind === "pulls" ? caps.pullNoun : tr("tasks.issue")} updated.` }));
     } catch (e) {
       setActionErrors((cur) => ({ ...cur, [itemKey(item)]: e instanceof Error ? e.message : String(e) }));
     } finally {
@@ -3361,7 +3335,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
     setActionMessages((cur) => ({ ...cur, [itemKey(item)]: undefined }));
     try {
       const result = await api.requestGitHubPullReviewers({ path: itemPath, number: item.number, reviewers, teamReviewers });
-      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? "Reviewers requested." }));
+      setActionMessages((cur) => ({ ...cur, [itemKey(item)]: result.message ?? tr("common.reviewers_requested") }));
       setReviewerDrafts((cur) => ({ ...cur, [itemKey(item)]: "" }));
       setTeamReviewerDrafts((cur) => ({ ...cur, [itemKey(item)]: "" }));
     } catch (e) {
@@ -3415,19 +3389,19 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant="ghost"
-              aria-label="Back"
-              title="Back to list"
+              aria-label={tr("common.back")}
+              title={tr("tasks.back_to_list")}
               onClick={closeDetail}
             >
               <ChevronLeft className="size-4" />
             </Button>
             <div className="min-w-0">
               <div id="github-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
-                {expandedItem.kind === "pulls" ? caps.pullNoun : "Issue"} #{expandedItem.number}
+                {expandedItem.kind === "pulls" ? caps.pullNoun : tr("tasks.issue")} #{expandedItem.number}
                 {isAggregate && repoLabelFor(expandedItem) && (
                   <span
                     className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
-                    title="Repository this item belongs to"
+                    title={tr("tasks.repository_this_item_belongs_to")}
                   >
                     {repoLabelFor(expandedItem)}
                   </span>
@@ -3441,8 +3415,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant="ghost"
-              aria-label="Back"
-              title="Back to list"
+              aria-label={tr("common.back")}
+              title={tr("tasks.back_to_list")}
               onClick={closeDetail}
             >
               <ChevronLeft className="size-4" />
@@ -3461,8 +3435,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant="ghost"
-              aria-label="Back"
-              title="Back to list"
+              aria-label={tr("common.back")}
+              title={tr("tasks.back_to_list")}
               onClick={exitCompose}
             >
               <ChevronLeft className="size-4" />
@@ -3473,7 +3447,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
                   trigger and this header can never drift to different nouns
                   for the same provider. */}
               <div id="github-dialog-title" className="text-sm font-semibold">
-                {kind === "pulls" ? `New ${caps.pullAbbrev}` : "New issue"}
+                {kind === "pulls" ? tr("common.new", { p0: String(caps.pullAbbrev) }) : tr("tasks.new_issue")}
               </div>
               <div className="mt-0.5 truncate text-xs text-muted-foreground">
                 {result ? result.repo : caps.providerName}
@@ -3484,21 +3458,21 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           <div className="min-w-0">
             <div id="github-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
               <GitPullRequest className="size-4 shrink-0 text-muted-foreground" />
-              {provider === "mixed" ? "Git" : caps.providerName}
+              {provider === "mixed" ? tr("common.git") : caps.providerName}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 truncate text-xs text-muted-foreground">
               {result ? (
                 <>
                   <span className="truncate">
                     {result.repo}
-                    {result.auth === "none" && " · unauthenticated"}
+                    {result.auth === "none" && tr("common.unauthenticated")}
                   </span>
                   {/* Rate-limit badge is GitHub API-specific (F17) — gate it so a
                       GitLab/Bitbucket repo never renders a "GitHub API" tooltip. */}
                   {result.rateLimit && provider === "github" && <RateLimitBadge rateLimit={result.rateLimit} />}
                 </>
               ) : (
-                `${caps.pullNounPlural} and issues`
+                tr("common.and_issues", { p0: String(caps.pullNounPlural) })
               )}
             </div>
           </div>
@@ -3508,8 +3482,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant="ghost"
-              title={`Open on ${caps.providerName}`}
-              aria-label={`Open on ${caps.providerName}`}
+              title={tr("common.open_on", { p0: String(caps.providerName) })}
+              aria-label={tr("common.open_on", { p0: String(caps.providerName) })}
               onClick={() => { void api.openExternal(expandedItem.htmlUrl); }}
             >
               <ExternalLink className="size-4" />
@@ -3525,8 +3499,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={labelManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Manage labels"}
-              aria-label="Manage labels"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("tasks.manage_labels")}
+              aria-label={tr("tasks.manage_labels")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "labels"))}
             >
@@ -3537,8 +3511,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={milestoneManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Manage milestones"}
-              aria-label="Manage milestones"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("tasks.manage_milestones")}
+              aria-label={tr("tasks.manage_milestones")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "milestones"))}
             >
@@ -3549,8 +3523,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={releaseManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Manage releases"}
-              aria-label="Manage releases"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("tasks.manage_releases")}
+              aria-label={tr("tasks.manage_releases")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "releases"))}
             >
@@ -3561,8 +3535,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={notificationsOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Notifications"}
-              aria-label="Notifications"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("tasks.notifications")}
+              aria-label={tr("tasks.notifications")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "notifications"))}
             >
@@ -3573,8 +3547,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={actionsManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Actions"}
-              aria-label="Actions"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("common.actions")}
+              aria-label={tr("common.actions")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "actions"))}
             >
@@ -3585,8 +3559,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={projectsManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Projects"}
-              aria-label="Projects"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("common.projects")}
+              aria-label={tr("common.projects")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "projects"))}
             >
@@ -3597,8 +3571,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant={discussionsManagerOpen ? "secondary" : "ghost"}
-              title={isAggregate ? AGGREGATE_DISABLED_TITLE : "Discussions"}
-              aria-label="Discussions"
+              title={isAggregate ? staticLabel(AGGREGATE_DISABLED_TITLE) : tr("tasks.discussions")}
+              aria-label={tr("tasks.discussions")}
               disabled={!projectPath || isAggregate}
               onClick={() => setView((cur) => togglePanel(cur, "discussions"))}
             >
@@ -3609,8 +3583,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             <Button
               size="icon"
               variant="ghost"
-              title={`Open repository on ${caps.providerName}`}
-              aria-label={`Open repository on ${caps.providerName}`}
+              title={tr("common.open_repository_on", { p0: String(caps.providerName) })}
+              aria-label={tr("common.open_repository_on", { p0: String(caps.providerName) })}
               onClick={() => { void api.openExternal(result.webUrl!); }}
             >
               <ExternalLink className="size-4" />
@@ -3625,8 +3599,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           <Button
             size="icon"
             variant="ghost"
-            title="Refresh"
-            aria-label="Refresh GitHub items"
+            title={tr("common.refresh")}
+            aria-label={tr("tasks.refresh_github_items")}
             disabled={!projectPath || loading}
             onClick={() => { void load(); }}
           >
@@ -3636,8 +3610,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           <Button
             variant="ghost"
             size="icon"
-            title="Close"
-            aria-label="Close"
+            title={tr("common.close")}
+            aria-label={tr("common.close")}
             disabled={isComposeView && (newPullSubmitting || newIssueSubmitting)}
             onClick={onClose}
           >
@@ -3654,10 +3628,10 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         <Select
           value={projectPath}
           onChange={(e) => setProjectPath(e.target.value)}
-          title="Project"
-          aria-label="Project"
+          title={tr("common.project_985959")}
+          aria-label={tr("common.project_985959")}
         >
-          {projectOptions.length === 0 && <option value="">No projects</option>}
+          {projectOptions.length === 0 && <option value=""><I18nText id="common.no_projects" /></option>}
           {projectOptions.map((p) => (
             <option key={p.path} value={p.path}>
               {p.label}
@@ -3678,20 +3652,18 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             variant={kind === "issues" ? "secondary" : "ghost"}
             className="h-7"
             onClick={() => setKind("issues")}
-          >
-            Issues
-          </Button>
+          ><I18nText id="common.issues" />{" "}</Button>
         </div>
         <Select
           value={state}
           onChange={(e) => setState(e.target.value as GitHubItemState)}
-          title="State"
-          aria-label="State"
+          title={tr("tasks.state")}
+          aria-label={tr("tasks.state")}
           className="h-8 text-xs"
         >
-          <option value="open">Open</option>
-          <option value="closed">Closed</option>
-          <option value="all">All</option>
+          <option value="open"><I18nText id="common.open" /></option>
+          <option value="closed"><I18nText id="tasks.closed" /></option>
+          <option value="all"><I18nText id="common.all" /></option>
         </Select>
         <div className="relative md:col-span-2">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -3705,7 +3677,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
                 setSearchSubmitted(query);
               }
             }}
-            placeholder={searchSyntax ? "GitHub search — press Enter (is:open label:bug sort:updated…)" : "Search title, body, number, author…"}
+            placeholder={searchSyntax ? tr("common.github_search_press_enter_is_open_label_bug") : tr("common.search_title_body_number_author")}
             className="h-8 pl-8 pr-14 text-xs"
           />
           {caps.searchSyntax && (
@@ -3716,8 +3688,8 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
               disabled={result?.auth === "none"}
               title={
                 result?.auth === "none"
-                  ? "Sign in to GitHub to use search syntax"
-                  : "Toggle GitHub search syntax (is:open author:me label:bug sort:updated…) — runs server-side via the Search API on Enter"
+                  ? tr("common.sign_in_to_github_to_use_search_syntax")
+                  : tr("common.toggle_github_search_syntax_is_open_author_me")
               }
               onClick={() => {
                 const next = !searchSyntax;
@@ -3736,7 +3708,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             autoComplete={undefined}
             value={labels}
             onChange={(e) => setLabels(e.target.value)}
-            placeholder="Labels, comma separated"
+            placeholder={tr("tasks.labels_comma_separated")}
             className="h-8 text-xs"
             list="github-dialog-labels"
           />
@@ -3745,29 +3717,29 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           {...IDENTIFIER_INPUT_PROPS}
           value={assignee}
           onChange={(e) => setAssignee(e.target.value)}
-          placeholder="Assignee"
+          placeholder={tr("tasks.assignee")}
           className="h-8 text-xs"
         />
         <div className="flex items-center gap-1.5 md:col-span-2">
-          <span className="text-[11px] text-muted-foreground">Sort:</span>
+          <span className="text-[11px] text-muted-foreground"><I18nText id="tasks.sort" /></span>
           <Select
             value={sortField}
             onChange={(e) => setSortField(e.target.value as "best-match" | "created" | "updated" | "comments")}
-            title="Sort by"
-            aria-label="Sort by"
+            title={tr("tasks.sort_by")}
+            aria-label={tr("tasks.sort_by")}
             className="h-8 w-32 text-xs"
           >
-            <option value="best-match">Best match</option>
-            <option value="created">Created</option>
-            <option value="updated">Updated</option>
-            {caps.commentSort && <option value="comments">Comments</option>}
+            <option value="best-match"><I18nText id="tasks.best_match" /></option>
+            <option value="created"><I18nText id="common.created" /></option>
+            <option value="updated"><I18nText id="common.updated" /></option>
+            {caps.commentSort && <option value="comments"><I18nText id="tasks.comments" /></option>}
           </Select>
           <Button
             size="icon"
             variant="ghost"
             className="size-8"
-            title={sortDirection === "desc" ? "Descending — click for ascending" : "Ascending — click for descending"}
-            aria-label="Toggle sort direction"
+            title={sortDirection === "desc" ? tr("common.descending_click_for_ascending") : tr("common.ascending_click_for_descending")}
+            aria-label={tr("common.toggle_sort_direction")}
             onClick={() => setSortDirection((d) => (d === "desc" ? "asc" : "desc"))}
           >
             {sortDirection === "desc" ? <ArrowDownWideNarrow className="size-3.5" /> : <ArrowUpWideNarrow className="size-3.5" />}
@@ -3777,10 +3749,10 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
           {availableLabels.map((label) => <option key={label} value={label} />)}
         </datalist>
         <div className="col-span-full flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">Mine:</span>
+          <span className="text-[11px] text-muted-foreground"><I18nText id="tasks.mine" /></span>
           {(() => {
             const unauth = result?.auth === "none";
-            const hint = unauth ? "Sign in to GitHub to filter by your own involvement" : undefined;
+            const hint = unauth ? tr("common.sign_in_to_github_to_filter_by_your") : undefined;
             return (
               <>
                 <Button
@@ -3790,9 +3762,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
                   disabled={unauth}
                   title={hint}
                   onClick={() => setCreatedByMe((v) => !v)}
-                >
-                  Created
-                </Button>
+                ><I18nText id="common.created" />{" "}</Button>
                 <Button
                   size="sm"
                   variant={assignedToMe ? "secondary" : "ghost"}
@@ -3800,9 +3770,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
                   disabled={unauth}
                   title={hint}
                   onClick={() => setAssignedToMe((v) => !v)}
-                >
-                  Assigned
-                </Button>
+                ><I18nText id="common.assigned" />{" "}</Button>
                 {kind === "pulls" && (
                   <Button
                     size="sm"
@@ -3811,9 +3779,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
                     disabled={unauth}
                     title={hint}
                     onClick={() => setReviewRequested((v) => !v)}
-                  >
-                    Review requested
-                  </Button>
+                  ><I18nText id="tasks.review_requested" />{" "}</Button>
                 )}
               </>
             );
@@ -4198,8 +4164,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         {kind === "pulls" && !isAggregate && (
           <div className="mb-3 flex justify-end">
             <Button size="sm" onClick={() => setView(openCompose())}>
-              <Plus className="mr-2 size-3.5" />
-              New {caps.pullAbbrev}
+              <Plus className="mr-2 size-3.5" /><I18nText id="tasks.new" />{" "}{caps.pullAbbrev}
             </Button>
           </div>
         )}
@@ -4207,9 +4172,7 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
         {kind === "issues" && !isAggregate && (
           <div className="mb-3 flex justify-end">
             <Button size="sm" onClick={() => setView(openCompose())}>
-              <Plus className="mr-2 size-3.5" />
-              New issue
-            </Button>
+              <Plus className="mr-2 size-3.5" /><I18nText id="tasks.new_issue" />{" "}</Button>
           </div>
         )}
 
@@ -4220,18 +4183,14 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
               {transferNotice.message}
             </span>
             <div className="flex shrink-0 items-center gap-2">
-              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => { void api.openExternal(transferNotice.url); }}>
-                Open
-              </Button>
-              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => setTransferNotice(null)}>
-                Dismiss
-              </Button>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => { void api.openExternal(transferNotice.url); }}><I18nText id="common.open" />{" "}</Button>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => setTransferNotice(null)}><I18nText id="common.dismiss" />{" "}</Button>
             </div>
           </div>
         )}
 
         {/* Credential errors are enriched server-side with the marker phrase
-            `Settings → ${GIT_HOST_TOKENS_SECTION}` (github.ts's
+            `Settings → ${staticLabel(GIT_HOST_TOKENS_SECTION)}` (github.ts's
             `privateRepoHint`, gitlab.ts's `authHint`, bitbucket.ts's
             `bitbucketAccessHint`/`bitbucketViewerAccessHint`) — detecting it
             via the shared `isCredentialError` helper (rather than a status
@@ -4245,25 +4204,21 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
               className="mx-auto my-6 flex max-w-md flex-col gap-3 rounded-md border border-warning/40 bg-warning/5 p-4"
             >
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <KeyRound className="size-4 text-warning" />
-                Can&apos;t reach this repository
-              </div>
-              <p className="text-xs text-muted-foreground">This is usually a missing or invalid credential.</p>
+                <KeyRound className="size-4 text-warning" /><I18nText id="tasks.can_t_reach_this_repository" />{" "}</div>
+              <p className="text-xs text-muted-foreground"><I18nText id="tasks.this_is_usually_a_missing_or_invalid_credential" /></p>
               <p className="text-xs text-muted-foreground">{error}</p>
               <div className="rounded-md border border-border/50 bg-background/40 p-3">
-                <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">If the repository is private:</div>
+                <div className="mb-1.5 text-[11px] font-medium text-muted-foreground"><I18nText id="tasks.if_the_repository_is_private" /></div>
                 <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
                   <li>{credentialSetupStep1(provider)}</li>
-                  <li>In Settings → {GIT_HOST_TOKENS_SECTION}, save it for the host named above.</li>
-                  <li>Reopen this dialog. The Setup guide button inside the Settings section walks through each provider step by step.</li>
+                  <li><I18nText id="tasks.in_settings" />{" "}{staticLabel(GIT_HOST_TOKENS_SECTION)}<I18nText id="tasks.save_it_for_the_host_named_above" /></li>
+                  <li><I18nText id="tasks.reopen_this_dialog_the_setup_guide_button_inside" /></li>
                 </ol>
               </div>
               {onOpenSettings && (
                 <div className="flex justify-end">
                   <Button size="sm" onClick={onOpenSettings}>
-                    <Settings className="mr-2 size-3.5" />
-                    Open Settings
-                  </Button>
+                    <Settings className="mr-2 size-3.5" /><I18nText id="tasks.open_settings" />{" "}</Button>
                 </div>
               )}
             </div>
@@ -4276,15 +4231,12 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
 
         {loading && !result && (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading GitHub…
-          </div>
+            <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_github" />{" "}</div>
         )}
 
         {!loading && !error && result && result.items.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground">
-            <GitPullRequest className="size-6 opacity-40" />
-            No {kind === "pulls" ? caps.pullNounPlural.toLowerCase() : "issues"} match these filters.
-          </div>
+            <GitPullRequest className="size-6 opacity-40" /><I18nText id="common.no" />{" "}{kind === "pulls" ? caps.pullNounPlural.toLowerCase() : "issues"}{" "}<I18nText id="tasks.match_these_filters" />{" "}</div>
         )}
 
         {result && result.items.length > 0 && (
@@ -4308,15 +4260,11 @@ export function GitHubDialog({ open, projects, initialProjectPath, pullPrefill, 
             {result.hasMore && !isAggregate && (
               <div className="flex justify-center py-1">
                 <Button size="sm" variant="outline" disabled={loadingMore || loading || reloadPending} onClick={loadMore}>
-                  {loadingMore ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-                  Load more
-                </Button>
+                  {loadingMore ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}<I18nText id="tasks.load_more" />{" "}</Button>
               </div>
             )}
             {result.hasMore && isAggregate && (
-              <div className="px-1 text-[11px] text-muted-foreground">
-                Some repositories have more results than shown here — switch to a single project to see them all.
-              </div>
+              <div className="px-1 text-[11px] text-muted-foreground"><I18nText id="tasks.some_repositories_have_more_results_than_shown_here" />{" "}</div>
             )}
           </div>
         )}
@@ -4376,12 +4324,12 @@ function PullComposer({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  useUILocale();
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <GitPullRequest className="size-3.5" />
-          New {caps.pullNoun.toLowerCase()}
+          <GitPullRequest className="size-3.5" /><I18nText id="tasks.new" />{" "}{caps.pullNoun.toLowerCase()}
         </div>
         {error && (
           <span className="inline-flex items-center gap-1 text-[11px] text-danger">
@@ -4394,7 +4342,7 @@ function PullComposer({
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="Title"
+          placeholder={tr("common.title")}
           className="h-8 text-sm"
           disabled={submitting}
         />
@@ -4403,7 +4351,7 @@ function PullComposer({
             {...IDENTIFIER_INPUT_PROPS}
             value={head}
             onChange={(e) => onHeadChange(e.target.value)}
-            placeholder="Head branch"
+            placeholder={tr("tasks.head_branch")}
             className="h-8 text-xs"
             disabled={submitting}
           />
@@ -4411,7 +4359,7 @@ function PullComposer({
             {...IDENTIFIER_INPUT_PROPS}
             value={base}
             onChange={(e) => onBaseChange(e.target.value)}
-            placeholder="Base branch"
+            placeholder={tr("tasks.base_branch")}
             className="h-8 text-xs"
             disabled={submitting}
           />
@@ -4419,7 +4367,7 @@ function PullComposer({
         <Textarea
           value={body}
           onChange={(e) => onBodyChange(e.target.value)}
-          placeholder="Markdown body..."
+          placeholder={tr("tasks.markdown_body")}
           className="min-h-24 resize-y text-sm"
           disabled={submitting}
         />
@@ -4427,7 +4375,7 @@ function PullComposer({
           {...IDENTIFIER_INPUT_PROPS}
           value={reviewers}
           onChange={(e) => onReviewersChange(e.target.value)}
-          placeholder="Reviewers, comma separated"
+          placeholder={tr("tasks.reviewers_comma_separated")}
           className="h-8 text-xs"
           disabled={submitting}
         />
@@ -4437,11 +4385,9 @@ function PullComposer({
             variant="outline"
             disabled={submitting || pushing || !head.trim()}
             onClick={onPushHead}
-            title={`Push the head branch to its remote so ${caps.providerName} can open the ${caps.pullNoun.toLowerCase()}`}
+            title={tr("common.push_the_head_branch_to_its_remote_so", { p0: String(caps.providerName), p1: String(caps.pullNoun.toLowerCase()) })}
           >
-            {pushing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowUpFromLine className="mr-2 size-3.5" />}
-            Push head
-          </Button>
+            {pushing ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowUpFromLine className="mr-2 size-3.5" />}<I18nText id="tasks.push_head" />{" "}</Button>
           {pushMessage && (
             <span className="inline-flex items-center gap-1 text-[11px] text-success">
               <CheckCircle2 className="size-3.5" />
@@ -4455,9 +4401,7 @@ function PullComposer({
             </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          The head branch must exist on the remote before {caps.providerName} can open the {caps.pullNoun.toLowerCase()} — push it first if it's a new local branch.
-        </p>
+        <p className="text-[11px] text-muted-foreground"><I18nText id="tasks.the_head_branch_must_exist_on_the_remote" />{" "}{caps.providerName}{" "}<I18nText id="tasks.can_open_the" />{" "}{caps.pullNoun.toLowerCase()}{" "}<I18nText id="tasks.push_it_first_if_it_s_a_new" />{" "}</p>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -4466,16 +4410,11 @@ function PullComposer({
             checked={draft}
             disabled={submitting}
             onChange={(e) => onDraftChange(e.target.checked)}
-          />
-          Draft
-        </label>
+          /><I18nText id="common.draft" />{" "}</label>
         <div className="flex justify-end gap-2">
-          <Button size="sm" variant="ghost" disabled={submitting} onClick={onCancel}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" disabled={submitting} onClick={onCancel}><I18nText id="common.cancel" />{" "}</Button>
           <Button size="sm" disabled={submitting || !title.trim() || !head.trim() || !base.trim()} onClick={onSubmit}>
-            {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-            Create {caps.pullAbbrev}
+            {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.create" />{" "}{caps.pullAbbrev}
           </Button>
         </div>
       </div>
@@ -4520,13 +4459,12 @@ function IssueComposer({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  useUILocale();
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Plus className="size-3.5" />
-          New issue
-        </div>
+          <Plus className="size-3.5" /><I18nText id="tasks.new_issue" />{" "}</div>
         {error && (
           <span className="inline-flex items-center gap-1 text-[11px] text-danger">
             <AlertCircle className="size-3.5" />
@@ -4538,14 +4476,14 @@ function IssueComposer({
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="Title"
+          placeholder={tr("common.title")}
           className="h-8 text-sm"
           disabled={submitting}
         />
         <Textarea
           value={body}
           onChange={(e) => onBodyChange(e.target.value)}
-          placeholder="Markdown body..."
+          placeholder={tr("tasks.markdown_body")}
           className="min-h-24 resize-y text-sm"
           disabled={submitting}
         />
@@ -4554,7 +4492,7 @@ function IssueComposer({
             {...IDENTIFIER_INPUT_PROPS}
             value={labels}
             onChange={(e) => onLabelsChange(e.target.value)}
-            placeholder="Labels, comma separated"
+            placeholder={tr("tasks.labels_comma_separated")}
             className="h-8 text-xs"
             disabled={submitting}
           />
@@ -4564,7 +4502,7 @@ function IssueComposer({
             {...IDENTIFIER_INPUT_PROPS}
             value={assignees}
             onChange={(e) => onAssigneesChange(e.target.value)}
-            placeholder="Assignees, comma separated"
+            placeholder={tr("tasks.assignees_comma_separated")}
             className="h-8 text-xs"
             disabled={submitting}
           />
@@ -4573,7 +4511,7 @@ function IssueComposer({
               {...IDENTIFIER_INPUT_PROPS}
               value={milestone}
               onChange={(e) => onMilestoneChange(e.target.value)}
-              placeholder="Milestone number"
+              placeholder={tr("tasks.milestone_number")}
               className="h-8 text-xs"
               disabled={submitting}
             />
@@ -4581,13 +4519,9 @@ function IssueComposer({
         </div>
       </div>
       <div className="mt-3 flex justify-end gap-2">
-        <Button size="sm" variant="ghost" disabled={submitting} onClick={onCancel}>
-          Cancel
-        </Button>
+        <Button size="sm" variant="ghost" disabled={submitting} onClick={onCancel}><I18nText id="common.cancel" />{" "}</Button>
         <Button size="sm" disabled={submitting || !title.trim()} onClick={onSubmit}>
-          {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-          Create issue
-        </Button>
+          {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="tasks.create_issue" />{" "}</Button>
       </div>
     </div>
   );
@@ -4617,6 +4551,7 @@ function LabelManager({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
   const [description, setDescription] = useState("");
@@ -4644,34 +4579,29 @@ function LabelManager({
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Tag className="size-3.5" />
-          Labels ({labels.length})
+          <Tag className="size-3.5" /><I18nText id="tasks.labels_0a0eb7" />{labels.length})
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh labels" aria-label="Refresh labels" onClick={onRefresh}>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_labels")} aria-label={tr("tasks.refresh_labels")} onClick={onRefresh}>
             <RefreshCw className="size-3.5" />
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       <div className="mb-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)_auto]">
-        <Input {...IDENTIFIER_INPUT_PROPS} value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="h-8 text-xs" disabled={creating || !authenticated} />
+        <Input {...IDENTIFIER_INPUT_PROPS} value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("common.name")} className="h-8 text-xs" disabled={creating || !authenticated} />
         <div className="flex items-center gap-1">
           <span className="size-4 shrink-0 rounded-full border border-border/60" style={{ backgroundColor: labelSwatch(color) }} />
-          <Input {...IDENTIFIER_INPUT_PROPS} value={color} onChange={(e) => setColor(e.target.value)} placeholder="hex" className="h-8 w-20 text-xs" disabled={creating || !authenticated} />
+          <Input {...IDENTIFIER_INPUT_PROPS} value={color} onChange={(e) => setColor(e.target.value)} placeholder={tr("tasks.hex")} className="h-8 w-20 text-xs" disabled={creating || !authenticated} />
         </div>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="h-8 text-xs" disabled={creating || !authenticated} />
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("common.description_optional")} className="h-8 text-xs" disabled={creating || !authenticated} />
         <Button
           size="sm"
           disabled={creating || !name.trim() || !authenticated}
-          title={authenticated ? undefined : PUSH_ONLY_TITLE}
+          title={authenticated ? undefined : staticLabel(PUSH_ONLY_TITLE)}
           onClick={() => { void create(); }}
         >
-          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-          Add
-        </Button>
+          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.add" />{" "}</Button>
       </div>
       {error && (
         <div className="mb-2 flex items-center gap-1 text-[11px] text-danger">
@@ -4681,7 +4611,7 @@ function LabelManager({
       )}
       <div className="max-h-56 space-y-1 overflow-y-auto">
         {labels.length === 0 ? (
-          <div className="px-1 py-2 text-[11px] text-muted-foreground">No labels in this repository.</div>
+          <div className="px-1 py-2 text-[11px] text-muted-foreground"><I18nText id="tasks.no_labels_in_this_repository" /></div>
         ) : (
           labels.map((l) => <LabelRow key={l.name} label={l} authenticated={authenticated} onEdit={onEdit} onDelete={onDelete} />)
         )}
@@ -4701,6 +4631,7 @@ function LabelRow({
   onEdit: (name: string, patch: { newName?: string; color?: string; description?: string }) => Promise<void>;
   onDelete: (name: string) => Promise<void>;
 }) {
+  useUILocale();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(label.name);
   const [color, setColor] = useState(label.color);
@@ -4745,9 +4676,9 @@ function LabelRow({
           <Input {...IDENTIFIER_INPUT_PROPS} value={name} onChange={(e) => setName(e.target.value)} className="h-7 text-xs" disabled={busy === "save"} />
           <div className="flex items-center gap-1">
             <span className="size-4 shrink-0 rounded-full border border-border/60" style={{ backgroundColor: labelSwatch(color) }} />
-            <Input {...IDENTIFIER_INPUT_PROPS} value={color} onChange={(e) => setColor(e.target.value)} placeholder="hex" className="h-7 w-20 text-xs" disabled={busy === "save"} />
+            <Input {...IDENTIFIER_INPUT_PROPS} value={color} onChange={(e) => setColor(e.target.value)} placeholder={tr("tasks.hex")} className="h-7 w-20 text-xs" disabled={busy === "save"} />
           </div>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="h-7 text-xs" disabled={busy === "save"} />
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("common.description")} className="h-7 text-xs" disabled={busy === "save"} />
         </div>
         {error && (
           <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
@@ -4756,13 +4687,9 @@ function LabelRow({
           </div>
         )}
         <div className="mt-1 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}><I18nText id="common.cancel" />{" "}</Button>
           <Button size="sm" className="h-6 px-2 text-[11px]" disabled={busy === "save" || !name.trim()} onClick={() => { void save(); }}>
-            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}
-            Save
-          </Button>
+            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}<I18nText id="common.save" />{" "}</Button>
         </div>
       </div>
     );
@@ -4783,8 +4710,8 @@ function LabelRow({
           size="icon"
           variant="ghost"
           className="size-6"
-          title={authenticated ? "Edit label" : PUSH_ONLY_TITLE}
-          aria-label={`Edit ${label.name}`}
+          title={authenticated ? tr("common.edit_label") : staticLabel(PUSH_ONLY_TITLE)}
+          aria-label={tr("common.edit_58bd1a", { p0: String(label.name) })}
           disabled={!!busy || !authenticated}
           onClick={() => { reset(); setEditing(true); }}
         >
@@ -4793,19 +4720,17 @@ function LabelRow({
         {confirm ? (
           <>
             <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-danger" disabled={busy === "delete"} onClick={() => { void del(); }}>
-              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : "Confirm"}
+              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : tr("common.confirm")}
             </Button>
-            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}><I18nText id="common.cancel" />{" "}</Button>
           </>
         ) : (
           <Button
             size="icon"
             variant="ghost"
             className="size-6 text-muted-foreground hover:text-danger"
-            title={authenticated ? "Delete label" : PUSH_ONLY_TITLE}
-            aria-label={`Delete ${label.name}`}
+            title={authenticated ? tr("common.delete_label") : staticLabel(PUSH_ONLY_TITLE)}
+            aria-label={tr("common.delete_0ae262", { p0: String(label.name) })}
             disabled={!!busy || !authenticated}
             onClick={() => setConfirm(true)}
           >
@@ -4844,6 +4769,7 @@ function MilestoneManager({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const [title, setTitle] = useState("");
   const [dueOn, setDueOn] = useState("");
   const [description, setDescription] = useState("");
@@ -4871,31 +4797,26 @@ function MilestoneManager({
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Milestone className="size-3.5" />
-          Milestones ({milestones.length})
+          <Milestone className="size-3.5" /><I18nText id="tasks.milestones" />{milestones.length})
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh milestones" aria-label="Refresh milestones" onClick={onRefresh}>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_milestones")} aria-label={tr("tasks.refresh_milestones")} onClick={onRefresh}>
             <RefreshCw className="size-3.5" />
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       <div className="mb-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)_auto]">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="h-8 text-xs" disabled={creating || !authenticated} />
-        <Input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} title="Due date (optional)" className="h-8 w-36 text-xs" disabled={creating || !authenticated} />
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" className="h-8 text-xs" disabled={creating || !authenticated} />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={tr("common.title")} className="h-8 text-xs" disabled={creating || !authenticated} />
+        <Input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} title={tr("tasks.due_date_optional")} className="h-8 w-36 text-xs" disabled={creating || !authenticated} />
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("common.description_optional")} className="h-8 text-xs" disabled={creating || !authenticated} />
         <Button
           size="sm"
           disabled={creating || !title.trim() || !authenticated}
-          title={authenticated ? undefined : PUSH_ONLY_TITLE}
+          title={authenticated ? undefined : staticLabel(PUSH_ONLY_TITLE)}
           onClick={() => { void create(); }}
         >
-          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-          Add
-        </Button>
+          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.add" />{" "}</Button>
       </div>
       {error && (
         <div className="mb-2 flex items-center gap-1 text-[11px] text-danger">
@@ -4905,7 +4826,7 @@ function MilestoneManager({
       )}
       <div className="max-h-56 space-y-1 overflow-y-auto">
         {milestones.length === 0 ? (
-          <div className="px-1 py-2 text-[11px] text-muted-foreground">No milestones in this repository.</div>
+          <div className="px-1 py-2 text-[11px] text-muted-foreground"><I18nText id="tasks.no_milestones_in_this_repository" /></div>
         ) : (
           milestones.map((m) => <MilestoneRow key={m.number} milestone={m} authenticated={authenticated} onEdit={onEdit} onDelete={onDelete} />)
         )}
@@ -4928,6 +4849,7 @@ function MilestoneRow({
   ) => Promise<void>;
   onDelete: (number: number) => Promise<void>;
 }) {
+  useUILocale();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(milestone.title);
   const [dueOn, setDueOn] = useState(dueDateInput(milestone.dueOn));
@@ -4990,8 +4912,8 @@ function MilestoneRow({
       <div className="rounded border border-border/60 p-2">
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1.4fr)]">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-7 text-xs" disabled={busy === "save"} />
-          <Input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} title="Due date" className="h-7 w-36 text-xs" disabled={busy === "save"} />
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="h-7 text-xs" disabled={busy === "save"} />
+          <Input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} title={tr("tasks.due_date")} className="h-7 w-36 text-xs" disabled={busy === "save"} />
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("common.description")} className="h-7 text-xs" disabled={busy === "save"} />
         </div>
         {error && (
           <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
@@ -5000,13 +4922,9 @@ function MilestoneRow({
           </div>
         )}
         <div className="mt-1 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}><I18nText id="common.cancel" />{" "}</Button>
           <Button size="sm" className="h-6 px-2 text-[11px]" disabled={busy === "save" || !title.trim()} onClick={() => { void save(); }}>
-            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}
-            Save
-          </Button>
+            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}<I18nText id="common.save" />{" "}</Button>
         </div>
       </div>
     );
@@ -5019,8 +4937,7 @@ function MilestoneRow({
         {milestone.title}
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground">
-        {milestone.openIssues} open · {milestone.closedIssues} closed
-        {milestone.dueOn && ` · due ${dueDateInput(milestone.dueOn)}`}
+        {milestone.openIssues}{" "}<I18nText id="tasks.open" />{" "}{milestone.closedIssues}{" "}<I18nText id="common.closed" />{" "}{milestone.dueOn && tr("common.due", { p0: String(dueDateInput(milestone.dueOn)) })}
       </span>
       {error && <span className="truncate text-[11px] text-danger">{error}</span>}
       <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -5028,8 +4945,8 @@ function MilestoneRow({
           size="icon"
           variant="ghost"
           className="size-6"
-          title={authenticated ? "Edit milestone" : PUSH_ONLY_TITLE}
-          aria-label={`Edit ${milestone.title}`}
+          title={authenticated ? tr("common.edit_milestone") : staticLabel(PUSH_ONLY_TITLE)}
+          aria-label={tr("common.edit_58bd1a", { p0: String(milestone.title) })}
           disabled={!!busy || !authenticated}
           onClick={() => { reset(); setEditing(true); }}
         >
@@ -5039,28 +4956,26 @@ function MilestoneRow({
           size="sm"
           variant="ghost"
           className="h-6 px-1.5 text-[11px]"
-          title={authenticated ? (milestone.state === "open" ? "Close milestone" : "Reopen milestone") : PUSH_ONLY_TITLE}
+          title={authenticated ? (milestone.state === "open" ? tr("common.close_milestone") : tr("common.reopen_milestone")) : staticLabel(PUSH_ONLY_TITLE)}
           disabled={!!busy || !authenticated}
           onClick={() => { void toggleState(); }}
         >
-          {busy === "state" ? <Loader2 className="size-3 animate-spin" /> : milestone.state === "open" ? "Close" : "Reopen"}
+          {busy === "state" ? <Loader2 className="size-3 animate-spin" /> : milestone.state === "open" ? tr("common.close") : tr("tasks.reopen")}
         </Button>
         {confirm ? (
           <>
             <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-danger" disabled={busy === "delete"} onClick={() => { void del(); }}>
-              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : "Confirm"}
+              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : tr("common.confirm")}
             </Button>
-            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}><I18nText id="common.cancel" />{" "}</Button>
           </>
         ) : (
           <Button
             size="icon"
             variant="ghost"
             className="size-6 text-muted-foreground hover:text-danger"
-            title={authenticated ? "Delete milestone" : PUSH_ONLY_TITLE}
-            aria-label={`Delete ${milestone.title}`}
+            title={authenticated ? tr("common.delete_milestone") : staticLabel(PUSH_ONLY_TITLE)}
+            aria-label={tr("common.delete_0ae262", { p0: String(milestone.title) })}
             disabled={!!busy || !authenticated}
             onClick={() => setConfirm(true)}
           >
@@ -5101,6 +5016,7 @@ function ReleasesManager({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const [tagName, setTagName] = useState("");
   const [name, setName] = useState("");
   const [body, setBody] = useState("");
@@ -5132,16 +5048,13 @@ function ReleasesManager({
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Rocket className="size-3.5" />
-          Releases ({releases.length})
+          <Rocket className="size-3.5" /><I18nText id="tasks.releases" />{releases.length})
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh releases" aria-label="Refresh releases" onClick={onRefresh}>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_releases")} aria-label={tr("tasks.refresh_releases")} onClick={onRefresh}>
             <RefreshCw className="size-3.5" />
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       <div className="mb-2 grid gap-2 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)]">
@@ -5151,12 +5064,12 @@ function ReleasesManager({
           autoComplete={undefined}
           value={tagName}
           onChange={(e) => setTagName(e.target.value)}
-          placeholder="Tag name"
+          placeholder={tr("tasks.tag_name")}
           className="h-8 text-xs"
           list="github-dialog-release-tags"
           disabled={creating || !authenticated}
         />
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Release title (optional)" className="h-8 text-xs" disabled={creating || !authenticated} />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("tasks.release_title_optional")} className="h-8 text-xs" disabled={creating || !authenticated} />
         <datalist id="github-dialog-release-tags">
           {tags.map((t) => <option key={t.name} value={t.name} />)}
         </datalist>
@@ -5164,29 +5077,23 @@ function ReleasesManager({
       <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Release notes (optional, markdown)"
+        placeholder={tr("tasks.release_notes_optional_markdown")}
         className="mb-2 min-h-16 resize-y text-xs"
         disabled={creating || !authenticated}
       />
       <div className="mb-2 flex flex-wrap items-center gap-3">
         <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <input type="checkbox" checked={draft} disabled={creating || !authenticated} onChange={(e) => setDraft(e.target.checked)} />
-          Draft
-        </label>
+          <input type="checkbox" checked={draft} disabled={creating || !authenticated} onChange={(e) => setDraft(e.target.checked)} /><I18nText id="common.draft" />{" "}</label>
         <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <input type="checkbox" checked={prerelease} disabled={creating || !authenticated} onChange={(e) => setPrerelease(e.target.checked)} />
-          Pre-release
-        </label>
+          <input type="checkbox" checked={prerelease} disabled={creating || !authenticated} onChange={(e) => setPrerelease(e.target.checked)} /><I18nText id="tasks.pre_release" />{" "}</label>
         <Button
           size="sm"
           className="ml-auto"
           disabled={creating || !tagName.trim() || !authenticated}
-          title={authenticated ? undefined : PUSH_ONLY_TITLE}
+          title={authenticated ? undefined : staticLabel(PUSH_ONLY_TITLE)}
           onClick={() => { void create(); }}
         >
-          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-          Add
-        </Button>
+          {creating ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.add" />{" "}</Button>
       </div>
       {error && (
         <div className="mb-2 flex items-center gap-1 text-[11px] text-danger">
@@ -5196,7 +5103,7 @@ function ReleasesManager({
       )}
       <div className="max-h-56 space-y-1 overflow-y-auto">
         {releases.length === 0 ? (
-          <div className="px-1 py-2 text-[11px] text-muted-foreground">No releases in this repository.</div>
+          <div className="px-1 py-2 text-[11px] text-muted-foreground"><I18nText id="tasks.no_releases_in_this_repository" /></div>
         ) : (
           releases.map((r) => <ReleaseRow key={r.id} release={r} authenticated={authenticated} onEdit={onEdit} onDelete={onDelete} />)
         )}
@@ -5219,6 +5126,7 @@ function ReleaseRow({
   ) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }) {
+  useUILocale();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(release.name);
   const [body, setBody] = useState(release.body);
@@ -5268,18 +5176,14 @@ function ReleaseRow({
       <div className="rounded border border-border/60 p-2">
         <div className="grid gap-2 md:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)]">
           <span className="flex items-center truncate rounded border border-border/60 px-2 text-[11px] text-muted-foreground">{release.tagName}</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Release title" className="h-7 text-xs" disabled={busy === "save"} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("tasks.release_title")} className="h-7 text-xs" disabled={busy === "save"} />
         </div>
-        <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Release notes" className="mt-2 min-h-16 resize-y text-xs" disabled={busy === "save"} />
+        <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder={tr("tasks.release_notes")} className="mt-2 min-h-16 resize-y text-xs" disabled={busy === "save"} />
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <input type="checkbox" checked={draft} disabled={busy === "save"} onChange={(e) => setDraft(e.target.checked)} />
-            Draft
-          </label>
+            <input type="checkbox" checked={draft} disabled={busy === "save"} onChange={(e) => setDraft(e.target.checked)} /><I18nText id="common.draft" />{" "}</label>
           <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <input type="checkbox" checked={prerelease} disabled={busy === "save"} onChange={(e) => setPrerelease(e.target.checked)} />
-            Pre-release
-          </label>
+            <input type="checkbox" checked={prerelease} disabled={busy === "save"} onChange={(e) => setPrerelease(e.target.checked)} /><I18nText id="tasks.pre_release" />{" "}</label>
         </div>
         {error && (
           <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
@@ -5288,13 +5192,9 @@ function ReleaseRow({
           </div>
         )}
         <div className="mt-1 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { setEditing(false); reset(); }}><I18nText id="common.cancel" />{" "}</Button>
           <Button size="sm" className="h-6 px-2 text-[11px]" disabled={busy === "save"} onClick={() => { void save(); }}>
-            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}
-            Save
-          </Button>
+            {busy === "save" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <FilePen className="mr-1 size-3" />}<I18nText id="common.save" />{" "}</Button>
         </div>
       </div>
     );
@@ -5305,8 +5205,8 @@ function ReleaseRow({
       <Rocket className="size-3.5 shrink-0 text-success" />
       <span className="shrink-0 rounded border border-border/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{release.tagName}</span>
       <span className="min-w-0 shrink truncate font-medium">{release.name || release.tagName}</span>
-      {release.draft && <span className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">Draft</span>}
-      {release.prerelease && <span className="shrink-0 rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-medium text-info">Pre-release</span>}
+      {release.draft && <span className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"><I18nText id="common.draft" /></span>}
+      {release.prerelease && <span className="shrink-0 rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-medium text-info"><I18nText id="tasks.pre_release" /></span>}
       <span className="shrink-0 text-[11px] text-muted-foreground">{releaseDateLabel(release)}</span>
       {error && <span className="truncate text-[11px] text-danger">{error}</span>}
       <div className="ml-auto flex shrink-0 items-center gap-1">
@@ -5314,8 +5214,8 @@ function ReleaseRow({
           size="icon"
           variant="ghost"
           className="size-6"
-          title="Open release on GitHub"
-          aria-label={`Open ${release.tagName} on GitHub`}
+          title={tr("tasks.open_release_on_github")}
+          aria-label={tr("common.open_on_github", { p0: String(release.tagName) })}
           onClick={() => { void api.openExternal(release.htmlUrl); }}
         >
           <ExternalLink className="size-3.5" />
@@ -5324,8 +5224,8 @@ function ReleaseRow({
           size="icon"
           variant="ghost"
           className="size-6"
-          title={authenticated ? "Edit release" : PUSH_ONLY_TITLE}
-          aria-label={`Edit ${release.tagName}`}
+          title={authenticated ? tr("common.edit_release") : staticLabel(PUSH_ONLY_TITLE)}
+          aria-label={tr("common.edit_58bd1a", { p0: String(release.tagName) })}
           disabled={!!busy || !authenticated}
           onClick={() => { reset(); setEditing(true); }}
         >
@@ -5334,19 +5234,17 @@ function ReleaseRow({
         {confirm ? (
           <>
             <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px] text-danger" disabled={busy === "delete"} onClick={() => { void del(); }}>
-              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : "Confirm"}
+              {busy === "delete" ? <Loader2 className="size-3 animate-spin" /> : tr("common.confirm")}
             </Button>
-            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={busy === "delete"} onClick={() => setConfirm(false)}><I18nText id="common.cancel" />{" "}</Button>
           </>
         ) : (
           <Button
             size="icon"
             variant="ghost"
             className="size-6 text-muted-foreground hover:text-danger"
-            title={authenticated ? "Delete release" : PUSH_ONLY_TITLE}
-            aria-label={`Delete ${release.tagName}`}
+            title={authenticated ? tr("common.delete_release") : staticLabel(PUSH_ONLY_TITLE)}
+            aria-label={tr("common.delete_0ae262", { p0: String(release.tagName) })}
             disabled={!!busy || !authenticated}
             onClick={() => setConfirm(true)}
           >
@@ -5389,13 +5287,13 @@ function NotificationsPanel({
   rowErrors: Record<string, string | undefined>;
   onClose: () => void;
 }) {
+  useUILocale();
   const unreadCount = notifications.filter((n) => n.unread).length;
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Bell className="size-3.5" />
-          Notifications ({showAll ? notifications.length : unreadCount})
+          <Bell className="size-3.5" /><I18nText id="tasks.notifications_81b8ee" />{showAll ? notifications.length : unreadCount})
         </div>
         <div className="flex items-center gap-1">
           <div className="flex rounded-md border border-input p-0.5">
@@ -5404,17 +5302,13 @@ function NotificationsPanel({
               variant={!showAll ? "secondary" : "ghost"}
               className="h-6 px-2 text-[11px]"
               onClick={() => { if (showAll) onToggleShowAll(); }}
-            >
-              Unread
-            </Button>
+            ><I18nText id="tasks.unread" />{" "}</Button>
             <Button
               size="sm"
               variant={showAll ? "secondary" : "ghost"}
               className="h-6 px-2 text-[11px]"
               onClick={() => { if (!showAll) onToggleShowAll(); }}
-            >
-              All
-            </Button>
+            ><I18nText id="common.all" />{" "}</Button>
           </div>
           <Button
             size="sm"
@@ -5423,15 +5317,11 @@ function NotificationsPanel({
             disabled={loading || notifications.length === 0 || markAllBusy}
             onClick={onMarkAllRead}
           >
-            {markAllBusy ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Check className="mr-1 size-3" />}
-            Mark all read
-          </Button>
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh notifications" aria-label="Refresh notifications" disabled={loading} onClick={onRefresh}>
+            {markAllBusy ? <Loader2 className="mr-1 size-3 animate-spin" /> : <Check className="mr-1 size-3" />}<I18nText id="tasks.mark_all_read" />{" "}</Button>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_notifications")} aria-label={tr("tasks.refresh_notifications")} disabled={loading} onClick={onRefresh}>
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       {error && (
@@ -5443,7 +5333,7 @@ function NotificationsPanel({
       <div className="max-h-72 space-y-1 overflow-y-auto">
         {!error && notifications.length === 0 ? (
           <div className="px-1 py-2 text-[11px] text-muted-foreground">
-            {loading ? "Loading…" : "No notifications."}
+            {loading ? tr("common.loading") : tr("common.no_notifications")}
           </div>
         ) : (
           notifications.map((n) => (
@@ -5478,6 +5368,7 @@ function NotificationRow({
   onIgnore: () => void;
   onUnsubscribe: () => void;
 }) {
+  useUILocale();
   // Prefer the browsable HTML URL; the api.github.com subject/comment URLs
   // would open raw JSON in the browser.
   const openUrl = notification.htmlUrl ?? notification.subjectUrl;
@@ -5508,8 +5399,8 @@ function NotificationRow({
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Mark as read"
-            aria-label={`Mark ${notification.title} as read`}
+            title={tr("common.mark_as_read")}
+            aria-label={tr("common.mark_as_read_b18df8", { p0: String(notification.title) })}
             disabled={!!busy}
             onClick={onMarkRead}
           >
@@ -5519,24 +5410,20 @@ function NotificationRow({
             size="sm"
             variant="ghost"
             className="h-6 px-1.5 text-[11px]"
-            title="Ignore this conversation"
+            title={tr("tasks.ignore_this_conversation")}
             disabled={!!busy}
             onClick={onIgnore}
           >
-            {busy === "ignore" ? <Loader2 className="size-3 animate-spin" /> : <BellOff className="mr-1 size-3" />}
-            Ignore
-          </Button>
+            {busy === "ignore" ? <Loader2 className="size-3 animate-spin" /> : <BellOff className="mr-1 size-3" />}<I18nText id="tasks.ignore" />{" "}</Button>
           <Button
             size="sm"
             variant="ghost"
             className="h-6 px-1.5 text-[11px]"
-            title="Unsubscribe from this thread"
+            title={tr("tasks.unsubscribe_from_this_thread")}
             disabled={!!busy}
             onClick={onUnsubscribe}
           >
-            {busy === "unsubscribe" ? <Loader2 className="size-3 animate-spin" /> : <X className="mr-1 size-3" />}
-            Unsubscribe
-          </Button>
+            {busy === "unsubscribe" ? <Loader2 className="size-3 animate-spin" /> : <X className="mr-1 size-3" />}<I18nText id="tasks.unsubscribe" />{" "}</Button>
         </div>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 pl-3.5 text-[11px] text-muted-foreground">
@@ -5629,22 +5516,20 @@ function ActionsPanel({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const activeWorkflows = workflows.filter((w) => w.state === "active");
   const dispatchDisabled = dispatchBusy || !authenticated || !dispatchWorkflowId || !dispatchRef.trim();
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Workflow className="size-3.5" />
-          Actions ({runs.length})
+          <Workflow className="size-3.5" /><I18nText id="tasks.actions" />{runs.length})
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh Actions" aria-label="Refresh Actions" disabled={loading} onClick={onRefresh}>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_actions")} aria-label={tr("tasks.refresh_actions")} disabled={loading} onClick={onRefresh}>
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       {error && (
@@ -5656,7 +5541,7 @@ function ActionsPanel({
       <div className="mb-3 max-h-56 space-y-1 overflow-y-auto">
         {!error && runs.length === 0 ? (
           <div className="px-1 py-2 text-[11px] text-muted-foreground">
-            {loading ? "Loading…" : "No recent workflow runs."}
+            {loading ? tr("common.loading") : tr("common.no_recent_workflow_runs")}
           </div>
         ) : (
           runs.map((r) => (
@@ -5676,19 +5561,17 @@ function ActionsPanel({
 
       <div className="border-t border-border/60 pt-2">
         <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Play className="size-3.5" />
-          Run a workflow
-        </div>
+          <Play className="size-3.5" /><I18nText id="tasks.run_a_workflow" />{" "}</div>
         <div className="mb-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,0.6fr)]">
           <Select
             value={dispatchWorkflowId}
             onChange={(e) => onDispatchWorkflowIdChange(e.target.value)}
-            title="Workflow"
-            aria-label="Workflow"
+            title={tr("tasks.workflow")}
+            aria-label={tr("tasks.workflow")}
             className="h-8 text-xs"
             disabled={dispatchBusy || !authenticated}
           >
-            <option value="">Select a workflow…</option>
+            <option value=""><I18nText id="tasks.select_a_workflow" /></option>
             {activeWorkflows.map((w) => (
               <option key={w.id} value={String(w.id)}>{w.name}</option>
             ))}
@@ -5697,7 +5580,7 @@ function ActionsPanel({
             {...IDENTIFIER_INPUT_PROPS}
             value={dispatchRef}
             onChange={(e) => onDispatchRefChange(e.target.value)}
-            placeholder="Ref (branch, tag, or sha) — e.g. main"
+            placeholder={tr("tasks.ref_branch_tag_or_sha_e_g_main")}
             className="h-8 text-xs"
             disabled={dispatchBusy || !authenticated}
           />
@@ -5709,14 +5592,14 @@ function ActionsPanel({
                 {...IDENTIFIER_INPUT_PROPS}
                 value={row.key}
                 onChange={(e) => onUpdateDispatchInputRow(i, { key: e.target.value })}
-                placeholder="Input name"
+                placeholder={tr("tasks.input_name")}
                 className="h-7 flex-1 text-xs"
                 disabled={dispatchBusy || !authenticated}
               />
               <Input
                 value={row.value}
                 onChange={(e) => onUpdateDispatchInputRow(i, { value: e.target.value })}
-                placeholder="Value"
+                placeholder={tr("tasks.value")}
                 className="h-7 flex-1 text-xs"
                 disabled={dispatchBusy || !authenticated}
               />
@@ -5724,8 +5607,8 @@ function ActionsPanel({
                 size="icon"
                 variant="ghost"
                 className="size-6 shrink-0"
-                title="Remove input"
-                aria-label={`Remove input ${i + 1}`}
+                title={tr("tasks.remove_input")}
+                aria-label={tr("common.remove_input", { p0: String(i + 1) })}
                 disabled={dispatchBusy || !authenticated}
                 onClick={() => onRemoveDispatchInputRow(i)}
               >
@@ -5740,9 +5623,7 @@ function ActionsPanel({
             disabled={dispatchBusy || !authenticated}
             onClick={onAddDispatchInputRow}
           >
-            <Plus className="mr-1 size-3" />
-            Add input
-          </Button>
+            <Plus className="mr-1 size-3" /><I18nText id="tasks.add_input" />{" "}</Button>
         </div>
         {dispatchError && (
           <div className="mb-2 flex items-center gap-1 text-[11px] text-danger">
@@ -5760,12 +5641,10 @@ function ActionsPanel({
           <Button
             size="sm"
             disabled={dispatchDisabled}
-            title={authenticated ? undefined : PUSH_ONLY_TITLE}
+            title={authenticated ? undefined : staticLabel(PUSH_ONLY_TITLE)}
             onClick={onDispatch}
           >
-            {dispatchBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Play className="mr-2 size-3.5" />}
-            Run
-          </Button>
+            {dispatchBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Play className="mr-2 size-3.5" />}<I18nText id="common.run" />{" "}</Button>
         </div>
       </div>
     </div>
@@ -5789,6 +5668,7 @@ function WorkflowRunRow({
   onRerunFailed: () => void;
   onCancel: () => void;
 }) {
+  useUILocale();
   const isBusy = !!busy;
   // Anything not yet completed is cancellable — includes queued, in_progress,
   // and the approval-gate states (waiting, pending, requested).
@@ -5808,8 +5688,8 @@ function WorkflowRunRow({
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Open run on GitHub"
-            aria-label={`Open run #${run.runNumber} on GitHub`}
+            title={tr("tasks.open_run_on_github")}
+            aria-label={tr("common.open_run_on_github", { p0: String(run.runNumber) })}
             onClick={() => { void api.openExternal(run.htmlUrl); }}
           >
             <ExternalLink className="size-3.5" />
@@ -5819,8 +5699,8 @@ function WorkflowRunRow({
               size="icon"
               variant="ghost"
               className="size-6 text-muted-foreground hover:text-danger"
-              title={authenticated ? "Cancel run" : PUSH_ONLY_TITLE}
-              aria-label={`Cancel run #${run.runNumber}`}
+              title={authenticated ? tr("common.cancel_run") : staticLabel(PUSH_ONLY_TITLE)}
+              aria-label={tr("common.cancel_run_93418b", { p0: String(run.runNumber) })}
               disabled={isBusy || !authenticated}
               onClick={onCancel}
             >
@@ -5831,8 +5711,8 @@ function WorkflowRunRow({
             size="icon"
             variant="ghost"
             className="size-6"
-            title={authenticated ? "Re-run" : PUSH_ONLY_TITLE}
-            aria-label={`Re-run #${run.runNumber}`}
+            title={authenticated ? tr("common.re_run") : staticLabel(PUSH_ONLY_TITLE)}
+            aria-label={tr("common.re_run_bae406", { p0: String(run.runNumber) })}
             disabled={isBusy || !authenticated}
             onClick={onRerun}
           >
@@ -5842,13 +5722,11 @@ function WorkflowRunRow({
             size="sm"
             variant="ghost"
             className="h-6 px-1.5 text-[11px]"
-            title={authenticated ? "Re-run failed jobs only" : PUSH_ONLY_TITLE}
+            title={authenticated ? tr("common.re_run_failed_jobs_only") : staticLabel(PUSH_ONLY_TITLE)}
             disabled={isBusy || !authenticated}
             onClick={onRerunFailed}
           >
-            {busy === "rerun-failed" ? <Loader2 className="size-3 animate-spin" /> : null}
-            Failed only
-          </Button>
+            {busy === "rerun-failed" ? <Loader2 className="size-3 animate-spin" /> : null}<I18nText id="tasks.failed_only" />{" "}</Button>
         </div>
       </div>
       <div className="mt-0.5 flex items-center gap-1.5 pl-0.5 text-[11px] text-muted-foreground">
@@ -5923,22 +5801,20 @@ function ProjectsPanel({
   onRefreshItems: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
   const addDisabled = addBusy || !authenticated || !selectedProjectId || !addNumber.trim();
   return (
     <div className="mb-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Kanban className="size-3.5" />
-          Projects{projects.length > 0 && ` (${projects.length})`}
+          <Kanban className="size-3.5" /><I18nText id="common.projects" />{projects.length > 0 && ` (${projects.length})`}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh projects" aria-label="Refresh projects" disabled={loading} onClick={onRefresh}>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_projects")} aria-label={tr("tasks.refresh_projects")} disabled={loading} onClick={onRefresh}>
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       {error && (
@@ -5951,13 +5827,13 @@ function ProjectsPanel({
         <Select
           value={selectedProjectId}
           onChange={(e) => onSelectProject(e.target.value)}
-          title="Project"
-          aria-label="Project"
+          title={tr("common.project_985959")}
+          aria-label={tr("common.project_985959")}
           className="h-8 text-xs"
           disabled={loading || projects.length === 0}
         >
           <option value="">
-            {loading ? "Loading projects…" : projects.length === 0 ? "No projects linked to this repository" : "Select a project…"}
+            {loading ? tr("common.loading_projects") : projects.length === 0 ? tr("common.no_projects_linked_to_this_repository") : tr("common.select_a_project")}
           </option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>#{p.number} {p.title}</option>
@@ -5969,21 +5845,21 @@ function ProjectsPanel({
         <>
           <div className="mb-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
             <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-              <span>Items{!itemsLoading && ` (${items.length})`}</span>
+              <span><I18nText id="tasks.items" />{!itemsLoading && ` (${items.length})`}</span>
               {selectedProject && (
                 <Button
                   size="icon"
                   variant="ghost"
                   className="size-6"
-                  title="Open project on GitHub"
-                  aria-label="Open project on GitHub"
+                  title={tr("tasks.open_project_on_github")}
+                  aria-label={tr("tasks.open_project_on_github")}
                   onClick={() => { void api.openExternal(selectedProject.url); }}
                 >
                   <ExternalLink className="size-3.5" />
                 </Button>
               )}
             </div>
-            <Button size="icon" variant="ghost" className="size-6" title="Refresh items" aria-label="Refresh items" disabled={itemsLoading} onClick={onRefreshItems}>
+            <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_items")} aria-label={tr("tasks.refresh_items")} disabled={itemsLoading} onClick={onRefreshItems}>
               {itemsLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
             </Button>
           </div>
@@ -5996,7 +5872,7 @@ function ProjectsPanel({
           <div className="mb-3 max-h-56 space-y-1 overflow-y-auto">
             {!itemsError && items.length === 0 ? (
               <div className="px-1 py-2 text-[11px] text-muted-foreground">
-                {itemsLoading ? "Loading…" : "No items on this project board."}
+                {itemsLoading ? tr("common.loading") : tr("common.no_items_on_this_project_board")}
               </div>
             ) : (
               items.map((it) => (
@@ -6016,26 +5892,24 @@ function ProjectsPanel({
 
           <div className="border-t border-border/60 pt-2">
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <Plus className="size-3.5" />
-              Add issue/PR by number
-            </div>
+              <Plus className="size-3.5" /><I18nText id="tasks.add_issue_pr_by_number" />{" "}</div>
             <div className="mb-1 flex items-center gap-1.5">
               <Select
                 value={addKind}
                 onChange={(e) => onAddKindChange(e.target.value === "pr" ? "pr" : "issue")}
-                title="Content kind"
-                aria-label="Content kind"
+                title={tr("tasks.content_kind")}
+                aria-label={tr("tasks.content_kind")}
                 className="h-8 w-20 shrink-0 text-xs"
                 disabled={addBusy || !authenticated}
               >
-                <option value="issue">Issue</option>
+                <option value="issue"><I18nText id="tasks.issue" /></option>
                 <option value="pr">PR</option>
               </Select>
               <Input
                 {...IDENTIFIER_INPUT_PROPS}
                 value={addNumber}
                 onChange={(e) => onAddNumberChange(e.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="#number"
+                placeholder={tr("tasks.number")}
                 className="h-8 flex-1 text-xs"
                 disabled={addBusy || !authenticated}
                 onKeyDown={(e) => { if (e.key === "Enter" && !addDisabled) onAddItem(); }}
@@ -6043,12 +5917,10 @@ function ProjectsPanel({
               <Button
                 size="sm"
                 disabled={addDisabled}
-                title={authenticated ? undefined : PUSH_ONLY_TITLE}
+                title={authenticated ? undefined : staticLabel(PUSH_ONLY_TITLE)}
                 onClick={onAddItem}
               >
-                {addBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-                Add
-              </Button>
+                {addBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.add" />{" "}</Button>
             </div>
             {addError && (
               <div className="flex items-center gap-1 text-[11px] text-danger">
@@ -6080,6 +5952,7 @@ function ProjectItemRow({
   onSetStatus: (optionId: string, optionName: string) => void;
   onRemove: () => void;
 }) {
+  useUILocale();
   const isBusy = !!busy;
   const Icon = item.contentType === "PullRequest" ? GitPullRequest : item.contentType === "DraftIssue" ? FileText : CircleDot;
   const iconClass = item.contentType === "PullRequest"
@@ -6088,7 +5961,7 @@ function ProjectItemRow({
       ? "text-muted-foreground"
       : "text-info";
   const label = item.contentType === "DraftIssue"
-    ? item.title || "(untitled draft)"
+    ? item.title || tr("common.untitled_draft")
     : item.number != null
       ? `#${item.number} ${item.title || "(untitled)"}`
       : item.title || "(untitled)";
@@ -6110,12 +5983,12 @@ function ProjectItemRow({
               const option = statusField.options.find((o) => o.id === optionId);
               if (option) onSetStatus(option.id, option.name);
             }}
-            title="Status"
-            aria-label={`Status for ${label}`}
+            title={tr("common.status")}
+            aria-label={tr("common.status_for", { p0: String(label) })}
             className="h-6 w-28 shrink-0 text-[11px]"
             disabled={isBusy || !authenticated}
           >
-            <option value="">— no status —</option>
+            <option value=""><I18nText id="tasks.no_status" /></option>
             {statusField.options.map((o) => (
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
@@ -6125,8 +5998,8 @@ function ProjectItemRow({
           size="icon"
           variant="ghost"
           className="size-6 shrink-0 text-muted-foreground hover:text-danger"
-          title={authenticated ? "Remove from project" : PUSH_ONLY_TITLE}
-          aria-label={`Remove ${label} from project`}
+          title={authenticated ? tr("common.remove_from_project") : staticLabel(PUSH_ONLY_TITLE)}
+          aria-label={tr("common.remove_from_project_5935b7", { p0: String(label) })}
           disabled={isBusy || !authenticated}
           onClick={onRemove}
         >
@@ -6225,6 +6098,7 @@ function DiscussionsPanel({
   onRefresh: () => void;
   onClose: () => void;
 }) {
+  useUILocale();
   const authenticated = auth !== "none";
   const createDisabled = createBusy || !authenticated || !newCategoryId || !newTitle.trim() || !newBody.trim();
   return (
@@ -6232,8 +6106,8 @@ function DiscussionsPanel({
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           <MessagesSquare className="size-3.5" />
-          <span>Discussions{discussions.length > 0 && ` (${discussions.length})`}</span>
-          {!authenticated && <span className="text-[10px]">· unauthenticated</span>}
+          <span><I18nText id="tasks.discussions" />{discussions.length > 0 && ` (${discussions.length})`}</span>
+          {!authenticated && <span className="text-[10px]"><I18nText id="tasks.unauthenticated" /></span>}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -6241,18 +6115,14 @@ function DiscussionsPanel({
             variant={createOpen ? "secondary" : "ghost"}
             className="h-6 px-2 text-[11px]"
             disabled={!authenticated}
-            title={authenticated ? undefined : "Sign in to GitHub to start a discussion"}
+            title={authenticated ? undefined : tr("common.sign_in_to_github_to_start_a_discussion")}
             onClick={() => onCreateOpenChange(!createOpen)}
           >
-            <Plus className="mr-1 size-3.5" />
-            New
-          </Button>
-          <Button size="icon" variant="ghost" className="size-6" title="Refresh discussions" aria-label="Refresh discussions" disabled={loading} onClick={onRefresh}>
+            <Plus className="mr-1 size-3.5" /><I18nText id="tasks.new" />{" "}</Button>
+          <Button size="icon" variant="ghost" className="size-6" title={tr("tasks.refresh_discussions")} aria-label={tr("tasks.refresh_discussions")} disabled={loading} onClick={onRefresh}>
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
       {error && (
@@ -6268,12 +6138,12 @@ function DiscussionsPanel({
             <Select
               value={newCategoryId}
               onChange={(e) => onNewCategoryIdChange(e.target.value)}
-              title="Category"
-              aria-label="Category"
+              title={tr("common.category")}
+              aria-label={tr("common.category")}
               className="h-8 w-36 shrink-0 text-xs"
               disabled={createBusy || categories.length === 0}
             >
-              {categories.length === 0 && <option value="">No categories</option>}
+              {categories.length === 0 && <option value=""><I18nText id="tasks.no_categories" /></option>}
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -6281,7 +6151,7 @@ function DiscussionsPanel({
             <Input
               value={newTitle}
               onChange={(e) => onNewTitleChange(e.target.value)}
-              placeholder="Title"
+              placeholder={tr("common.title")}
               className="h-8 flex-1 text-xs"
               disabled={createBusy}
             />
@@ -6289,15 +6159,13 @@ function DiscussionsPanel({
           <Textarea
             value={newBody}
             onChange={(e) => onNewBodyChange(e.target.value)}
-            placeholder="Write your discussion…"
+            placeholder={tr("tasks.write_your_discussion")}
             className="min-h-20 resize-y text-xs"
             disabled={createBusy}
           />
           <div className="mt-1.5 flex justify-end">
             <Button size="sm" disabled={createDisabled} onClick={onCreate}>
-              {createBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-              Create
-            </Button>
+              {createBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.create" />{" "}</Button>
           </div>
           {createError && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
@@ -6311,7 +6179,7 @@ function DiscussionsPanel({
       <div className="max-h-96 space-y-1 overflow-y-auto">
         {!error && discussions.length === 0 ? (
           <div className="px-1 py-2 text-[11px] text-muted-foreground">
-            {loading ? "Loading…" : "No discussions yet."}
+            {loading ? tr("common.loading") : tr("common.no_discussions_yet")}
           </div>
         ) : (
           discussions.map((d) => (
@@ -6371,6 +6239,7 @@ function DiscussionRow({
   onDelete: () => void;
   children?: React.ReactNode;
 }) {
+  useUILocale();
   return (
     <div className="rounded-md border border-border/50 bg-background/30">
       <div className="flex items-center gap-2 px-2 py-1.5 text-xs">
@@ -6384,17 +6253,17 @@ function DiscussionRow({
           </span>
         )}
         {discussion.answered && (
-          <span title="Answered">
+          <span title={tr("common.answered")}>
             <CheckCircle2 className="size-3.5 shrink-0 text-success" />
           </span>
         )}
-        <span className="shrink-0 text-[10px] text-muted-foreground">{discussion.author ?? "unknown"}</span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">{discussion.author ?? tr("common.unknown_b23a6a")}</span>
         <Button
           size="icon"
           variant="ghost"
           className="size-6 shrink-0"
-          title="Open on GitHub"
-          aria-label={`Open discussion #${discussion.number} on GitHub`}
+          title={tr("tasks.open_on_github")}
+          aria-label={tr("common.open_discussion_on_github", { p0: String(discussion.number) })}
           onClick={() => { void api.openExternal(discussion.url); }}
         >
           <ExternalLink className="size-3.5" />
@@ -6403,8 +6272,8 @@ function DiscussionRow({
           size="icon"
           variant="ghost"
           className="size-6 shrink-0 text-muted-foreground hover:text-danger"
-          title={canDelete ? "Delete discussion" : PUSH_ONLY_TITLE}
-          aria-label={`Delete discussion #${discussion.number}`}
+          title={canDelete ? tr("common.delete_discussion") : staticLabel(PUSH_ONLY_TITLE)}
+          aria-label={tr("common.delete_discussion_13b644", { p0: String(discussion.number) })}
           disabled={busy || !canDelete}
           onClick={onDelete}
         >
@@ -6414,8 +6283,8 @@ function DiscussionRow({
           size="icon"
           variant="ghost"
           className="size-6 shrink-0"
-          title={expanded ? "Collapse" : "Expand"}
-          aria-label={`${expanded ? "Collapse" : "Expand"} discussion #${discussion.number}`}
+          title={expanded ? tr("common.collapse") : tr("common.expand")}
+          aria-label={tr("common.discussion", { p0: String(expanded ? tr("common.collapse") : tr("common.expand")), p1: String(discussion.number) })}
           onClick={onToggle}
         >
           {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -6465,12 +6334,12 @@ function DiscussionDetailView({
   onSetAnswer: (comment: GitHubDiscussionComment, answer: boolean) => void;
   onDeleteComment: (comment: GitHubDiscussionComment) => void;
 }) {
+  useUILocale();
   return (
     <div className="border-t border-border/50 bg-card p-2">
       {loading && !detail && (
         <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> Loading discussion…
-        </div>
+          <Loader2 className="size-3.5 animate-spin" />{" "}<I18nText id="tasks.loading_discussion" />{" "}</div>
       )}
       {!loading && error && (
         <div className="flex items-center gap-1 py-2 text-[11px] text-danger">
@@ -6493,7 +6362,7 @@ function DiscussionDetailView({
           )}
           <div className="space-y-1.5">
             {detail.comments.length === 0 ? (
-              <div className="px-1 py-1.5 text-[11px] text-muted-foreground">No comments yet.</div>
+              <div className="px-1 py-1.5 text-[11px] text-muted-foreground"><I18nText id="tasks.no_comments_yet" /></div>
             ) : (
               detail.comments.map((c) => (
                 <DiscussionCommentRow
@@ -6514,7 +6383,7 @@ function DiscussionDetailView({
             <Textarea
               value={commentDraft}
               onChange={(e) => onCommentDraftChange(e.target.value)}
-              placeholder={authenticated ? "Add a comment…" : "Sign in to GitHub to comment"}
+              placeholder={authenticated ? tr("common.add_a_comment") : tr("common.sign_in_to_github_to_comment")}
               className="min-h-16 resize-y border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
               disabled={commentBusy || !authenticated}
             />
@@ -6530,12 +6399,10 @@ function DiscussionDetailView({
                   size="sm"
                   className="h-7"
                   disabled={commentBusy || !authenticated || !commentDraft.trim()}
-                  title={authenticated ? undefined : "Sign in to GitHub to comment"}
+                  title={authenticated ? undefined : tr("common.sign_in_to_github_to_comment")}
                   onClick={onSubmitComment}
                 >
-                  {commentBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}
-                  Comment
-                </Button>
+                  {commentBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}<I18nText id="tasks.comment" />{" "}</Button>
               </div>
             </div>
           </div>
@@ -6564,16 +6431,16 @@ function DiscussionCommentRow({
   onSetAnswer: (answer: boolean) => void;
   onDelete: () => void;
 }) {
+  useUILocale();
   const isBusy = !!busy;
   return (
     <div className="rounded border border-border/50 bg-background/40 px-2 py-1.5 text-xs">
       <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-        <span className="font-medium text-foreground">{comment.author ?? "unknown"}</span>
+        <span className="font-medium text-foreground">{comment.author ?? tr("common.unknown_b23a6a")}</span>
         <span>{fmtDate(comment.createdAt)}</span>
         {comment.isAnswer && (
           <span className="flex items-center gap-0.5 rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
-            <Check className="size-3" /> Answer
-          </span>
+            <Check className="size-3" />{" "}<I18nText id="common.answer" />{" "}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
           {answerable && (
@@ -6582,18 +6449,18 @@ function DiscussionCommentRow({
               variant="ghost"
               className="h-6 px-1.5 text-[10px]"
               disabled={isBusy || !canAnswer}
-              title={canAnswer ? undefined : "Sign in to GitHub to mark an answer"}
+              title={canAnswer ? undefined : tr("common.sign_in_to_github_to_mark_an_answer")}
               onClick={() => onSetAnswer(!comment.isAnswer)}
             >
-              {busy === "answer" ? <Loader2 className="size-3 animate-spin" /> : comment.isAnswer ? "Unmark answer" : "Mark answer"}
+              {busy === "answer" ? <Loader2 className="size-3 animate-spin" /> : comment.isAnswer ? tr("common.unmark_answer") : tr("common.mark_answer")}
             </Button>
           )}
           <Button
             size="icon"
             variant="ghost"
             className="size-5 text-muted-foreground hover:text-danger"
-            title={canDelete ? "Delete comment" : PUSH_ONLY_TITLE}
-            aria-label="Delete comment"
+            title={canDelete ? tr("tasks.delete_comment") : staticLabel(PUSH_ONLY_TITLE)}
+            aria-label={tr("tasks.delete_comment")}
             disabled={isBusy || !canDelete}
             onClick={onDelete}
           >
@@ -6637,6 +6504,7 @@ function GitHubItemRow({
   // Navigates to the detail subpage for this item (GitHubDialogView).
   onToggle: () => void;
 }) {
+  useUILocale();
   const merged = isMergedPull(item);
   const stateClass = item.state === "open"
     ? "text-success"
@@ -6653,30 +6521,28 @@ function GitHubItemRow({
               type="button"
               className="min-w-0 truncate text-left text-sm font-medium hover:underline"
               onClick={onToggle}
-              title="Open details"
+              title={tr("common.open_details")}
             >
               #{item.number} {item.title}
             </button>
             {item.draft && (
-              <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                Draft
-              </span>
+              <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground"><I18nText id="common.draft" />{" "}</span>
             )}
             {repoBadge && (
               <span
                 className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                title="Repository this item belongs to"
+                title={tr("tasks.repository_this_item_belongs_to")}
               >
                 {repoBadge}
               </span>
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{merged ? "merged" : item.state}</span>
-            {item.author && <span>by {item.author.login}</span>}
-            {item.assignees.length > 0 && <span>assigned {item.assignees.map((a) => a.login).join(", ")}</span>}
-            {item.milestone && <span>milestone {item.milestone.title}</span>}
-            <span>updated {fmtDate(item.updatedAt)}</span>
+            <span>{merged ? tr("common.merged") : item.state}</span>
+            {item.author && <span><I18nText id="tasks.by" />{" "}{item.author.login}</span>}
+            {item.assignees.length > 0 && <span><I18nText id="common.assigned_2ebb92" />{" "}{item.assignees.map((a) => a.login).join(", ")}</span>}
+            {item.milestone && <span><I18nText id="tasks.milestone_7f7f85" />{" "}{item.milestone.title}</span>}
+            <span><I18nText id="common.updated_27eb5e" />{" "}{fmtDate(item.updatedAt)}</span>
             {item.comments > 0 && (
               <span className="inline-flex items-center gap-1">
                 <MessageSquare className="size-3" />
@@ -6715,8 +6581,8 @@ function GitHubItemRow({
         <Button
           size="icon"
           variant="ghost"
-          title="Open details"
-          aria-label={`Open details for #${item.number}`}
+          title={tr("common.open_details")}
+          aria-label={tr("common.open_details_for", { p0: String(item.number) })}
           onClick={onToggle}
         >
           <ChevronRight className="size-4" />
@@ -6724,8 +6590,8 @@ function GitHubItemRow({
         <Button
           size="icon"
           variant="ghost"
-          title={`Open on ${caps.providerName}`}
-          aria-label={`Open #${item.number} on ${caps.providerName}`}
+          title={tr("common.open_on", { p0: String(caps.providerName) })}
+          aria-label={tr("common.open_on_aa33dc", { p0: String(item.number), p1: String(caps.providerName) })}
           onClick={() => { void api.openExternal(item.htmlUrl); }}
         >
           <ExternalLink className="size-4" />
@@ -6975,6 +6841,7 @@ function GitHubItemDetail({
   refreshing: boolean;
   onRetryCommits: () => void;
 }) {
+  const { locale: uiLocale } = useUILocale();
   // The item's own author may close/reopen and edit the title/body of their own
   // issue/PR without repo push access — so those specific controls gate on this
   // wider flag, while genuinely push-only actions (merge, lock, pin, transfer,
@@ -6988,13 +6855,13 @@ function GitHubItemDetail({
   // git-host.ts `pullBlob` dispatches by the repo dir's remote.
   const blobCtx = useMemo(
     () => (provider !== "mixed" && provider !== null && item.kind === "pulls" ? { repoDir: itemPath, number: item.number } : null),
-    [provider, item.kind, item.number, itemPath],
+    [provider, item.kind, item.number, itemPath, uiLocale],
   );
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-[11px] font-medium uppercase text-muted-foreground">
-          {item.kind === "pulls" ? caps.pullNoun : "Issue"} #{item.number}
+          {item.kind === "pulls" ? caps.pullNoun : tr("tasks.issue")} #{item.number}
         </div>
         {!editorOpen && (
           <Button
@@ -7002,12 +6869,10 @@ function GitHubItemDetail({
             variant="ghost"
             className="h-7"
             disabled={!canModifyOwn}
-            title={canModifyOwn ? undefined : PUSH_ONLY_TITLE}
+            title={canModifyOwn ? undefined : staticLabel(PUSH_ONLY_TITLE)}
             onClick={() => onEditToggle(true)}
           >
-            <FilePen className="mr-2 size-3.5" />
-            Edit
-          </Button>
+            <FilePen className="mr-2 size-3.5" /><I18nText id="common.edit" />{" "}</Button>
         )}
       </div>
       {item.kind === "pulls" && caps.linkedIssues && linkedIssues && linkedIssues.length > 0 && (
@@ -7036,7 +6901,7 @@ function GitHubItemDetail({
               {item.body}
             </ReactMarkdown>
           ) : (
-            <div className="text-sm italic text-muted-foreground">No description.</div>
+            <div className="text-sm italic text-muted-foreground"><I18nText id="tasks.no_description" /></div>
           )}
         </div>
       )}
@@ -7227,10 +7092,10 @@ const MERGE_TONE_CLASS: Record<MergeTone, string> = {
  *  value, so it reads as "Fast-forward" rather than GitHub/GitLab's "Rebase
  *  and merge" wording. */
 function mergeMethodLabel(method: GitHubPullMergeMethod, provider: GitProvider | "mixed" | null): string {
-  if (method === "rebase" && provider === "bitbucket") return "Fast-forward";
-  if (method === "merge") return "Create merge commit";
-  if (method === "squash") return "Squash and merge";
-  return "Rebase and merge";
+  if (method === "rebase" && provider === "bitbucket") return tr("common.fast_forward");
+  if (method === "merge") return tr("common.create_merge_commit");
+  if (method === "squash") return tr("common.squash_and_merge");
+  return tr("common.rebase_and_merge");
 }
 
 function IssueActions({
@@ -7292,11 +7157,12 @@ function IssueActions({
   // Everything else here (triage save, lock, pin, transfer) stays push-only.
   canModifyOwn: boolean;
 }) {
+  const { locale: uiLocale } = useUILocale();
   const isBusy = !!busy;
   const pushDisabled = isBusy || !canPush;
-  const pushTitle = canPush ? undefined : PUSH_ONLY_TITLE;
+  const pushTitle = canPush ? undefined : staticLabel(PUSH_ONLY_TITLE);
   const ownDisabled = isBusy || !canModifyOwn;
-  const ownTitle = canModifyOwn ? undefined : PUSH_ONLY_TITLE;
+  const ownTitle = canModifyOwn ? undefined : staticLabel(PUSH_ONLY_TITLE);
   const nextState = item.state === "open" ? "closed" : "open";
   // "Work on this with Agetor" — the issue-tracker sibling of PullActions'
   // "Resolve with Agetor" (`resolveOpen`/`resolveConfirmed` below it). Shown
@@ -7311,28 +7177,23 @@ function IssueActions({
   // in-progress prompt edits on every poll tick.
   const taskContext = useMemo(
     () => ({ path, number: item.number, url: item.htmlUrl, title: item.title }),
-    [path, item.number, item.htmlUrl, item.title],
+    [path, item.number, item.htmlUrl, item.title, uiLocale],
   );
   return (
     <div className="mt-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Tag className="size-3.5" />
-          Issue actions
-        </div>
+          <Tag className="size-3.5" /><I18nText id="tasks.issue_actions" />{" "}</div>
         {/* Everything after the label is one flex cluster — same rationale as
             PullActions' header row: with more than two direct children,
             `justify-between` spreads space evenly across all of them instead
             of keeping "label" and "controls" as two groups. */}
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" data-testid="issue-work-with-agetor" onClick={() => setTaskOpen(true)}>
-            <Bot className="mr-2 size-3.5" /> Work on this with ForgeOrbit
-          </Button>
+            <Bot className="mr-2 size-3.5" />{" "}<I18nText id="tasks.work_on_this_with_forgeorbit" />{" "}</Button>
           {taskConfirmed && (
             <span className="inline-flex items-center gap-1 text-[11px] text-success">
-              <CheckCircle2 className="size-3.5" />
-              Task created and started
-            </span>
+              <CheckCircle2 className="size-3.5" /><I18nText id="tasks.task_created_and_started" />{" "}</span>
           )}
           {message && (
             <span className="inline-flex items-center gap-1 text-[11px] text-success">
@@ -7364,9 +7225,7 @@ function IssueActions({
           onMilestoneDraftChange={onMilestoneDraftChange}
         />
         <Button size="sm" variant="outline" disabled={pushDisabled} title={pushTitle} onClick={onIssueLabels}>
-          {busy === "labels" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Tag className="mr-2 size-3.5" />}
-          Save triage
-        </Button>
+          {busy === "labels" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Tag className="mr-2 size-3.5" />}<I18nText id="tasks.save_triage" />{" "}</Button>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <Button
@@ -7377,7 +7236,7 @@ function IssueActions({
           onClick={() => onIssueState(nextState)}
         >
           {busy === nextState ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <XCircle className="mr-2 size-3.5" />}
-          {item.state === "open" ? "Close issue" : "Reopen issue"}
+          {item.state === "open" ? tr("common.close_issue") : tr("common.reopen_issue")}
         </Button>
         {caps.pinIssue && <IssuePinToggle path={path} number={item.number} canPush={canPush} />}
       </div>
@@ -7389,14 +7248,14 @@ function IssueActions({
             onChange={(e) => onLockReasonDraftChange(e.target.value)}
             className="h-8 w-40 text-xs"
             disabled={isBusy || item.locked || !canPush}
-            title="Lock reason (optional)"
-            aria-label="Lock reason"
+            title={tr("tasks.lock_reason_optional")}
+            aria-label={tr("tasks.lock_reason")}
           >
-            <option value="">No reason</option>
-            <option value="off-topic">Off-topic</option>
-            <option value="too heated">Too heated</option>
-            <option value="resolved">Resolved</option>
-            <option value="spam">Spam</option>
+            <option value=""><I18nText id="tasks.no_reason" /></option>
+            <option value="off-topic"><I18nText id="tasks.off_topic" /></option>
+            <option value="too heated"><I18nText id="tasks.too_heated" /></option>
+            <option value="resolved"><I18nText id="tasks.resolved" /></option>
+            <option value="spam"><I18nText id="tasks.spam" /></option>
           </Select>
           <Button size="sm" variant="outline" disabled={pushDisabled} title={pushTitle} onClick={onToggleLock}>
             {busy === "lock" ? (
@@ -7406,7 +7265,7 @@ function IssueActions({
             ) : (
               <Lock className="mr-2 size-3.5" />
             )}
-            {item.locked ? "Unlock conversation" : "Lock conversation"}
+            {item.locked ? tr("common.unlock_conversation") : tr("common.lock_conversation")}
           </Button>
         </div>
       )}
@@ -7419,28 +7278,20 @@ function IssueActions({
             {...IDENTIFIER_INPUT_PROPS}
             value={transferDraft}
             onChange={(e) => onTransferDraftChange(e.target.value)}
-            placeholder="Transfer to owner/repo"
+            placeholder={tr("tasks.transfer_to_owner_repo")}
             className="h-8 w-48 text-xs"
             disabled={isBusy || !canPush}
           />
           {transferConfirming ? (
             <>
-              <span className="text-[11px] text-warning">
-                Transfer #{item.number} to {transferDraft.trim() || "…"}? This can't be undone.
-              </span>
+              <span className="text-[11px] text-warning"><I18nText id="tasks.transfer" />{item.number}{" "}<I18nText id="tasks.to" />{" "}{transferDraft.trim() || "…"}<I18nText id="tasks.this_can_t_be_undone" />{" "}</span>
               <Button size="sm" variant="destructive" disabled={pushDisabled || !transferDraft.trim()} title={pushTitle} onClick={onTransferIssue}>
-                {busy === "transfer" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}
-                Confirm transfer
-              </Button>
-              <Button size="sm" variant="ghost" disabled={isBusy} onClick={onCancelTransfer}>
-                Cancel
-              </Button>
+                {busy === "transfer" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}<I18nText id="tasks.confirm_transfer" />{" "}</Button>
+              <Button size="sm" variant="ghost" disabled={isBusy} onClick={onCancelTransfer}><I18nText id="common.cancel" />{" "}</Button>
             </>
           ) : (
             <Button size="sm" variant="outline" disabled={pushDisabled || !transferDraft.trim()} title={pushTitle} onClick={onTransferIssue}>
-              <ArrowRightLeft className="mr-2 size-3.5" />
-              Transfer issue
-            </Button>
+              <ArrowRightLeft className="mr-2 size-3.5" /><I18nText id="tasks.transfer_issue" />{" "}</Button>
           )}
         </div>
       )}
@@ -7462,6 +7313,7 @@ function IssueActions({
  *  `getGitHubIssuePinned` on mount rather than threading yet another field
  *  through the parent's already-large per-item state. */
 function IssuePinToggle({ path, number, canPush }: { path: string; number: number; canPush: boolean }) {
+  useUILocale();
   const [pinned, setPinned] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -7499,7 +7351,7 @@ function IssuePinToggle({ path, number, canPush }: { path: string; number: numbe
         size="sm"
         variant="outline"
         disabled={busy || loading || pinned === undefined || !canPush}
-        title={canPush ? undefined : PUSH_ONLY_TITLE}
+        title={canPush ? undefined : staticLabel(PUSH_ONLY_TITLE)}
         onClick={() => void toggle()}
       >
         {busy || loading ? (
@@ -7509,7 +7361,7 @@ function IssuePinToggle({ path, number, canPush }: { path: string; number: numbe
         ) : (
           <Pin className="mr-2 size-3.5" />
         )}
-        {pinned ? "Unpin issue" : "Pin issue"}
+        {pinned ? tr("common.unpin_issue") : tr("common.pin_issue")}
       </Button>
       {error && <span className="text-[11px] text-danger">{error}</span>}
     </div>
@@ -7521,6 +7373,7 @@ function IssuePinToggle({ path, number, canPush }: { path: string; number: numbe
  *  from the parent's per-item state (like `IssuePinToggle`) since both `path`
  *  and `issueNumber` fully determine its data. */
 function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: number; canPush: boolean }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<GitHubSubIssue[] | undefined>(undefined);
   const [loading, setLoading] = useState(false);
@@ -7585,8 +7438,7 @@ function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: 
         onClick={() => setOpen((o) => !o)}
       >
         <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <ListTree className="size-3.5" />
-          Sub-issues{items ? ` (${items.length})` : ""}
+          <ListTree className="size-3.5" /><I18nText id="tasks.sub_issues" />{items ? ` (${items.length})` : ""}
         </span>
         {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
       </button>
@@ -7594,21 +7446,18 @@ function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: 
         <div className="mt-3">
           {loading && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Loading sub-issues…
-            </div>
+              <Loader2 className="size-3.5 animate-spin" />{" "}<I18nText id="tasks.loading_sub_issues" />{" "}</div>
           )}
           {error && (
             <div className="mb-2 flex items-center justify-between gap-2 text-[11px] text-danger">
               <span className="flex items-center gap-1">
                 <AlertCircle className="size-3.5" /> {error}
               </span>
-              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={load}>
-                Retry
-              </Button>
+              <Button size="sm" variant="ghost" className="h-6 px-2" onClick={load}><I18nText id="common.retry" />{" "}</Button>
             </div>
           )}
           {!loading && !error && items && items.length === 0 && (
-            <div className="text-xs italic text-muted-foreground">No sub-issues yet.</div>
+            <div className="text-xs italic text-muted-foreground"><I18nText id="tasks.no_sub_issues_yet" /></div>
           )}
           {items && items.length > 0 && (
             <ul className="flex flex-col gap-1">
@@ -7622,14 +7471,14 @@ function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: 
                     #{child.number} {child.title}
                   </button>
                   <div className="flex shrink-0 items-center gap-2">
-                    <span className={child.state === "open" ? "text-success" : "text-danger"}>{child.state}</span>
+                    <span className={child.state === "open" ? "text-success" : "text-danger"}>{codeLabel(child.state)}</span>
                     <Button
                       size="icon"
                       variant="ghost"
                       className="size-6"
                       disabled={busy === `remove:${child.id}` || !canPush}
-                      title={canPush ? `Remove #${child.number}` : PUSH_ONLY_TITLE}
-                      aria-label={`Remove #${child.number}`}
+                      title={canPush ? tr("common.remove_a533c1", { p0: String(child.number) }) : staticLabel(PUSH_ONLY_TITLE)}
+                      aria-label={tr("common.remove_a533c1", { p0: String(child.number) })}
                       onClick={() => void remove(child)}
                     >
                       {busy === `remove:${child.id}` ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
@@ -7644,7 +7493,7 @@ function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: 
               {...IDENTIFIER_INPUT_PROPS}
               value={addDraft}
               onChange={(e) => setAddDraft(e.target.value)}
-              placeholder="Add by #number"
+              placeholder={tr("tasks.add_by_number")}
               className="h-8 w-32 text-xs"
               disabled={busy === "add" || !canPush}
             />
@@ -7652,12 +7501,10 @@ function SubIssues({ path, issueNumber, canPush }: { path: string; issueNumber: 
               size="sm"
               variant="outline"
               disabled={busy === "add" || !addDraft.trim() || !canPush}
-              title={canPush ? undefined : PUSH_ONLY_TITLE}
+              title={canPush ? undefined : staticLabel(PUSH_ONLY_TITLE)}
               onClick={() => void add()}
             >
-              {busy === "add" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}
-              Add
-            </Button>
+              {busy === "add" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Plus className="mr-2 size-3.5" />}<I18nText id="common.add" />{" "}</Button>
           </div>
         </div>
       )}
@@ -7688,6 +7535,7 @@ function ItemEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  useUILocale();
   return (
     <div className="rounded-md border border-border/60 bg-card p-3">
       {error && (
@@ -7700,26 +7548,22 @@ function ItemEditor({
         <Input
           value={title}
           onChange={(e) => onTitleChange(e.target.value)}
-          placeholder="Title"
+          placeholder={tr("common.title")}
           className="h-8 text-sm"
           disabled={busy}
         />
         <Textarea
           value={body}
           onChange={(e) => onBodyChange(e.target.value)}
-          placeholder="Markdown body..."
+          placeholder={tr("tasks.markdown_body")}
           className="min-h-32 resize-y text-sm"
           disabled={busy}
         />
       </div>
       <div className="mt-3 flex justify-end gap-2">
-        <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button size="sm" disabled={busy || !title.trim() || !canSave} title={canSave ? undefined : PUSH_ONLY_TITLE} onClick={onSave}>
-          {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <FilePen className="mr-2 size-3.5" />}
-          Save
-        </Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={onCancel}><I18nText id="common.cancel" />{" "}</Button>
+        <Button size="sm" disabled={busy || !title.trim() || !canSave} title={canSave ? undefined : staticLabel(PUSH_ONLY_TITLE)} onClick={onSave}>
+          {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <FilePen className="mr-2 size-3.5" />}<I18nText id="common.save" />{" "}</Button>
       </div>
     </div>
   );
@@ -7775,19 +7619,18 @@ function PullTriage({
   onRequestReviewers: () => void;
   canPush: boolean;
 }) {
+  useUILocale();
   const isBusy = !!busy;
   const pushDisabled = isBusy || !canPush;
-  const pushTitle = canPush ? undefined : PUSH_ONLY_TITLE;
+  const pushTitle = canPush ? undefined : staticLabel(PUSH_ONLY_TITLE);
   const reviewersTitle = !prOpen
-    ? "Reviewers can only be requested on open pull requests"
+    ? tr("common.reviewers_can_only_be_requested_on_open_pull")
     : pushTitle;
   return (
     <div className="mt-3 rounded-md border border-border/60 bg-card p-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <Tag className="size-3.5" />
-          Triage
-        </div>
+          <Tag className="size-3.5" /><I18nText id="tasks.triage" />{" "}</div>
         {message && (
           <span className="inline-flex items-center gap-1 text-[11px] text-success">
             <CheckCircle2 className="size-3.5" />
@@ -7817,9 +7660,7 @@ function PullTriage({
           onMilestoneDraftChange={onMilestoneDraftChange}
         />
         <Button size="sm" variant="outline" disabled={pushDisabled} title={pushTitle} onClick={onSaveTriage}>
-          {busy === "labels" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Tag className="mr-2 size-3.5" />}
-          Save triage
-        </Button>
+          {busy === "labels" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <Tag className="mr-2 size-3.5" />}<I18nText id="tasks.save_triage" />{" "}</Button>
       </div>
       {provider === "github" && (
         <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
@@ -7827,7 +7668,7 @@ function PullTriage({
             {...IDENTIFIER_INPUT_PROPS}
             value={reviewerDraft}
             onChange={(e) => onReviewerDraftChange(e.target.value)}
-            placeholder={prOpen ? "Reviewers, comma separated" : "Reviewers can only be requested on open PRs"}
+            placeholder={prOpen ? tr("tasks.reviewers_comma_separated") : tr("common.reviewers_can_only_be_requested_on_open_prs")}
             className="h-8 text-xs"
             disabled={isBusy || !prOpen || !canPush}
           />
@@ -7835,7 +7676,7 @@ function PullTriage({
             {...IDENTIFIER_INPUT_PROPS}
             value={teamReviewerDraft}
             onChange={(e) => onTeamReviewerDraftChange(e.target.value)}
-            placeholder={prOpen ? "Teams, comma separated (org slugs)" : "Teams can only be requested on open PRs"}
+            placeholder={prOpen ? tr("common.teams_comma_separated_org_slugs") : tr("common.teams_can_only_be_requested_on_open_prs")}
             className="h-8 text-xs"
             disabled={isBusy || !prOpen || !canPush}
           />
@@ -7846,9 +7687,7 @@ function PullTriage({
             title={reviewersTitle}
             onClick={onRequestReviewers}
           >
-            {busy === "reviewers" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitPullRequest className="mr-2 size-3.5" />}
-            Request review
-          </Button>
+            {busy === "reviewers" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitPullRequest className="mr-2 size-3.5" />}<I18nText id="tasks.request_review" />{" "}</Button>
         </div>
       )}
     </div>
@@ -7920,6 +7759,7 @@ function PullActions({
   // Merge, auto-merge, update-branch and draft-toggle stay push-only.
   canModifyOwn: boolean;
 }) {
+  useUILocale();
   // A merged PR replaces the mergeability banner + Review/Merge/Close grid
   // below with a single positive card — there's nothing actionable left to
   // show once GitHub has actually merged the branches (as opposed to just
@@ -7952,11 +7792,11 @@ function PullActions({
   // they don't depend on the mergeability verdict.
   const mergeDisabled = disabled || !canPush || (view ? !view.canMerge : false) || refreshing;
   const mergeTitle = refreshing
-    ? "Checking latest state…"
-    : !canPush ? PUSH_ONLY_TITLE : view && !view.canMerge ? view.label : undefined;
+    ? tr("common.checking_latest_state")
+    : !canPush ? staticLabel(PUSH_ONLY_TITLE) : view && !view.canMerge ? view.label : undefined;
   const pushDisabled = disabled || !canPush;
-  const pushTitle = canPush ? undefined : PUSH_ONLY_TITLE;
-  const ownTitle = canModifyOwn ? undefined : PUSH_ONLY_TITLE;
+  const pushTitle = canPush ? undefined : staticLabel(PUSH_ONLY_TITLE);
+  const ownTitle = canModifyOwn ? undefined : staticLabel(PUSH_ONLY_TITLE);
   // Reopen shows only on a closed PR, so it can't reuse `disabled`
   // (which is always true off the open state) — gate it on busy + own-modify.
   const reopenDisabled = !!busy || !canModifyOwn;
@@ -7987,7 +7827,7 @@ function PullActions({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
           <GitPullRequest className="size-3.5" />
-          {merged ? "Merge status" : "Actions"}
+          {merged ? tr("common.merge_status") : tr("common.actions")}
         </div>
         {/* Everything after the label is one flex cluster (rather than
             individual siblings of the label under `justify-between`) so the
@@ -8000,20 +7840,16 @@ function PullActions({
           {item.state === "open" && provider === "github" && (
             <Button size="sm" variant="ghost" className="h-7" disabled={!!busy || !canPush} title={pushTitle} onClick={onToggleDraft}>
               {busy === "draft" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <FilePen className="mr-2 size-3.5" />}
-              {item.draft ? "Mark ready for review" : "Convert to draft"}
+              {item.draft ? tr("common.mark_ready_for_review") : tr("common.convert_to_draft")}
             </Button>
           )}
           {item.state !== "open" && item.mergedAt && (
             <span className="inline-flex items-center gap-1 text-[11px] text-merged">
-              <GitMerge className="size-3.5" />
-              Merged
-            </span>
+              <GitMerge className="size-3.5" /><I18nText id="tasks.merged" />{" "}</span>
           )}
           {item.state !== "open" && !item.mergedAt && (
             <Button size="sm" variant="outline" className="h-7" disabled={reopenDisabled} title={ownTitle} onClick={onReopenPull}>
-              {busy === "reopen" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitPullRequest className="mr-2 size-3.5" />}
-              Reopen
-            </Button>
+              {busy === "reopen" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitPullRequest className="mr-2 size-3.5" />}<I18nText id="tasks.reopen" />{" "}</Button>
           )}
           {/* Full item + mergeability refresh (C3) — rendered for every PR
               state, not just open, so a closed/merged PR that was reopened or
@@ -8023,8 +7859,8 @@ function PullActions({
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Refresh"
-            aria-label="Refresh"
+            title={tr("common.refresh")}
+            aria-label={tr("common.refresh")}
             disabled={refreshing}
             onClick={onRefresh}
           >
@@ -8062,8 +7898,7 @@ function PullActions({
             // `mergeabilityLoading` back to true — without this, that one
             // frame fell through to "Mergeability unavailable." below.
             <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Checking mergeability…
-            </span>
+              <Loader2 className="size-3.5 animate-spin" />{" "}<I18nText id="tasks.checking_mergeability" />{" "}</span>
           ) : (
             // No third "Mergeability unavailable." fallback here (dead code
             // after U3): this branch only renders when `mergeabilityError` is
@@ -8085,15 +7920,11 @@ function PullActions({
                   </span>
                   {canResolveConflicts && (
                     <Button size="sm" variant="outline" onClick={() => setResolveOpen(true)}>
-                      <GitMerge className="mr-2 size-3.5" />
-                      Resolve with ForgeOrbit
-                    </Button>
+                      <GitMerge className="mr-2 size-3.5" /><I18nText id="tasks.resolve_with_forgeorbit" />{" "}</Button>
                   )}
                   {resolveConfirmed && (
                     <span className="inline-flex items-center gap-1 text-[11px] text-success">
-                      <CheckCircle2 className="size-3.5" />
-                      Task created and started — check the board
-                    </span>
+                      <CheckCircle2 className="size-3.5" /><I18nText id="tasks.task_created_and_started_check_the_board" />{" "}</span>
                   )}
                 </>
               );
@@ -8102,9 +7933,7 @@ function PullActions({
           <div className="ml-auto flex items-center gap-2">
             {caps.updateBranch && view?.showUpdateBranch && (
               <Button size="sm" variant="outline" disabled={pushDisabled} title={pushTitle} onClick={onUpdateBranch}>
-                {busy === "update-branch" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowUpFromLine className="mr-2 size-3.5" />}
-                Update branch
-              </Button>
+                {busy === "update-branch" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowUpFromLine className="mr-2 size-3.5" />}<I18nText id="tasks.update_branch" />{" "}</Button>
             )}
           </div>
         </div>
@@ -8144,8 +7973,8 @@ function PullActions({
         <div className="mt-3 flex items-start gap-1.5 text-[11px] text-warning">
           <AlertCircle className="mt-px size-3.5 shrink-0" />
           {merged
-            ? <>{pendingCount} review comment{pendingCount === 1 ? "" : "s"} queued but never submitted — this pull request is merged, so {pendingCount === 1 ? "it" : "they"} can no longer be posted. Discard {pendingCount === 1 ? "it" : "them"} under "Pending review" below.</>
-            : <>{pendingCount} review comment{pendingCount === 1 ? "" : "s"} queued — submit via Approve / Comment / Request; merging or closing won't post {pendingCount === 1 ? "it" : "them"}.</>}
+            ? <>{pendingCount}{" "}<I18nText id="tasks.review_comment" />{pendingCount === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="tasks.queued_but_never_submitted_this_pull_request_is" />{" "}{pendingCount === 1 ? "it" : "they"}{" "}<I18nText id="tasks.can_no_longer_be_posted_discard" />{" "}{pendingCount === 1 ? "it" : "them"}{" "}<I18nText id="tasks.under_pending_review_below" /></>
+            : <>{pendingCount}{" "}<I18nText id="tasks.review_comment" />{pendingCount === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="tasks.queued_submit_via_approve_comment_request_merging_or" />{" "}{pendingCount === 1 ? "it" : "them"}.</>}
         </div>
       )}
       <ResolveConflictsDialog
@@ -8216,22 +8045,22 @@ function PullActionGrid({
   ownTitle?: string;
   onClosePull: () => void;
 }) {
+  useUILocale();
   return (
     <div className="grid gap-3 lg:grid-cols-3">
       <div className="min-w-0">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-[11px] font-medium uppercase text-muted-foreground">Review</span>
+          <span className="text-[11px] font-medium uppercase text-muted-foreground"><I18nText id="common.review" /></span>
           {pendingCount > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-info">
               <MessageSquare className="size-3 shrink-0" />
-              {pendingCount} inline comment{pendingCount === 1 ? "" : "s"} queued
-            </span>
+              {pendingCount}{" "}<I18nText id="tasks.inline_comment" />{pendingCount === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="tasks.queued" />{" "}</span>
           )}
         </div>
         <Textarea
           value={reviewDraft}
           onChange={(e) => onReviewDraftChange(e.target.value)}
-          placeholder={pendingCount > 0 ? "Optional review summary — submits the queued comments" : "Review note..."}
+          placeholder={pendingCount > 0 ? tr("common.optional_review_summary_submits_the_queued_comments") : tr("common.review_note")}
           className="min-h-20 resize-y text-xs"
           disabled={disabled}
         />
@@ -8242,18 +8071,14 @@ function PullActionGrid({
             disabled={disabled}
             onClick={() => onReview("APPROVE")}
           >
-            {busy === "APPROVE" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <CheckCircle2 className="mr-2 size-3.5" />}
-            Approve
-          </Button>
+            {busy === "APPROVE" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <CheckCircle2 className="mr-2 size-3.5" />}<I18nText id="common.approve" />{" "}</Button>
           <Button
             size="sm"
             variant="outline"
             disabled={disabled || (!reviewDraft.trim() && pendingCount === 0)}
             onClick={() => onReview("COMMENT")}
           >
-            {busy === "COMMENT" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}
-            Comment
-          </Button>
+            {busy === "COMMENT" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}<I18nText id="tasks.comment" />{" "}</Button>
           {caps.requestChanges && (
             <Button
               size="sm"
@@ -8261,22 +8086,20 @@ function PullActionGrid({
               disabled={disabled || (!reviewDraft.trim() && pendingCount === 0)}
               onClick={() => onReview("REQUEST_CHANGES")}
             >
-              {busy === "REQUEST_CHANGES" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <XCircle className="mr-2 size-3.5" />}
-              Request
-            </Button>
+              {busy === "REQUEST_CHANGES" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <XCircle className="mr-2 size-3.5" />}<I18nText id="tasks.request" />{" "}</Button>
           )}
         </div>
       </div>
 
       <div className="min-w-0">
-        <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground">Merge</div>
+        <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground"><I18nText id="tasks.merge" /></div>
         <Select
           value={mergeMethod}
           onChange={(e) => onMergeMethodChange(e.target.value as GitHubPullMergeMethod)}
           className="h-8 text-xs"
           disabled={disabled}
-          title="Merge method"
-          aria-label="Merge method"
+          title={tr("tasks.merge_method")}
+          aria-label={tr("tasks.merge_method")}
         >
           {caps.mergeMethods.map((method) => (
             <option key={method} value={method}>
@@ -8291,43 +8114,36 @@ function PullActionGrid({
           title={mergeTitle}
           onClick={onMerge}
         >
-          {busy === "merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitMerge className="mr-2 size-3.5" />}
-          Merge
-        </Button>
+          {busy === "merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitMerge className="mr-2 size-3.5" />}<I18nText id="tasks.merge" />{" "}</Button>
         {item.state === "open" && caps.autoMerge && (
           <div className="mt-2 flex items-center gap-2">
             {mergeability?.autoMerge ? (
               <>
                 <span className="inline-flex items-center gap-1 text-[11px] text-success">
-                  <CheckCircle2 className="size-3.5" /> Auto-merge enabled
-                </span>
+                  <CheckCircle2 className="size-3.5" />{" "}<I18nText id="tasks.auto_merge_enabled" />{" "}</span>
                 <Button size="sm" variant="outline" disabled={pushDisabled} title={pushTitle} onClick={onToggleAutoMerge}>
-                  {busy === "auto-merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}
-                  Disable
-                </Button>
+                  {busy === "auto-merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : null}<I18nText id="common.disable" />{" "}</Button>
               </>
             ) : (
               <Button
                 size="sm"
                 variant="outline"
                 disabled={pushDisabled || !mergeability}
-                title={pushTitle ?? (!mergeability ? "Waiting for mergeability…" : undefined)}
+                title={pushTitle ?? (!mergeability ? tr("common.waiting_for_mergeability") : undefined)}
                 onClick={onToggleAutoMerge}
               >
-                {busy === "auto-merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitMerge className="mr-2 size-3.5" />}
-                Enable auto-merge
-              </Button>
+                {busy === "auto-merge" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <GitMerge className="mr-2 size-3.5" />}<I18nText id="tasks.enable_auto_merge" />{" "}</Button>
             )}
           </div>
         )}
       </div>
 
       <div className="min-w-0">
-        <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground">Close</div>
+        <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground"><I18nText id="common.close" /></div>
         <Textarea
           value={closeDraft}
           onChange={(e) => onCloseDraftChange(e.target.value)}
-          placeholder="Optional close comment..."
+          placeholder={tr("tasks.optional_close_comment")}
           className="min-h-20 resize-y text-xs"
           disabled={disabled}
         />
@@ -8339,9 +8155,7 @@ function PullActionGrid({
           title={ownTitle}
           onClick={onClosePull}
         >
-          {busy === "close" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <XCircle className="mr-2 size-3.5" />}
-          Close PR
-        </Button>
+          {busy === "close" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <XCircle className="mr-2 size-3.5" />}<I18nText id="tasks.close_pr" />{" "}</Button>
       </div>
     </div>
   );
@@ -8356,6 +8170,7 @@ function PullActionGrid({
  *  below reclaims it for keyboard/screen-reader users rather than leaving
  *  them stranded on the document body. */
 function MergedPullCard({ item, justMerged }: { item: GitHubListItem; justMerged: boolean }) {
+  useUILocale();
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Only steal focus on the actual open -> merged transition (`justMerged`,
@@ -8382,10 +8197,10 @@ function MergedPullCard({ item, justMerged }: { item: GitHubListItem; justMerged
       className="flex min-h-[7.5rem] flex-col items-center justify-center gap-2 rounded-md border border-merged/40 bg-merged/10 px-3 py-6 text-center"
     >
       <GitMerge className="size-6 text-merged" aria-hidden />
-      <span className="text-sm font-medium text-foreground">Pull request successfully merged</span>
+      <span className="text-sm font-medium text-foreground"><I18nText id="tasks.pull_request_successfully_merged" /></span>
       {/* Only render once `fmtRelativeDate` produces something — an
           unparsable `mergedAt` would otherwise leave a dangling "Merged ". */}
-      {mergedWhen && <span className="text-xs text-muted-foreground">Merged {mergedWhen}</span>}
+      {mergedWhen && <span className="text-xs text-muted-foreground"><I18nText id="tasks.merged" />{" "}{mergedWhen}</span>}
     </div>
   );
 }
@@ -8393,9 +8208,10 @@ function MergedPullCard({ item, justMerged }: { item: GitHubListItem; justMerged
 /** Compact "Closes: #12 #34" line for the issues a PR will close on merge —
  *  read-only, so just a row of links (closed ones dimmed/struck through). */
 function LinkedIssuesLine({ issues }: { issues: GitHubLinkedIssue[] }) {
+  useUILocale();
   return (
     <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-      <span className="font-medium text-foreground/80">Closes:</span>
+      <span className="font-medium text-foreground/80"><I18nText id="tasks.closes" /></span>
       {issues.map((issue) => (
         <button
           key={issue.number}
@@ -8428,6 +8244,7 @@ function PullCommits({
   error?: string;
   onRetry: () => void;
 }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3">
@@ -8438,8 +8255,7 @@ function PullCommits({
         aria-expanded={open}
       >
         <span className="flex items-center gap-2">
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          Commits{commits ? ` (${commits.length})` : ""}
+          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}<I18nText id="tasks.commits" />{commits ? ` (${commits.length})` : ""}
         </span>
         {loading && <Loader2 className="size-3.5 animate-spin" />}
       </button>
@@ -8447,23 +8263,18 @@ function PullCommits({
         <div className="mt-2">
           {loading && !commits && (
             <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-6 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading commits...
-            </div>
+              <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_commits" />{" "}</div>
           )}
           {!loading && error && (
             <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-border/60 py-6 text-center text-sm text-danger">
               <div className="flex items-center gap-2">
                 <AlertCircle className="size-4" /> {error}
               </div>
-              <Button size="sm" variant="outline" onClick={onRetry}>
-                Retry
-              </Button>
+              <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
             </div>
           )}
           {!loading && !error && commits && commits.length === 0 && (
-            <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-              No commits found for this pull request.
-            </div>
+            <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground"><I18nText id="tasks.no_commits_found_for_this_pull_request" />{" "}</div>
           )}
           {!loading && !error && commits && commits.length > 0 && (
             <div className="overflow-hidden rounded-md border border-border/60">
@@ -8472,8 +8283,8 @@ function PullCommits({
                   <button
                     type="button"
                     className="shrink-0 font-mono text-[11px] text-muted-foreground hover:underline"
-                    title="Open commit"
-                    aria-label={`Open commit ${commit.sha.slice(0, 7)}`}
+                    title={tr("tasks.open_commit")}
+                    aria-label={tr("common.open_commit", { p0: String(commit.sha.slice(0, 7)) })}
                     onClick={() => { void api.openExternal(commit.htmlUrl); }}
                   >
                     {commit.sha.slice(0, 7)}
@@ -8506,13 +8317,12 @@ function CheckRuns({
   onRetry: () => void;
   onRefresh: () => void;
 }) {
+  useUILocale();
   return (
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <GitPullRequest className="size-3.5" />
-          Checks
-        </div>
+          <GitPullRequest className="size-3.5" /><I18nText id="common.checks" />{" "}</div>
         <div className="flex items-center gap-2">
           {checks && (
             <div className="font-mono text-[11px] text-muted-foreground">
@@ -8523,8 +8333,8 @@ function CheckRuns({
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Refresh checks"
-            aria-label="Refresh checks"
+            title={tr("tasks.refresh_checks")}
+            aria-label={tr("tasks.refresh_checks")}
             disabled={loading}
             onClick={onRefresh}
           >
@@ -8535,23 +8345,18 @@ function CheckRuns({
 
       {loading && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading checks...
-        </div>
+          <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_checks" />{" "}</div>
       )}
       {!loading && error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-border/60 py-6 text-center text-sm text-danger">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}
           </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
+          <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
         </div>
       )}
       {!loading && !error && checks && checks.checkRuns.length === 0 && (
-        <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-          No check runs found for this pull request head.
-        </div>
+        <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground"><I18nText id="tasks.no_check_runs_found_for_this_pull_request" />{" "}</div>
       )}
       {!loading && !error && checks && checks.checkRuns.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border/60">
@@ -8566,8 +8371,8 @@ function CheckRuns({
                 <Button
                   size="icon"
                   variant="ghost"
-                  title="Open check"
-                  aria-label={`Open ${run.name} check`}
+                  title={tr("tasks.open_check")}
+                  aria-label={tr("common.open_check", { p0: String(run.name) })}
                   onClick={() => { void api.openExternal(run.htmlUrl!); }}
                 >
                   <ExternalLink className="size-3.5" />
@@ -8599,6 +8404,7 @@ function CommitStatus({
   onRetry: () => void;
   onRefresh: () => void;
 }) {
+  useUILocale();
   // The legacy combined-status API is rarely populated (most repos post via
   // check-runs), so most PR expansions resolve to empty. Render nothing until we
   // actually have contexts to show — otherwise every expand flashes a header +
@@ -8612,21 +8418,19 @@ function CommitStatus({
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <GitPullRequest className="size-3.5" />
-          Commit status
-        </div>
+          <GitPullRequest className="size-3.5" /><I18nText id="tasks.commit_status" />{" "}</div>
         <div className="flex items-center gap-2">
           {hasContent && (
             <span className={cn("text-[11px] font-medium capitalize", commitStatusClass(status.state))}>
-              {status.state || "unknown"}
+              {status.state || tr("common.unknown_b23a6a")}
             </span>
           )}
           <Button
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Refresh commit status"
-            aria-label="Refresh commit status"
+            title={tr("tasks.refresh_commit_status")}
+            aria-label={tr("tasks.refresh_commit_status")}
             disabled={loading}
             onClick={onRefresh}
           >
@@ -8637,17 +8441,14 @@ function CommitStatus({
 
       {loading && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading commit status...
-        </div>
+          <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_commit_status" />{" "}</div>
       )}
       {!loading && error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-border/60 py-6 text-center text-sm text-danger">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}
           </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
+          <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
         </div>
       )}
       {!loading && !error && hasContent && (
@@ -8657,13 +8458,13 @@ function CommitStatus({
               <span className={cn("size-2 shrink-0 rounded-full bg-current", commitStatusClass(ctx.state))} />
               <span className="min-w-0 flex-1 truncate text-sm">{ctx.context}</span>
               {ctx.description && <span className="min-w-0 max-w-[40%] truncate text-xs text-muted-foreground">{ctx.description}</span>}
-              <span className={cn("shrink-0 text-xs capitalize", commitStatusClass(ctx.state))}>{ctx.state || "unknown"}</span>
+              <span className={cn("shrink-0 text-xs capitalize", commitStatusClass(ctx.state))}>{ctx.state || tr("common.unknown_b23a6a")}</span>
               {ctx.targetUrl && (
                 <Button
                   size="icon"
                   variant="ghost"
-                  title="Open status target on GitHub"
-                  aria-label={`Open ${ctx.context} status on GitHub`}
+                  title={tr("tasks.open_status_target_on_github")}
+                  aria-label={tr("common.open_status_on_github", { p0: String(ctx.context) })}
                   onClick={() => { void api.openExternal(ctx.targetUrl!); }}
                 >
                   <ExternalLink className="size-3.5" />
@@ -8708,26 +8509,25 @@ function PullDiff({
   // plain placeholder (non-GitHub provider or a non-PR item).
   blobCtx: { repoDir: string; number: number } | null;
 }) {
+  const { locale: uiLocale } = useUILocale();
   const totals = useMemo(() => {
     const files = diff?.files ?? [];
     return files.reduce(
       (acc, f) => ({ additions: acc.additions + f.additions, deletions: acc.deletions + f.deletions }),
       { additions: 0, deletions: 0 },
     );
-  }, [diff]);
+  }, [diff, uiLocale]);
 
   const queuedKeys = useMemo(
     () => new Set(pending.map((c) => `${c.filePath}|${c.line}|${c.side}`)),
-    [pending],
+    [pending, uiLocale],
   );
 
   return (
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <GitPullRequest className="size-3.5" />
-          Diff
-        </div>
+          <GitPullRequest className="size-3.5" /><I18nText id="tasks.diff" />{" "}</div>
         <div className="flex items-center gap-2">
           {diff && diff.files.length > 0 && (
             <div className="shrink-0 font-mono text-[11px] text-muted-foreground">
@@ -8741,8 +8541,8 @@ function PullDiff({
             size="icon"
             variant="ghost"
             className="size-6"
-            title="Refresh diff"
-            aria-label="Refresh diff"
+            title={tr("tasks.refresh_diff")}
+            aria-label={tr("tasks.refresh_diff")}
             disabled={loading}
             onClick={onRefresh}
           >
@@ -8753,22 +8553,19 @@ function PullDiff({
 
       {loading && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-8 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading diff...
-        </div>
+          <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_diff" />{" "}</div>
       )}
       {!loading && error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-border/60 py-8 text-center text-sm text-danger">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}
           </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
+          <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
         </div>
       )}
       {!loading && !error && diff && diff.files.length === 0 && (
         <div className="rounded-md border border-border/60 px-3 py-8 text-center text-sm text-muted-foreground">
-          {diff.note ?? "No diff returned for this pull request."}
+          {diff.note ?? tr("common.no_diff_returned_for_this_pull_request")}
         </div>
       )}
       {!loading && !error && diff && diff.files.length > 0 && (
@@ -8799,31 +8596,29 @@ function PendingReview({
   stale: boolean;
   onRemove: (index: number) => void;
 }) {
+  useUILocale();
   if (comments.length === 0) return null;
   return (
     <div className="mt-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <MessageSquare className="size-3.5" />
-        Pending review ({comments.length})
+        <MessageSquare className="size-3.5" /><I18nText id="tasks.pending_review" />{comments.length})
       </div>
       {stale && (
         <div className="mb-2 flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-warning">
-          <AlertCircle className="mt-px size-3.5 shrink-0" />
-          The diff changed since these were queued — their line numbers may be stale, and GitHub rejects the whole review if any line no longer matches. Re-queue them against the current diff before submitting.
-        </div>
+          <AlertCircle className="mt-px size-3.5 shrink-0" /><I18nText id="tasks.the_diff_changed_since_these_were_queued_their" />{" "}</div>
       )}
       <div className="flex flex-col gap-2">
         {comments.map((c, i) => (
           <div key={`${c.filePath}-${c.side}-${c.line}-${i}`} className="rounded-md border border-border/60 bg-card">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
               <span className="min-w-0 truncate font-mono">{c.filePath}:{c.line}</span>
-              <span>{c.side === "LEFT" ? "old" : "new"} side</span>
+              <span>{c.side === "LEFT" ? "old" : "new"}{" "}<I18nText id="tasks.side" /></span>
               <Button
                 size="icon"
                 variant="ghost"
                 className="ml-auto size-6"
-                title="Remove from review"
-                aria-label="Remove from review"
+                title={tr("tasks.remove_from_review")}
+                aria-label={tr("tasks.remove_from_review")}
                 onClick={() => onRemove(i)}
               >
                 <XCircle className="size-3.5" />
@@ -8833,9 +8628,7 @@ function PendingReview({
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
-        Submit these with Approve / Comment / Request in the Actions panel above.
-      </p>
+      <p className="mt-2 text-[11px] text-muted-foreground"><I18nText id="tasks.submit_these_with_approve_comment_request_in_the" />{" "}</p>
     </div>
   );
 }
@@ -8897,6 +8690,7 @@ function ReviewComments({
   // the provider supports resolving at all).
   resolveSupported: boolean;
 }) {
+  useUILocale();
   const [busyThread, setBusyThread] = useState<string | null>(null);
   const [threadError, setThreadError] = useState<{ id: string; msg: string } | null>(null);
   const threadByRoot = new Map(threads.map((t) => [t.rootCommentId, t]));
@@ -8916,42 +8710,33 @@ function ReviewComments({
     <div className="mt-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <MessageSquare className="size-3.5" />
-          Review comments
-        </div>
+          <MessageSquare className="size-3.5" /><I18nText id="tasks.review_comments" />{" "}</div>
         {comments && (
           <div className="text-[11px] text-muted-foreground">
-            {comments.length} {comments.length === 1 ? "comment" : "comments"}
+            {comments.length} {comments.length === 1 ? tr("tasks.comment_c44bb2") : "comments"}
           </div>
         )}
       </div>
 
       {threadsTruncated && (
         <div className="mb-2 flex items-start gap-1.5 text-[11px] text-warning">
-          <AlertCircle className="mt-px size-3.5 shrink-0" />
-          This pull request has more than 100 review threads — resolve controls cover only the first 100.
-        </div>
+          <AlertCircle className="mt-px size-3.5 shrink-0" /><I18nText id="tasks.this_pull_request_has_more_than_100_review" />{" "}</div>
       )}
 
       {loading && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading review comments...
-        </div>
+          <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_review_comments" />{" "}</div>
       )}
       {!loading && error && (
         <div className="flex flex-col items-center justify-center gap-3 rounded-md border border-border/60 py-6 text-center text-sm text-danger">
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}
           </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
+          <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
         </div>
       )}
       {!loading && !error && comments && comments.length === 0 && (
-        <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-          No review comments yet.
-        </div>
+        <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground"><I18nText id="tasks.no_review_comments_yet" />{" "}</div>
       )}
       {!loading && !error && comments && comments.length > 0 && (
         <div className="flex flex-col gap-2">
@@ -8962,20 +8747,16 @@ function ReviewComments({
             return (
               <div key={comment.id} className="rounded-md border border-border/60 bg-card">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">{comment.author?.login ?? "unknown"}</span>
+                  <span className="font-medium text-foreground">{comment.author?.login ?? tr("common.unknown_b23a6a")}</span>
                   <span>{comment.path}:{comment.line}</span>
-                  <span>{comment.side === "LEFT" ? "old" : "new"} side</span>
+                  <span>{comment.side === "LEFT" ? "old" : "new"}{" "}<I18nText id="tasks.side" /></span>
                   <span>{fmtDate(comment.createdAt)}</span>
                   {thread?.isResolved && (
                     <span className="inline-flex items-center gap-1 text-success">
-                      <CheckCircle2 className="size-3" />
-                      resolved
-                    </span>
+                      <CheckCircle2 className="size-3" /><I18nText id="tasks.resolved_dc676b" />{" "}</span>
                   )}
                   {thread?.isOutdated && (
-                    <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase">
-                      outdated
-                    </span>
+                    <span className="rounded border border-border/60 px-1.5 py-0.5 text-[10px] uppercase"><I18nText id="tasks.outdated" />{" "}</span>
                   )}
                   {thread && resolveSupported && (
                     <Button
@@ -8983,13 +8764,13 @@ function ReviewComments({
                       variant="ghost"
                       className="ml-auto h-6 px-2 text-[11px]"
                       disabled={busyThread === thread.threadId || !canResolveThreads}
-                      title={canResolveThreads ? undefined : PUSH_ONLY_TITLE}
+                      title={canResolveThreads ? undefined : staticLabel(PUSH_ONLY_TITLE)}
                       onClick={() => { void toggle(thread); }}
                     >
                       {busyThread === thread.threadId
                         ? <Loader2 className="mr-1 size-3 animate-spin" />
                         : thread.isResolved ? <RefreshCw className="mr-1 size-3" /> : <CheckCircle2 className="mr-1 size-3" />}
-                      {thread.isResolved ? "Reopen" : "Resolve"}
+                      {thread.isResolved ? tr("tasks.reopen") : tr("common.resolve")}
                     </Button>
                   )}
                 </div>
@@ -9020,15 +8801,13 @@ function ReviewComments({
                   <Textarea
                     value={draft}
                     onChange={(e) => onDraftChange(comment.id, e.target.value)}
-                    placeholder="Reply..."
+                    placeholder={tr("tasks.reply")}
                     className="min-h-16 resize-y text-sm"
                     disabled={submitting}
                   />
                   <div className="mt-2 flex justify-end">
                     <Button size="sm" disabled={submitting || !draft.trim()} onClick={() => onSubmitReply(comment.id)}>
-                      {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}
-                      Reply
-                    </Button>
+                      {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}<I18nText id="tasks.reply_c253f4" />{" "}</Button>
                   </div>
                 </div>
               </div>
@@ -9069,24 +8848,22 @@ function Conversation({
   onSubmit: () => void;
   onRetry: () => void;
 }) {
+  useUILocale();
   return (
     <div className="mt-3 border-t border-border/60 pt-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-          <MessageSquare className="size-3.5" />
-          Conversation
-        </div>
+          <MessageSquare className="size-3.5" /><I18nText id="tasks.conversation" />{" "}</div>
         {comments && (
           <div className="text-[11px] text-muted-foreground">
-            {comments.length} {comments.length === 1 ? "comment" : "comments"}
+            {comments.length} {comments.length === 1 ? tr("tasks.comment_c44bb2") : "comments"}
           </div>
         )}
       </div>
 
       {loading && (
         <div className="flex items-center justify-center gap-2 rounded-md border border-border/60 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading comments...
-        </div>
+          <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_comments" />{" "}</div>
       )}
 
       {!loading && error && (
@@ -9094,18 +8871,14 @@ function Conversation({
           <div className="flex items-center gap-2">
             <AlertCircle className="size-4" /> {error}
           </div>
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            Retry
-          </Button>
+          <Button size="sm" variant="outline" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
         </div>
       )}
 
       {!loading && !error && comments && (
         <div className="flex flex-col gap-2">
           {comments.length === 0 ? (
-            <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-              No comments yet.
-            </div>
+            <div className="rounded-md border border-border/60 px-3 py-6 text-center text-sm text-muted-foreground"><I18nText id="tasks.no_comments_yet" />{" "}</div>
           ) : (
             comments.map((comment) => (
               <CommentBlock
@@ -9127,7 +8900,7 @@ function Conversation({
         <Textarea
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
-          placeholder="Add a comment..."
+          placeholder={tr("tasks.add_a_comment")}
           className="min-h-24 resize-y border-0 px-2 shadow-none focus-visible:ring-0"
           disabled={submitting}
         />
@@ -9137,9 +8910,7 @@ function Conversation({
             onClick={onSubmit}
             disabled={submitting || draft.trim().length === 0}
           >
-            {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}
-            Comment
-          </Button>
+            {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}<I18nText id="tasks.comment" />{" "}</Button>
         </div>
       </div>
     </div>
@@ -9163,12 +8934,13 @@ function CommentBlock({
   onEdit: (body: string) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  useUILocale();
   return (
     <div className="rounded-md border border-border/60 bg-card">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{comment.author?.login ?? "unknown"}</span>
-        <span>commented {fmtDate(comment.createdAt)}</span>
-        {comment.updatedAt && comment.updatedAt !== comment.createdAt && <span>edited {fmtDate(comment.updatedAt)}</span>}
+        <span className="font-medium text-foreground">{comment.author?.login ?? tr("common.unknown_b23a6a")}</span>
+        <span><I18nText id="tasks.commented" />{" "}{fmtDate(comment.createdAt)}</span>
+        {comment.updatedAt && comment.updatedAt !== comment.createdAt && <span><I18nText id="tasks.edited" />{" "}{fmtDate(comment.updatedAt)}</span>}
       </div>
       <EditableCommentBody body={comment.body} canModify={canModify} onEdit={onEdit} onDelete={onDelete} />
       {caps.reactions && (
@@ -9203,6 +8975,7 @@ function EditableCommentBody({
    *  visible button with a tooltip, per the show-but-disable gating rule. */
   suggestion?: { canApply: boolean; canPush: boolean; applying: boolean; onApply: () => void };
 }) {
+  useUILocale();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(body);
   const [busy, setBusy] = useState<null | "save" | "delete">(null);
@@ -9254,13 +9027,9 @@ function EditableCommentBody({
           </div>
         )}
         <div className="mt-2 flex justify-end gap-2">
-          <Button size="sm" variant="ghost" disabled={busy === "save"} onClick={() => { setEditing(false); setDraft(body); setError(null); }}>
-            Cancel
-          </Button>
+          <Button size="sm" variant="ghost" disabled={busy === "save"} onClick={() => { setEditing(false); setDraft(body); setError(null); }}><I18nText id="common.cancel" />{" "}</Button>
           <Button size="sm" disabled={busy === "save" || !draft.trim()} onClick={() => { void save(); }}>
-            {busy === "save" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <FilePen className="mr-2 size-3.5" />}
-            Save
-          </Button>
+            {busy === "save" ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <FilePen className="mr-2 size-3.5" />}<I18nText id="common.save" />{" "}</Button>
         </div>
       </div>
     );
@@ -9283,23 +9052,19 @@ function EditableCommentBody({
                   <span className="my-2 block overflow-hidden rounded-md border border-success/40 bg-success/10">
                     <span className="flex items-center justify-between gap-2 border-b border-success/30 px-2 py-1">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-success">
-                        <Sparkles className="size-3" />
-                        Suggested change
-                      </span>
+                        <Sparkles className="size-3" /><I18nText id="tasks.suggested_change" />{" "}</span>
                       {suggestion.canApply && (
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-6 px-2 text-[11px]"
                           disabled={suggestion.applying || !suggestion.canPush}
-                          title={suggestion.canPush ? undefined : PUSH_ONLY_TITLE}
+                          title={suggestion.canPush ? undefined : staticLabel(PUSH_ONLY_TITLE)}
                           onClick={() => suggestion.onApply()}
                         >
                           {suggestion.applying
                             ? <Loader2 className="mr-1 size-3 animate-spin" />
-                            : <CheckCircle2 className="mr-1 size-3" />}
-                          Apply
-                        </Button>
+                            : <CheckCircle2 className="mr-1 size-3" />}<I18nText id="common.apply" />{" "}</Button>
                       )}
                     </span>
                     <span className="block overflow-x-auto whitespace-pre px-3 py-2 font-mono text-xs">
@@ -9315,7 +9080,7 @@ function EditableCommentBody({
           {body}
         </ReactMarkdown>
       ) : (
-        <span className="italic text-muted-foreground">Empty comment.</span>
+        <span className="italic text-muted-foreground"><I18nText id="tasks.empty_comment" /></span>
       )}
       {error && (
         <div className="mt-2 flex items-center gap-1 text-xs text-danger">
@@ -9332,12 +9097,10 @@ function EditableCommentBody({
             disabled={!!busy}
             onClick={() => { setDraft(body); setEditing(true); setError(null); }}
           >
-            <FilePen className="mr-1 size-3" />
-            Edit
-          </Button>
+            <FilePen className="mr-1 size-3" /><I18nText id="common.edit" />{" "}</Button>
           {confirmDelete ? (
             <>
-              <span className="text-[11px] text-muted-foreground">Delete this comment?</span>
+              <span className="text-[11px] text-muted-foreground"><I18nText id="tasks.delete_this_comment" /></span>
               <Button
                 size="sm"
                 variant="ghost"
@@ -9345,18 +9108,14 @@ function EditableCommentBody({
                 disabled={busy === "delete"}
                 onClick={() => { void del(); }}
               >
-                {busy === "delete" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <XCircle className="mr-1 size-3" />}
-                Confirm
-              </Button>
+                {busy === "delete" ? <Loader2 className="mr-1 size-3 animate-spin" /> : <XCircle className="mr-1 size-3" />}<I18nText id="common.confirm" />{" "}</Button>
               <Button
                 size="sm"
                 variant="ghost"
                 className="h-6 px-2 text-[11px]"
                 disabled={busy === "delete"}
                 onClick={() => setConfirmDelete(false)}
-              >
-                Cancel
-              </Button>
+              ><I18nText id="common.cancel" />{" "}</Button>
             </>
           ) : (
             <Button
@@ -9366,9 +9125,7 @@ function EditableCommentBody({
               disabled={!!busy}
               onClick={() => setConfirmDelete(true)}
             >
-              <XCircle className="mr-1 size-3" />
-              Delete
-            </Button>
+              <XCircle className="mr-1 size-3" /><I18nText id="common.delete" />{" "}</Button>
           )}
         </div>
       )}
@@ -9393,8 +9150,8 @@ const REACTION_EMOJI: Record<GitHubReactionContent, string> = {
   eyes: "👀",
 };
 const REACTION_LABEL: Record<GitHubReactionContent, string> = {
-  "+1": "thumbs up",
-  "-1": "thumbs down",
+  get "+1"() { return tr("common.thumbs_up"); },
+  get "-1"() { return tr("common.thumbs_down"); },
   laugh: "laugh",
   hooray: "hooray",
   confused: "confused",
@@ -9419,6 +9176,7 @@ function Reactions({
   subject: GitHubReactionSubject;
   viewer: string;
 }) {
+  useUILocale();
   const [reactions, setReactions] = useState<GitHubReactionSummary[] | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -9548,8 +9306,8 @@ function Reactions({
           size="icon"
           variant="ghost"
           className="size-6"
-          title="Add reaction"
-          aria-label="Add reaction"
+          title={tr("tasks.add_reaction")}
+          aria-label={tr("tasks.add_reaction")}
           disabled={!!busy || reactions === undefined}
           onClick={() => setPickerOpen((cur) => !cur)}
         >
@@ -9592,9 +9350,10 @@ function Reactions({
  *  Deliberately outside `DiffBody`'s row machinery — no
  *  `data-diff-path`/`data-diff-index`, no selection. */
 function PullBinaryPreview({ blobCtx, file }: { blobCtx: { repoDir: string; number: number } | null; file: DiffFile }) {
+  useUILocale();
   const kind = binaryPreviewKind(file.path);
   if (kind === null || !blobCtx) {
-    return <div className="px-3 py-2 text-xs italic text-muted-foreground">Binary file — no textual diff.</div>;
+    return <div className="px-3 py-2 text-xs italic text-muted-foreground"><I18nText id="tasks.binary_file_no_textual_diff" /></div>;
   }
   const { oldUrl, newUrl } = binaryPreviewSides(file, (path, side) =>
     api.pullBlobUrl({ path: blobCtx.repoDir, number: blobCtx.number, filePath: path, side }));
@@ -9626,6 +9385,7 @@ function DiffFileBlock({
   allowBatchReview: boolean;
   blobCtx: { repoDir: string; number: number } | null;
 }) {
+  useUILocale();
   const meta = STATUS_META[file.status];
   const Icon = meta.icon;
   const bodyId = `diff-file-${file.path}`;
@@ -9650,7 +9410,7 @@ function DiffFileBlock({
           )}
           <Icon className={cn("size-3.5 shrink-0", meta.cls)} />
           <span className="min-w-0 flex-1 truncate font-mono text-xs">
-            {file.oldPath && <span className="text-muted-foreground">{file.oldPath} -&gt; </span>}
+            {file.oldPath && <span className="text-muted-foreground">{file.oldPath}{" "}<I18nText id="tasks.text" />{" "}</span>}
             {file.path}
           </span>
           <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -9666,9 +9426,7 @@ function DiffFileBlock({
             <>
               <DiffBody file={file} hunks={file.hunks} onLineComment={onLineComment} onAddToReview={onAddToReview} queuedKeys={queuedKeys} allowBatchReview={allowBatchReview} />
               {file.truncated && (
-                <div className="border-t border-border/60 px-3 py-1.5 text-[11px] italic text-muted-foreground">
-                  Diff truncated because this file's changes are too large to display in full.
-                </div>
+                <div className="border-t border-border/60 px-3 py-1.5 text-[11px] italic text-muted-foreground"><I18nText id="tasks.diff_truncated_because_this_file_s_changes_are" />{" "}</div>
               )}
             </>
           )}
@@ -9693,7 +9451,8 @@ function DiffBody({
   queuedKeys: Set<string>;
   allowBatchReview: boolean;
 }) {
-  const rows = useMemo(() => toRows(hunks), [hunks]);
+  const { locale: uiLocale } = useUILocale();
+  const rows = useMemo(() => toRows(hunks), [hunks, uiLocale]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -9784,8 +9543,8 @@ function DiffBody({
                 <button
                   type="button"
                   className="sticky right-0 hidden shrink-0 items-center bg-card/90 px-1 text-muted-foreground hover:text-foreground group-hover:inline-flex"
-                  title="Comment on this line"
-                  aria-label="Comment on this line"
+                  title={tr("tasks.comment_on_this_line")}
+                  aria-label={tr("tasks.comment_on_this_line")}
                   onClick={() => {
                     setSelectedKey(selected ? null : rowKey);
                     setDraft("");
@@ -9797,10 +9556,10 @@ function DiffBody({
                 </button>
               )}
               {postedKey === rowKey && (
-                <span className="sticky right-0 shrink-0 bg-card/90 px-1 text-[11px] text-success">commented</span>
+                <span className="sticky right-0 shrink-0 bg-card/90 px-1 text-[11px] text-success"><I18nText id="tasks.commented" /></span>
               )}
               {allowBatchReview && queued && postedKey !== rowKey && (
-                <span className="sticky right-0 shrink-0 bg-card/90 px-1 text-[11px] text-info">queued</span>
+                <span className="sticky right-0 shrink-0 bg-card/90 px-1 text-[11px] text-info"><I18nText id="tasks.queued" /></span>
               )}
             </div>
             {selected && target && (
@@ -9809,8 +9568,8 @@ function DiffBody({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder={suggestMode
-                    ? "Proposed replacement text..."
-                    : `Comment on ${target.side === "LEFT" ? "old" : "new"} line ${target.line}...`}
+                    ? tr("common.proposed_replacement_text")
+                    : tr("common.comment_on_line", { p0: String(target.side === "LEFT" ? "old" : "new"), p1: String(target.line) })}
                   className="min-h-20 resize-y text-sm font-mono"
                   disabled={submitting}
                 />
@@ -9828,9 +9587,7 @@ function DiffBody({
                         if (checked && !draft.trim()) setDraft(r.text);
                       }}
                     />
-                    <Sparkles className="size-3.5" />
-                    Suggest change
-                  </label>
+                    <Sparkles className="size-3.5" /><I18nText id="tasks.suggest_change" />{" "}</label>
                   {error && (
                     <div className="flex items-center gap-1 text-xs text-danger">
                       <AlertCircle className="size-3.5" />
@@ -9849,25 +9606,19 @@ function DiffBody({
                       setError(null);
                       setSuggestMode(false);
                     }}
-                  >
-                    Cancel
-                  </Button>
+                  ><I18nText id="common.cancel" />{" "}</Button>
                   {allowBatchReview && (
                     <Button
                       size="sm"
                       variant="outline"
                       disabled={submitting || !draft.trim()}
-                      title="Queue this comment for a single review submission"
+                      title={tr("tasks.queue_this_comment_for_a_single_review_submission")}
                       onClick={() => queue(target)}
                     >
-                      <Plus className="mr-2 size-3.5" />
-                      Add to review
-                    </Button>
+                      <Plus className="mr-2 size-3.5" /><I18nText id="tasks.add_to_review" />{" "}</Button>
                   )}
                   <Button size="sm" disabled={submitting || !draft.trim()} onClick={() => { void submit(target); }}>
-                    {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}
-                    Comment
-                  </Button>
+                    {submitting ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <MessageSquare className="mr-2 size-3.5" />}<I18nText id="tasks.comment" />{" "}</Button>
                 </div>
               </div>
             )}

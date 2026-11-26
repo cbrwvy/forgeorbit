@@ -1,3 +1,4 @@
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TextQuote } from "lucide-react";
@@ -85,6 +86,7 @@ function computePosition(rect: DOMRect): Position {
  * selection state is threaded through `RunEventList`/`sections`).
  */
 export function QuoteSelectionButton({ containerRef, disabled = false, onQuote }: Props) {
+  useUILocale();
   const [position, setPosition] = useState<Position | null>(null);
   const rafRef = useRef<number | null>(null);
   // Mirrors `position !== null` but readable synchronously inside listeners
@@ -225,9 +227,7 @@ export function QuoteSelectionButton({ containerRef, disabled = false, onQuote }
           setPosition(null);
         }}
       >
-        <TextQuote className="size-3.5" />
-        Quote
-      </Button>
+        <TextQuote className="size-3.5" /><I18nText id="tasks.quote" />{" "}</Button>
     </div>,
     document.body,
   );

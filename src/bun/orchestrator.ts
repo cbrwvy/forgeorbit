@@ -1,9 +1,49 @@
+import {
+  abortComputerWorkflow, bindComputerWorkflow, captureComputerPlan, finishComputerWorkflow,
+  reconcileComputerWorkflows, reserveComputerWorkflow, type BoundComputerWorkflow,
+} from "./task-computer-workflow.ts";
+import { redactSecrets } from "../shared/project-interview.ts";
+import { computerPlanningPrompt } from "../shared/task-computer-workflow.ts";
+import type { EmployeeRunReviewFacts } from "../shared/execution/run.ts";
+import { objectiveTaskIsManaged, objectiveTaskOperation } from "./orchestration/objective-mission.ts";
+import { noteRunProviderOutcome } from "./provider-run-outcome.ts";
+import { isCodexProfile, selectedCodexAccount, assertCodexProfileAuthentication } from "./codex-profiles.ts";
+import { isClaudeProfile, selectedClaudeAccount, assertClaudeProfileAuthentication } from "./claude-profiles.ts";
+import {
+  consumeLaunchTicketInRunTransaction,
+  discardUnconsumedSpawnAuthorization,
+  isProductionOwnerGateActive,
+  verifyLaunchTicketBeforeStart,
+} from "./owner-trust/launch-gate.ts";
+import { AutonomyRefusedError, withAutonomyOrigin } from "./autonomy-origin.ts";
+import {
+  projectLifecycleTaskRefusal,
+  reconcileAllDrainingProjects,
+  reconcileProjectDrainForTask,
+  registerProjectLifecycleTaskProbe,
+  registerProjectLifecycleProcessProbe,
+} from "./project-lifecycle.ts";
+import { taskFingerprint } from "../shared/project-execution.ts";
+import { columnExecutionBlocked } from "../shared/pm-intake-promotion.ts";
+import { recordInitialProfessionalTurn, settleInitialProfessionalTurn, professionalExecutionKey, recordProfessionalTurnRunOutcome, recordProfessionalInitialSession } from "./professional-turn-core.ts";
+import { attachedClaudeIdentity } from "./claude-tmux.ts";
+import { EmployeeRunCore } from "./employee-run-core.ts";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve } from "node:path";import { db, tasks, runs, harnesses, projects, subagents, backlog, dataDir, preferences, agentProfiles, pipelines } from "./db.ts";
+import { normalizeAccessMode } from "../shared/execution/access-mode.ts";
+import { diagnoseTaskLaunch } from "./launch-diagnostics.ts";
+import { ownerProjectOf } from "./project-ownership.ts";
+import { isWorkspaceDevelopmentEnabled } from "./project-permissions.ts";
+import { projectRulesSnapshotForPath } from "./project-rules-routes.ts";
+import { loadEffectiveKnowledgeForProject } from "./knowledge-effective.ts";
+import {
+  composeEffectiveKnowledgeLaunchPrompt,
+  embedEffectiveKnowledgeBodies,
+} from "../shared/knowledge/effective.ts";
 import { markStalled, clearStalled } from "./stall-registry.ts";
-import { spawnAgent, toClaudeModelArg, claudeModelPickerFamily, type SpawnAgentArgs, type SpawnedAgent } from "./agents.ts";
+import { agentDriverIsFake, spawnAgent, toClaudeModelArg, claudeModelPickerFamily, type SpawnAgentArgs, type SpawnedAgent } from "./agents.ts";
 import { checkHarness, upgradeHintFor } from "./agent-status.ts";
 import { getDiscoveredEfforts } from "./agent-discovery.ts";
 import { resolveClaudePlan, upsertClaudePlanFromExitPlanMode, upsertDetectedPlan } from "./task-plans.ts";
@@ -36,7 +76,9 @@ import {
   type HarnessStatus,
   type TaskType,
 } from "../shared/types.ts";
-import { cliVersionSatisfies, formatMinCliVersionError } from "../shared/cli-version.ts";
+import { cliVersionSatisfies, formatMinCliVersionError, parseCliVersion } from "../shared/cli-version.ts";
+import { formatUnreadableVersionError } from "../shared/provider-launch-target.ts";
+import { isInertQaStub } from "./provider-runtime/synthetic-auth.ts";
 import { isFxRecoveryResumable, parseFxAutoResumePrefs, parseFxRecoveryPayload } from "../shared/fx-recovery.ts";
 import { resolveStartStep } from "../shared/pipeline.ts";
 import {
@@ -95,6 +137,7 @@ import {
   setLocalSettingChangedHandler,
   type LocalSettingInfo,
 } from "./claude-tmux.ts";
+import { resolveTmuxBin, tmuxClientEnv, tmuxSocketArgs } from "./tmux-resolution.ts";
 import {
   parseClaudeLocalSetting,
   describeLocalSettingSync,
@@ -171,6 +214,7 @@ import type {
   WorktreeTeardownResult,
 } from "../shared/types.ts";
 import { CONTINUATION_STATUS_TEXT, WORKTREE_STALE_AFTER_MS } from "../shared/types.ts";
+import { isUrgency, normalizeUrgency } from "../shared/board-order.ts";
 import {
   SENT_FILES_DELIVERED_RE,
   parseSentFilesToolResult,
@@ -182,7 +226,20 @@ import {
 import { appendReferences } from "../shared/refs.ts";
 import { promptByteOverage } from "../shared/prompt-limits.ts";
 import { expandAtReferencesDetailed } from "./project-files.ts";
+import { composeProfessionalPrompt } from "../shared/execution/professional.ts";
+import { assignedProfessionalEmployee, professionalRuntimeClaim, professionalContinuationProblem, promptSha256 } from "./professional-runtime.ts";
 import { composeLaunchPrompt, snapshotFromProfile } from "../shared/agent-profile.ts";
+import { composeProjectRulesPrompt } from "../shared/project-rules.ts";
+import { composeImprovementGuidance } from "../shared/self-improve/logic.ts";
+import { composePracticalReworkPrompt, peekPracticalReworkBrief } from "./autonomy/observed-test.ts";
+import { activeImprovementSnapshot, recordRunImprovementProvenance } from "./self-improve/engine.ts";
+import { dependencyRefusal } from "./dependency-gate.ts";
+import { taskAvailabilityRefusalMessage } from "./task-availability.ts";
+import { parseAvailableFromUtc } from "../shared/task-availability.ts";
+import { runTerminations } from "./run-terminations.ts";
+import { type RunTermination, type TerminationReason } from "../shared/run-termination.ts";
+import { supervisedRunLimit } from "./supervised-run-limit.ts";
+import { priorProcessRefusal, recheckRecordedProcess, recheckRecordedProcessSync, type TerminationEvidence } from "./process-termination.ts";
 
 type Listener = (e: RunEvent) => void;
 const listeners = new Set<Listener>();
@@ -221,6 +278,13 @@ interface ActiveRun {
    *  `blocked` immediately and the done handler reads this on resolution to
    *  keep it there (record the run as `failed`, not bounce to `ready`). */
   unknownCommand: boolean;
+  /** Stop the process and report what was observed, when the driver can (see `SpawnedAgent.terminate`). */
+  terminate?: () => Promise<TerminationEvidence>;
+  /** Set as soon as the driver's `done` has resolved: the process is gone and the settle handler is about to run,
+   *  so a Stop or time limit arriving now must not flag the natural outcome as cancelled. */
+  exited: boolean;
+  /** Why the stop was requested, once one was. */
+  stopReason?: TerminationReason;
 }
 const active = new Map<string, ActiveRun>(); // runId -> handle
 
@@ -543,7 +607,44 @@ function updateColumn(
   tasks.update(taskId, { column: next });
   if (prev !== next) {
     emitGlobal({ kind: "column", taskId, runId, column: next, prev, ts: Date.now(), reason });
+    if (next === "done" && prev !== "done" && before) noteTaskCompleted(before, runId);
   }
+}
+
+/**
+ * A task reached Done: queue a Brain candidate for the Owner's review. Every
+ * way into Done calls this (a run settling, a supervised accept, and the board
+ * or task panel's own Done through `PATCH /tasks/:id`). Nonblocking, idempotent
+ * per task, and it writes a pending candidate only.
+ */
+export function noteTaskCompleted(task: Pick<Task, "id" | "title" | "prompt" | "workdir" | "runId" | "qcState">, runId: string | null): void {
+  void (async () => {
+    try {
+      const { ingestExtractionEvent } = await import("./brain-extractor.ts");
+      await ingestExtractionEvent({
+        kind: "completed_task",
+        taskId: task.id,
+        runId: runId ?? task.runId ?? undefined,
+        taskTitle: task.title,
+        prompt: task.prompt,
+        // Done alone is not verification: say "passed review" only when a review passed.
+        qcPassed: task.qcState?.latestVerdict === "PASS",
+        projectPath: task.workdir,
+        completedAt: Date.now(),
+      });
+    } catch {
+      // nonblocking
+    }
+  })();
+}
+
+/**
+ * An owner's own column move outside a run (accepting or returning a
+ * supervised run's result), broadcast like every other transition so an
+ * execution batch waiting on that task notices it at once.
+ */
+export function moveTaskColumn(taskId: string, next: ColumnId): void {
+  updateColumn(taskId, tasks.get(taskId)?.runId ?? null, next);
 }
 
 /**
@@ -758,6 +859,58 @@ setResolvedBroadcaster((res: InteractionResolved) => {
 });
 
 /**
+ * Boot-time follow-up for stop and time-limit records. Nothing here relaunches work and nothing claims a
+ * process exited without a look: a reattached run with an open stop or a limit is stopped (or re-armed for
+ * what is left of its time); an orphaned or otherwise terminal run with an unfinished stop gets one recheck
+ * of the recorded process id, and an orphaned QC review is settled so the task is not left holding the
+ * reviewer's prompt and agent.
+ */
+async function reconcileTerminations(orphanedRunIds: string[], reattachedRunIds: Set<string>): Promise<void> {
+  for (const { termination } of runTerminations.openForRecovery()) {
+    if (!reattachedRunIds.has(termination.runId)) continue;
+    if (termination.requestedAt != null) {
+      void stopRun(termination.runId, termination.reason ?? "manual").catch(() => undefined);
+    } else if (termination.limitSeconds != null && termination.deadlineAt != null) {
+      armRunLimit(termination.runId, termination.limitSeconds, termination.deadlineAt);
+    }
+  }
+  const recheck = async (runId: string, processStarted: string | null, termination: RunTermination) => {
+    if (termination.requestedAt == null) return;
+    const seen = await recheckRecordedProcess(termination.processId, processStarted);
+    runTerminations.record(runId, {
+      outcome: seen === "gone" ? "recovered-gone" : seen === "alive" ? "recovered-alive" : "recovered-unknown",
+      processId: termination.processId,
+      methods: termination.methods,
+      note: seen === "gone" ? "After a restart no process with the recorded id was found."
+        : seen === "alive" ? `After a restart process ${termination.processId} was still running. It was not stopped again.`
+        : "After a restart the recorded process could not be checked.",
+    });
+  };
+  for (const runId of orphanedRunIds) {
+    const termination = runTerminations.get(runId);
+    if (termination) {
+      const row = db.query<{ process_started: string | null }, [string]>(`SELECT process_started FROM run_terminations WHERE run_id = ?`).get(runId);
+      await recheck(runId, row?.process_started ?? null, termination);
+    }
+    const run = runs.get(runId);
+    if (run?.qcReviewId) {
+      try {
+        const m = await import("./task-quality-control-settle.ts");
+        await m.settleQcReviewRun(runId, "orphaned");
+        const task = tasks.get(run.taskId);
+        if (task && task.column === "ready") moveTaskColumn(run.taskId, "blocked");
+      } catch (err) {
+        console.warn(`[agetor] could not settle the orphaned review run ${runId}:`, err);
+      }
+    }
+  }
+  for (const { termination, processStarted } of runTerminations.unfinishedOnTerminalRuns()) {
+    if (orphanedRunIds.includes(termination.runId)) continue;
+    await recheck(termination.runId, processStarted, termination);
+  }
+}
+
+/**
  * Decide what to do with runs left in `status='running'` from a previous
  * agetor process. For claude-code runs whose tmux session is still alive
  * (the REPL is detached — it survives our exit), we *reattach* and resume
@@ -765,15 +918,14 @@ setResolvedBroadcaster((res: InteractionResolved) => {
  * where they left off. Anything else (tmux gone, JSONL missing, codex run
  * whose child process died with us) is flipped to `orphaned`.
  *
- * We never enumerate-and-kill `agetor-*` sessions here. Agetor runs on the
- * user's *shared* default tmux socket, so a blind sweep would reap sessions
- * belonging to a different agetor instance (dev vs release DB) or to a
- * `bun test` run — the bug this deliberately avoids. Every kill agetor issues
- * is keyed to a specific task id from *this* instance's own DB (see the
- * per-row `killSessionByName` below, `killTaskSession` on delete/archive, and
- * codex's own teardown), so it can never touch a foreign instance's sessions.
- * A genuinely-leaked session (crash artifact, or a task deleted while agetor
- * was offline) is simply left alive rather than risk killing a live one.
+ * We never enumerate-and-kill `agetor-*` sessions here. Each instance talks
+ * to its own tmux socket (`tmuxSocketName`), and a blind name sweep would
+ * still reap a session this DB does not own. Every kill is an exact
+ * `kill-session -t =<name>` for a task id in this DB (see the per-row
+ * `killSessionByName` below, `killTaskSession` on delete/archive, codex's
+ * own teardown, and `releaseSettledSessionsSync` on quit). A leaked session
+ * whose task row is already gone is left alive rather than risk killing a
+ * live one. Settled sessions are released on quit, not on the next boot.
  *
  * Called once at boot from `src/bun/index.ts`.
  */
@@ -790,11 +942,17 @@ export async function reconcileOrphans(): Promise<number> {
   ).all();
 
   const reattachedTaskIds = new Set<string>();
+  const reattachedRunIds = new Set<string>();
   const orphaned: { id: string; task_id: string; prevColumn: ColumnId | null }[] = [];
 
   for (const row of stale) {
     const task = tasks.get(row.task_id);
     const prevColumn: ColumnId | null = task?.column ?? null;
+    if (db.query("SELECT 1 FROM task_computer_runs WHERE run_id = ?").get(row.id)) {
+      if (row.tmux_session === sessionNameFor(row.task_id)) await killSessionByName(row.tmux_session);
+      orphaned.push({ id: row.id, task_id: row.task_id, prevColumn });
+      continue;
+    }
     const kind = resolveHarness(row.agent)?.kind ?? null;
     // claude-code, codex, cursor, gemini, and antigravity runs can all be reattached
     // when their detached tmux session is still alive. The reattach key differs
@@ -859,33 +1017,34 @@ export async function reconcileOrphans(): Promise<number> {
           : kind === "codex"
           ? await reattachCodexSession({
               taskId: row.task_id,
-              runId: row.id,
+              runId: professionalTransportId(row.id),
               sessionName: row.tmux_session as string,
               onChunk,
-              seenLineUuids: runs.seenLineUuidsForTask(row.task_id),
+              seenLineUuids: professionalReattachSeen(row.task_id, row.id),
             })
           : kind === "cursor"
           ? await reattachCursorSession({
               taskId: row.task_id,
-              runId: row.id,
+              runId: professionalTransportId(row.id),
               sessionName: row.tmux_session as string,
               onChunk,
-              seenLineUuids: runs.seenLineUuidsForTask(row.task_id),
+              seenLineUuids: professionalReattachSeen(row.task_id, row.id),
             })
           : kind === "gemini"
           ? await reattachGeminiSession({
+              expectedSessionId: row.gemini_session_id ?? undefined,
               taskId: row.task_id,
-              runId: row.id,
+              runId: professionalTransportId(row.id),
               sessionName: row.tmux_session as string,
               onChunk,
-              seenLineUuids: runs.seenLineUuidsForTask(row.task_id),
+              seenLineUuids: professionalReattachSeen(row.task_id, row.id),
             })
           : await reattachAntigravitySession({
               taskId: row.task_id,
-              runId: row.id,
+              runId: professionalTransportId(row.id),
               sessionName: row.tmux_session as string,
               onChunk,
-              seenLineUuids: runs.seenLineUuidsForTask(row.task_id),
+              seenLineUuids: professionalReattachSeen(row.task_id, row.id),
             });
         if (spawned) {
           registerActiveRun(row.id, row.task_id, task, spawned);
@@ -908,6 +1067,7 @@ export async function reconcileOrphans(): Promise<number> {
           }
           attachDoneHandler(row.id, row.task_id, spawned);
           reattachedTaskIds.add(row.task_id);
+          reattachedRunIds.add(row.id);
           // Visible seam in the run panel so the user can tell where the
           // process boundary is. Non-JSONL chunk → no dedup key needed.
           onChunk("status", "reconnected to live session after agetor restart");
@@ -955,6 +1115,9 @@ export async function reconcileOrphans(): Promise<number> {
       }
     }
   }
+
+  reconcileComputerWorkflows();
+  await reconcileTerminations(orphaned.map((row) => row.id), reattachedRunIds);
 
   // Deliberately NO straggler sweep here. Sessions live on the shared default
   // tmux socket, so enumerating + killing every un-reattached `agetor-*`
@@ -1096,6 +1259,15 @@ async function spawnAgentOrFail(
   args: SpawnAgentArgs,
 ): Promise<{ agent: SpawnedAgent; message?: undefined } | { agent: null; message: string }> {
   try {
+    // Last gate for queued sends or a profile assigned while a continuation was preparing.
+    // A new process cannot inherit employee approval from a previous run.
+    const attributed = new EmployeeRunCore(db).byRun(args.runId);
+    // A QC review run is the Reviewer's own run, never the assigned employee's continuation.
+    const qcReviewRun = runs.get(args.runId)?.qcReviewId != null;
+    if (!attributed && !qcReviewRun && (args.opts?.resumeSessionId || args.opts?.continueRecovery || assignedProfessionalEmployee(db, args.taskId))) {
+      const problem = professionalContinuationProblem(db, args.taskId, args.runId);
+      if (problem) throw new Error(problem);
+    }
     return { agent: await spawnAgent(args) };
   } catch (err) {
     const { runId, taskId, onChunk } = args;
@@ -1361,6 +1533,17 @@ export function agentProfileSnapshotDrifted(
   return JSON.stringify(priorRest) !== JSON.stringify(nextRest);
 }
 
+/** Exact run handle in this process; no CLI probe or task-level inference. */
+export function isRunLive(runId: string): boolean {
+  return active.has(runId);
+}
+
+/** The exact run is still in this runtime's bounded pending spawn. */
+export function isRunStarting(runId: string): boolean {
+  const run = runs.get(runId);
+  return !!run && startingTaskIds.has(run.taskId) && tasks.get(run.taskId)?.runId === runId;
+}
+
 /**
  * True when `taskId` currently has a live run in flight — mirrors the exact
  * check `startTask` itself uses to refuse a double-start: either an
@@ -1388,6 +1571,19 @@ export function isTaskRunLive(taskId: string): boolean {
   // handler and `cancelRun` already agree on.
   return isTaskHeldByBackgroundAgents(task);
 }
+
+registerProjectLifecycleTaskProbe(isTaskRunLive);
+// A run whose stop was not confirmed, or that a restart found still running, keeps its project in Draining while the
+// recorded process is not observed gone (a read: `kill(pid, 0)` and `ps`, never a signal).
+registerProjectLifecycleProcessProbe(() =>
+  runTerminations.unresolvedProcesses()
+    .filter(({ termination, processStarted }) => !active.has(termination.runId) && recheckRecordedProcessSync(termination.processId, processStarted) !== "gone")
+    .map(({ taskId }) => taskId));
+subscribeGlobal((ev) => {
+  if (ev.kind === "run-status" || ev.kind === "column") {
+    reconcileAllDrainingProjects();
+  }
+});
 
 /**
  * True when `taskId`'s current run has been stopped (`stopActiveHandle`
@@ -1419,15 +1615,93 @@ export function isTaskRunCancelling(taskId: string): boolean {
  * from this HTTP response. See `startingTaskIds`'s doc above for how the
  * "already starting" claim survives past this function returning early.
  */
+/**
+ * A task whose earlier run was orphaned or left unconfirmed with its process possibly still alive must not start a
+ * second process beside it (the old process is not ours to signal, and "gone" is not a claim to make without a look).
+ * Applies to every start and follow-up of any harness that has such a record; a task without one is unaffected.
+ */
+async function priorProcessBlock(taskId: string): Promise<string | null> {
+  return priorProcessRefusal(
+    // A run still registered in `active` is the live one: "task already running" covers it, and it is not "earlier".
+    runTerminations.unresolvedProcessesForTask(taskId).filter(({ termination }) => !active.has(termination.runId)),
+    (runId, outcome, processId, note) => runTerminations.record(runId, { outcome, processId, note }),
+  );
+}
+
+export interface StartTaskOptions {
+  onRunRecorded?: (runId: string) => void;
+  employeeAttemptId?: string;
+  verifyBeforeRun?: () => string | null;
+  authorizeSubmission?: () => boolean;
+  codexPermissionReview?: import("../shared/execution/permissions.ts").PermissionDisclosure | null;
+  codexPermissionIdentity?: string | null;
+  launchPromptOverride?: string;
+  qcReviewId?: string;
+  ownerLaunchGrantId?: string;
+  /**
+   * A run the Owner supervises (employee execution, supervised execution, a QC review): the opt-in
+   * `FORGEORBIT_SUPERVISED_RUN_LIMIT_SECONDS` wall-clock limit applies to it. Batch, mission, pipeline and
+   * plain board starts never set it.
+   */
+  supervisedRun?: boolean;
+}
+
 export async function startTask(
   taskId: string,
+  options?: StartTaskOptions,
 ): Promise<{ runId: string; unresolvedRefs?: string[]; pending?: true } | { error: string }> {
   let task = tasks.get(taskId);
   if (!task) return { error: "task not found" };
+  if (!objectiveTaskOperation(taskId, options?.qcReviewId ?? options?.employeeAttemptId)) {
+    return { error: "Launch this task from its mission after its prerequisites are met." };
+  }
+  if (task.computerWorkflowRevision && !options?.qcReviewId && !options?.employeeAttemptId) {
+    return { error: "Use Prepare work and review the computer workflow before starting this task." };
+  }
+  if (options?.supervisedRun) {
+    // A malformed limit is refused before anything starts; it is never guessed.
+    const limit = supervisedRunLimit();
+    if (limit.error) return { error: limit.error };
+  }
+  if (isProductionOwnerGateActive() && !options?.ownerLaunchGrantId) {
+    return { error: "macOS Owner confirmation for this exact operation is required. Direct or unconfirmed launches are blocked." };
+  }
+  const employeeRuns = new EmployeeRunCore(db);
+  if (!options?.employeeAttemptId && !options?.qcReviewId && assignedProfessionalEmployee(db, taskId)) {
+    return { error: "An assigned professional profile requires employee execution review and owner confirmation." };
+  }
+  if (options?.employeeAttemptId) {
+    const claim = employeeRuns.get(options.employeeAttemptId);
+    if (!claim || claim.run_id || claim.task_id !== taskId || claim.status !== "starting" || claim.approval_provenance !== "owner") {
+      return { error: "employee execution approval is not claimed for this task" };
+    }
+    try { professionalRuntimeClaim(db, claim, task); }
+    catch (error) { return { error: (error as Error).message }; }
+  }
+  if (!options?.qcReviewId && employeeRuns.hasUnconfirmed(taskId, options?.employeeAttemptId)) {
+    return { error: "an earlier employee execution is unresolved — reconcile its status before starting another process" };
+  }
+  // Awaited BEFORE the synchronous running/starting checks and the claim below, so no await separates "not starting"
+  // from taking the claim (two overlapping starts must still collide on `startingTaskIds`).
+  const priorProcess = await priorProcessBlock(taskId);
+  if (priorProcess) return { error: priorProcess };
+  task = tasks.get(taskId) ?? task;
   if (task.runId && active.has(task.runId)) return { error: "task already running" };
   if (startingTaskIds.has(taskId)) return { error: "task is already starting" };
+  const lifecycleBlock = projectLifecycleTaskRefusal(taskId);
+  if (lifecycleBlock) return { error: lifecycleBlock };
+  // One fail-closed dependency gate for every start (board, batch, employee,
+  // re-run): prerequisites must be Done; a deleted one keeps blocking.
+  const dependencyBlock = dependencyRefusal(taskId);
+  if (dependencyBlock) return { error: dependencyBlock };
+  // One fail-closed scheduled-availability gate for every task launch:
+  // a task with a future earliest-start UTC timestamp must not launch early.
+  if (!options?.qcReviewId) {
+    const availabilityBlock = taskAvailabilityRefusalMessage(taskId);
+    if (availabilityBlock) return { error: availabilityBlock };
+  }
   startingTaskIds.add(taskId);
-  return startTaskInner(taskId, task);
+  return startTaskInner(taskId, task, options);
 }
 
 /**
@@ -1455,6 +1729,7 @@ function worktreeDriftStatusLines(task: Task, prepared: PreparedWorkdir): string
 async function startTaskInner(
   taskId: string,
   task: Task,
+  options?: StartTaskOptions,
 ): Promise<{ runId: string; unresolvedRefs?: string[]; pending?: true } | { error: string }> {
   // Whether ownership of releasing the `startingTaskIds` claim (added by
   // `startTask` above) has been handed off to the detached spawn
@@ -1486,7 +1761,19 @@ async function startTaskInner(
   // the parent row itself — the runner does its own pre-flight per step via
   // the ordinary `startTask` path for each child.
   if (task.pipelineId) {
+    if ((task.accessMode ?? "workspace") !== "workspace") {
+      const diagnostics = await diagnoseTaskLaunch(task);
+      return { error: diagnostics.blockReason ?? "Pipeline tasks only support Workspace access mode." };
+    }
     return startPipelineRun(task);
+  }
+
+  const intakeBlock = columnExecutionBlocked(task.column);
+  if (intakeBlock) {
+    return { error: intakeBlock };
+  }
+  if (!options?.qcReviewId && task.qcState?.activeReviewId) {
+    return { error: "Finish or cancel the pending quality review before starting another run." };
   }
 
   // Freeze-at-first-run (docs/plans/agent-profiles.md D2): resolve the
@@ -1498,7 +1785,7 @@ async function startTaskInner(
   // least once and must launch with exactly what it launched with before —
   // nothing to refresh, `effective` below just carries it through unchanged.
   const resolvedProfile = effectiveAgentProfile(task);
-  if (resolvedProfile?.source === "live") {
+  if (resolvedProfile?.source === "live" && !options?.qcReviewId) {
     const { profile } = resolvedProfile;
     // A profile's own `effort: null` means "no opinion" — but a model that
     // requires an effort flag (`buildCommand`'s "effort is required for …"
@@ -1527,11 +1814,36 @@ async function startTaskInner(
       task = tasks.setAgentProfile(taskId, profile.id, profile) ?? task;
     }
   }
-  const effective: AgentProfileSnapshot | null = resolvedProfile?.profile ?? null;
+  const effective: AgentProfileSnapshot | null = options?.qcReviewId ? null : (resolvedProfile?.profile ?? null);
 
+  const employeeAttempt = options?.employeeAttemptId ? new EmployeeRunCore(db).get(options.employeeAttemptId) : null;
+  let professional: import("../shared/execution/professional.ts").ProfessionalBinding | null = null;
+  try {
+    if (employeeAttempt) professional = professionalRuntimeClaim(db, employeeAttempt, task);
+    const problem = options?.verifyBeforeRun?.();
+    if (problem) return { error: problem };
+  } catch (error) { return { error: (error as Error).message }; }
   const harness = resolveHarness(task.agent);
   if (!harness) {
     return { error: `harness "${task.agent}" not found — pick another in the task's settings` };
+  }
+  let computerWorkflow: BoundComputerWorkflow | undefined;
+  if (task.computerWorkflowRevision && !options?.qcReviewId) {
+    if (!employeeAttempt || harness.kind !== "codex" || task.mode !== "ask") {
+      return { error: "Computer workflows require a reviewed Codex Ask run." };
+    }
+    try {
+      const facts = JSON.parse(employeeAttempt.review_json) as EmployeeRunReviewFacts;
+      computerWorkflow = bindComputerWorkflow(task, facts.computerWorkflow && {
+        scope: facts.computerWorkflow,
+        documentDigest: facts.computerWorkflowDocumentDigest,
+        lockdownArgs: facts.computerWorkflowLockdownArgs ?? [],
+      });
+      const planner = await (await import("./interview-isolation.ts")).resolveInterviewIsolation(harness, { noCache: true });
+      if (!planner.ok || JSON.stringify(planner.isolation.args) !== JSON.stringify(computerWorkflow.review.lockdownArgs)) {
+        return { error: "The planner's disabled tools changed since Review." };
+      }
+    } catch (error) { return { error: (error as Error).message }; }
   }
   // Soft-delete gate: disabled harnesses still resolve (so historical rows
   // and currently-running children stay attributable), but new runs are
@@ -1605,18 +1917,137 @@ async function startTaskInner(
     return { error: "step task's worktree is missing — run the pipeline task instead" };
   }
 
-  // Pass the branches other tasks have pinned. If materializing this task's
-  // branch hits a create-time uniqueness race, the recovery re-pins to a name
-  // that's free of both existing refs AND those not-yet-started pins.
-  const prepared = await prepareWorkdir(task, {
-    takenBranches: new Set(
-      tasks.list()
-        .filter((t) => t.id !== taskId)
-        .map((t) => t.branch)
-        .filter((b): b is string => Boolean(b)),
-    ),
-  });
-  if ("error" in prepared) return { error: prepared.error };
+  // An armed task-owned directory is the cwd. Preparing a Git worktree first
+  // would write the project's Git data before the sandbox ever starts.
+  let bindStagedRun: ((taskId: string, runId: string) => void) | null = null;
+  let stagedCwd: string | null = null;
+  let workingCopyDevelopment = false;
+  let workingCopyScratchPath: string | null = null;
+  let workingCopyReadOnlyNodeModules: string | null = null;
+  let autoPreparedWorkingCopyId: string | null = null;
+  const resolveProjectReadOnlyNodeModules = (projectDir: string | null): string | null => {
+    if (!projectDir) return null;
+    try {
+      const root = realpathSync(projectDir);
+      const candidate = join(root, "node_modules");
+      const st = lstatSync(candidate);
+      if (st.isSymbolicLink() || !st.isDirectory()) return null;
+      const real = realpathSync(candidate);
+      return real === candidate && real.startsWith(root + "/") ? real : null;
+    } catch {
+      return null;
+    }
+  };
+  if (!options?.qcReviewId) {
+    const workspace = await import("./task-workspace.ts");
+    const staged = workspace.stagingCwdForTask(taskId);
+    if (staged.block) return { error: staged.block };
+    if (staged.cwd) {
+      bindStagedRun = workspace.bindArmedRun;
+      stagedCwd = staged.cwd;
+      if (workspace.getWorkspaceWriteScope(taskId) === "working-copy") {
+        workingCopyDevelopment = true;
+        workingCopyScratchPath = workspace.getWorkspaceScratchPath(taskId);
+        workingCopyReadOnlyNodeModules = resolveProjectReadOnlyNodeModules(ownerProjectOf(task.workdir, { fresh: true }));
+      }
+    } else if (!task.pipelineParentId && !task.pipelineId && !task.worktreePath && (task.accessMode ?? "workspace") === "workspace") {
+      const ownerProject = ownerProjectOf(task.workdir, { fresh: true });
+      if (ownerProject && isWorkspaceDevelopmentEnabled(ownerProject)) {
+        const effectiveMode = task.mode ?? defaultModeFor(harness.kind);
+        if (harness.kind !== "codex") {
+          return {
+            error: "Development in a working copy requires Codex (Auto) for OS-enforced working-copy confinement. Other harnesses are blocked while this project setting is enabled.",
+          };
+        }
+        if (effectiveMode === "full-access") {
+          return {
+            error: "Development in a working copy refuses Codex Full access because it disables OS sandboxing and permits network access.",
+          };
+        }
+        try {
+          const preparedWs = await workspace.prepareTaskWorkspace(taskId, { writeScope: "working-copy" }, { approvedProjectPath: ownerProject });
+          autoPreparedWorkingCopyId = preparedWs.id;
+          const armed = workspace.stagingCwdForTask(taskId);
+          if (armed.block || !armed.cwd) {
+            workspace.abandonWorkspaceIfArmed(taskId, preparedWs.id);
+            return { error: armed.block ?? "Could not arm the task working copy." };
+          }
+          bindStagedRun = workspace.bindArmedRun;
+          stagedCwd = armed.cwd;
+          workingCopyDevelopment = true;
+          workingCopyScratchPath = preparedWs.scratchPath ?? null;
+          workingCopyReadOnlyNodeModules = resolveProjectReadOnlyNodeModules(ownerProject);
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : "Could not prepare the task working copy." };
+        }
+      }
+    }
+  }
+  const failBeforePersist = async (message: string): Promise<{ error: string }> => {
+    if (autoPreparedWorkingCopyId) {
+      const workspace = await import("./task-workspace.ts");
+      workspace.abandonWorkspaceIfArmed(taskId, autoPreparedWorkingCopyId);
+    }
+    return { error: message };
+  };
+  if (isProductionOwnerGateActive()) {
+    const ownerGateProblem = verifyLaunchTicketBeforeStart({
+      grantId: options?.ownerLaunchGrantId,
+      task,
+      role: options?.qcReviewId ? "reviewer" : "developer",
+      harnessId: harness.id,
+      modelId: task.model ?? DEFAULT_MODEL[harness.kind],
+      mode: task.mode ?? defaultModeFor(harness.kind),
+      stagedOrResolvedWorkspace: stagedCwd ?? undefined,
+    });
+    if (ownerGateProblem) return failBeforePersist(ownerGateProblem);
+  }
+  let prepared: PreparedWorkdir;
+  if ((task.accessMode ?? "workspace") !== "workspace") {
+    const diagnostics = await diagnoseTaskLaunch(task, {
+      ignoreStagingRequirement: Boolean(options?.qcReviewId),
+      isReviewer: Boolean(options?.qcReviewId),
+    });
+    if (!diagnostics.launchAllowed) {
+      return failBeforePersist(diagnostics.blockReason ?? "Launch blocked by access-mode policy.");
+    }
+  }
+  if (stagedCwd) {
+    prepared = {
+      cwd: stagedCwd,
+      branch: null,
+      worktreePath: null,
+      note: "task-owned staging directory",
+      checkoutBranch: null,
+      checkoutKnown: false,
+    };
+  } else {
+    // An approved staging directory may have been abandoned during the harness
+    // checks. Revalidate before Git can materialize a fallback worktree.
+    const permissionProblem = options?.verifyBeforeRun?.();
+    if (permissionProblem) return failBeforePersist(permissionProblem);
+    // Even in Workspace mode, refuse Codex sandbox-blocked layouts before creating a worktree.
+    const preLaunchDiagnostics = await diagnoseTaskLaunch(task, {
+      ignoreStagingRequirement: Boolean(options?.qcReviewId),
+      isReviewer: Boolean(options?.qcReviewId),
+    });
+    if (!preLaunchDiagnostics.launchAllowed) {
+      return failBeforePersist(preLaunchDiagnostics.blockReason ?? "Workspace permissions blocked launch.");
+    }
+    // Pass the branches other tasks have pinned. If materializing this task's
+    // branch hits a create-time uniqueness race, the recovery re-pins to a name
+    // that's free of both existing refs AND those not-yet-started pins.
+    const preparedWorkdir = await prepareWorkdir(task, {
+      takenBranches: new Set(
+        tasks.list()
+          .filter((t) => t.id !== taskId)
+          .map((t) => t.branch)
+          .filter((b): b is string => Boolean(b)),
+      ),
+    });
+    if ("error" in preparedWorkdir) return failBeforePersist(preparedWorkdir.error);
+    prepared = preparedWorkdir;
+  }
 
   // Expand `@`-tokens into absolute paths now, right after `prepareWorkdir`
   // returns — this is the EARLIEST point in the whole flow that knows the
@@ -1627,7 +2058,45 @@ async function startTaskInner(
   // is left untouched in the DB, so editing the task or re-running it later
   // keeps the `@tokens` and re-resolves them against whatever cwd that next
   // run gets (a fresh worktree, a moved workdir, etc).
-  const { text: expandedPrompt, unresolved: unresolvedRefs } = expandAtReferencesDetailed(task.prompt, prepared.cwd);
+  let expandedPrompt: string;
+  let unresolvedRefs: string[] = [];
+  if (options?.launchPromptOverride) {
+    expandedPrompt = options.launchPromptOverride;
+  } else if (task.objectiveMissionId || computerWorkflow) {
+    // A model-authored plan or handoff is data. Do not resolve its @file tokens.
+    expandedPrompt = task.prompt;
+  } else {
+    ({ text: expandedPrompt, unresolved: unresolvedRefs } = expandAtReferencesDetailed(task.prompt, prepared.cwd));
+  }
+  const rulesSnapshot = projectRulesSnapshotForPath(task.workdir);
+  const knowledgeBundle = await loadEffectiveKnowledgeForProject(task.workdir);
+  const knowledgeSnapshot =
+    knowledgeBundle && knowledgeBundle.snapshot.items.length > 0 ? knowledgeBundle.snapshot : null;
+  const knowledgeDocuments = knowledgeBundle?.preview.documents ?? [];
+  const improvementRole = options?.qcReviewId
+    ? "reviewer"
+    : professional?.kind === "professional"
+      ? professional.catalogRoleSlug.toLowerCase()
+      : "developer";
+  const improvementSnapshot = activeImprovementSnapshot({ projectPath: task.workdir, role: improvementRole });
+  const workflowObjective = (prompt: string) => {
+    const fields = computerWorkflow?.scope.kind === "browser" ? computerWorkflow.scope.fields : [];
+    return fields.reduce((text, { value }) => value ? text.split(value).join("[test data]") : text, redactSecrets(prompt));
+  };
+  const launchPrompt = (promptText: string) => {
+    if (computerWorkflow) {
+      return computerPlanningPrompt(workflowObjective(promptText), computerWorkflow.review.scope);
+    }
+    let text = composeLaunchPrompt(effective, composeProfessionalPrompt(professional, promptText));
+    text = composeProjectRulesPrompt(rulesSnapshot, text);
+    text = embedEffectiveKnowledgeBodies(
+      composeEffectiveKnowledgeLaunchPrompt(knowledgeSnapshot, text),
+      knowledgeDocuments,
+    );
+    text = composeImprovementGuidance(improvementSnapshot, text);
+    if (!options?.qcReviewId) text = composePracticalReworkPrompt(peekPracticalReworkBrief(task.id), text);
+    return appendReferences(text, task.references);
+  };
   // Budget-check the fully expanded + reffed prompt against what the RAW
   // (pre-expansion) prompt would already have needed. Expansion can turn a
   // handful of short `@tokens` into long absolute paths and push a prompt
@@ -1649,10 +2118,7 @@ async function startTaskInner(
   // and — since it's added identically to both sides — the
   // `expandedOverage && !rawOverage` semantics (only the @-expansion itself
   // pushed things over) are unchanged either way.
-  const expandedOverage = promptByteOverage(
-    harness.kind,
-    appendReferences(composeLaunchPrompt(effective, expandedPrompt), task.references),
-  );
+  const expandedOverage = promptByteOverage(harness.kind, launchPrompt(expandedPrompt));
   // Skip re-encoding the same text twice (R19, code review) when expansion
   // was a no-op — a prompt with no `@` tokens at all (or none that resolved)
   // has `expandedPrompt === task.prompt`, so `expandedOverage` already IS
@@ -1661,10 +2127,10 @@ async function startTaskInner(
   // would only reproduce it).
   const rawOverage = expandedPrompt === task.prompt
     ? expandedOverage
-    : promptByteOverage(
-      harness.kind,
-      appendReferences(composeLaunchPrompt(effective, task.prompt), task.references),
-    );
+    : promptByteOverage(harness.kind, launchPrompt(task.prompt));
+  if (professional?.kind === "professional" && expandedOverage) {
+    return { error: `Professional execution payload exceeds ${harness.label}'s ${expandedOverage.limit}-byte launch limit. This adapter cannot accept these instructions.` };
+  }
   if (expandedOverage && !rawOverage) {
     return {
       error:
@@ -1693,19 +2159,60 @@ async function startTaskInner(
   // strand the user's only path back to the paused response. From this point
   // on a run row WILL be inserted below, so the old pause is genuinely
   // superseded regardless of whether the spawn itself goes on to succeed.
+  // Re-check project lifecycle admission synchronously after async harness/
+  // worktree preflight so a Project Stop that landed mid-preflight refuses
+  // cleanly before clearing fx recovery or inserting a run row.
+  const lifecycleBlock = projectLifecycleTaskRefusal(taskId);
+  if (lifecycleBlock) return { error: lifecycleBlock };
+  if (!options?.qcReviewId) {
+    const availabilityBlock = taskAvailabilityRefusalMessage(taskId);
+    if (availabilityBlock) return { error: availabilityBlock };
+  }
   if (harness.kind === "fx") clearFxRecovery(taskId);
 
   const runId = randomUUID();
   const now = Date.now();
   const prevColumn: ColumnId = task.column;
 
+  const promptWithRefs = launchPrompt(expandedPrompt);
   // Single transaction: flip the task into running with the new run id, branch,
   // worktree path; insert the run row. Either everything sticks or nothing does.
   const persist = db.transaction(() => {
+    const permissionProblem = options?.verifyBeforeRun?.();
+    if (permissionProblem) throw new Error(permissionProblem);
+    if (!options?.qcReviewId) {
+      const availabilityBlock = taskAvailabilityRefusalMessage(taskId);
+      if (availabilityBlock) throw new Error(availabilityBlock);
+    }
+    if (employeeAttempt) {
+      professionalRuntimeClaim(db, new EmployeeRunCore(db).get(employeeAttempt.id)!, tasks.get(taskId)!);
+      const changed = db.run(`UPDATE employee_executions SET run_id = ?, professional_payload_status = 'prepared',
+        professional_payload_sha256 = ?, professional_snapshot_sha256 = ? WHERE id = ? AND status = 'starting' AND run_id IS NULL`,
+        [runId, promptSha256(promptWithRefs), employeeAttempt.professional_json ? promptSha256(employeeAttempt.professional_json) : null, employeeAttempt.id]).changes;
+      if (changed !== 1) throw new Error("Employee execution claim was already consumed.");
+    } else if (!options?.qcReviewId && assignedProfessionalEmployee(db, taskId)) {
+      // An independent QC review is not the employee's run: the early guard above already lets it through,
+      // and it carries no professional payload. Refusing it here left every task of a hired employee unreviewable.
+      throw new Error("Professional profile now requires employee execution review.");
+    }
+    if (isProductionOwnerGateActive()) {
+      consumeLaunchTicketInRunTransaction({
+        grantId: options?.ownerLaunchGrantId,
+        task,
+        role: options?.qcReviewId ? "reviewer" : "developer",
+        runId,
+        harnessId: harness.id,
+        modelId: task.model ?? DEFAULT_MODEL[harness.kind],
+        mode: task.mode ?? defaultModeFor(harness.kind),
+        resolvedWorkspace: prepared.cwd,
+      });
+    }
+    // A run in a task-owned staging directory has no Git worktree of its own. It must not erase the one an earlier
+    // run (an independent review) materialized: the directory stays on disk, and a later run that finds the
+    // pointer gone would try to create it again and fail on "already exists".
     tasks.update(taskId, {
       column: "running",
-      branch: prepared.branch,
-      worktreePath: prepared.worktreePath,
+      ...(stagedCwd ? {} : { branch: prepared.branch, worktreePath: prepared.worktreePath }),
       runId,
     });
     // Run start is one of the four last-seen-checkout refresh points (start,
@@ -1722,11 +2229,15 @@ async function startTaskInner(
       startedAt: now,
       endedAt: null,
       exitCode: null,
-      // All four kinds now run in a per-task tmux session. fx is the
+      projectRulesSnapshot: rulesSnapshot.rules.length > 0 ? rulesSnapshot : null,
+      knowledgeSnapshot,
+      qcReviewId: options?.qcReviewId ?? null,
+      // Interactive/task CLI transports use a per-task tmux session. Claude
+      // bounded-print has no tmux identity and uses orphan recovery. fx is the
       // exception — it's driven over ACP/stdio, not tmux — but it still
       // gets a `tmuxSession` name here for symmetry with the run row shape;
       // `spawnFxViaAcp` simply doesn't use it.
-      tmuxSession: sessionNameFor(taskId),
+      tmuxSession: harness.kind === "claude-code" && task.mode === "bounded-print" ? null : sessionNameFor(taskId),
       // Filled in by spawnAgent's onSessionId callback once the session id is
       // known: claude's JSONL uuid → claudeSessionId, codex's thread_id →
       // codexSessionId, cursor's session_id → cursorSessionId, gemini's
@@ -1739,8 +2250,30 @@ async function startTaskInner(
       fxSessionId: null,
       antigravitySessionId: null,
     });
+    if (computerWorkflow) reserveComputerWorkflow(taskId, runId, computerWorkflow);
+    if (employeeAttempt) recordInitialProfessionalTurn(db, employeeAttempt, professional, runId, promptWithRefs,
+      JSON.stringify({ executionKey: professionalExecutionKey(tasks.get(taskId)!), harnessKey: promptSha256(JSON.stringify(harness)) }));
+    if (!options?.qcReviewId && bindStagedRun && prepared.note === "task-owned staging directory") {
+      bindStagedRun(taskId, runId);
+    }
+    recordRunImprovementProvenance({
+      runId,
+      taskId,
+      projectPath: task.workdir,
+      role: improvementRole,
+      snapshot: improvementSnapshot,
+      frozenAt: now,
+    });
+    // Organizational provenance commits with the run, before any spawn.
+    options?.onRunRecorded?.(runId);
   });
-  persist();
+  try { persist.immediate(); }
+  catch (error) {
+    if (employeeAttempt || assignedProfessionalEmployee(db, taskId) || options?.ownerLaunchGrantId || isProductionOwnerGateActive()) {
+      return { error: (error as Error).message };
+    }
+    throw error; // Preserve the existing durability callback failure contract.
+  }
   if (prevColumn !== "running") {
     emitGlobal({ kind: "column", taskId, runId, column: "running", prev: prevColumn, ts: now });
   }
@@ -1752,8 +2285,6 @@ async function startTaskInner(
   // D3/D11). `composeLaunchPrompt` is a no-op passthrough when `effective` is
   // null, so an unbound task's launch prompt is byte-identical to before this
   // feature.
-  const promptWithRefs = appendReferences(composeLaunchPrompt(effective, expandedPrompt), task.references);
-
   const onChunk = makeChunkHandler(runId, taskId, harness.kind, task.mode);
   // Echo the initial prompt as a "user" event so the panel renders a
   // bubble for it right away — claude won't transcribe the prompt into
@@ -1761,15 +2292,17 @@ async function startTaskInner(
   // path will emit the same line again once claude writes it; the run
   // panel's dedup keys user events on (runId, data) so we don't double
   // up.
-  onChunk("user", normalizeUserText(promptWithRefs));
+  onChunk("user", normalizeUserText(computerWorkflow ? workflowObjective(task.prompt) : promptWithRefs));
+  const computerPlan = computerWorkflow ? captureComputerPlan(onChunk) : undefined;
 
   const spawnArgs: SpawnAgentArgs = {
     taskId,
     runId,
     harness,
     prompt: promptWithRefs,
+    authorize: options?.authorizeSubmission,
     cwd: prepared.cwd,
-    onChunk,
+    onChunk: computerPlan?.onChunk ?? onChunk,
     onSessionId: (sessionId) => {
       runs.update(runId, harness.kind === "claude-code"
         ? { claudeSessionId: sessionId }
@@ -1782,8 +2315,15 @@ async function startTaskInner(
         : harness.kind === "antigravity"
         ? { antigravitySessionId: sessionId }
         : { fxSessionId: sessionId });
+      recordProfessionalInitialSession(db, runId, sessionId);
     },
-    opts: { mode: task.mode, model: task.model ?? DEFAULT_MODEL[harness.kind], effort: task.effort, fast: task.fast, maxMode: task.maxMode },
+    opts: { mode: task.mode, model: task.model ?? DEFAULT_MODEL[harness.kind], effort: task.effort, fast: task.fast, maxMode: task.maxMode,
+      codexPermissionReview: options?.codexPermissionReview, codexPermissionIdentity: options?.codexPermissionIdentity,
+      claudeBoundedReadOnly: !!options?.qcReviewId, accessMode: task.accessMode ?? "workspace",
+      lockdownArgs: computerWorkflow?.review.lockdownArgs,
+      workingCopyDevelopment: !options?.qcReviewId && workingCopyDevelopment,
+      workingCopyScratchPath: !options?.qcReviewId && workingCopyDevelopment ? workingCopyScratchPath : null,
+      workingCopyReadOnlyNodeModules: !options?.qcReviewId && workingCopyDevelopment ? workingCopyReadOnlyNodeModules : null },
   };
 
   // Everything from here on — the actual spawn and everything that depends
@@ -1802,10 +2342,25 @@ async function startTaskInner(
   const continuation: Promise<{ ok: true } | { ok: false; message: string }> = (async () => {
     try {
       const { agent, message } = await spawnAgentOrFail(spawnArgs);
+      discardUnconsumedSpawnAuthorization(runId);
+      if (employeeAttempt) {
+        // Adapter acceptance, not proof of provider receipt or model compliance.
+        db.run(`UPDATE employee_executions SET professional_payload_status = ?, professional_payload_at = ?
+          WHERE id = ? AND run_id = ? AND professional_payload_status = 'prepared'`,
+          [agent ? "included" : "failed", Date.now(), employeeAttempt.id, runId]);
+        const session = runs.get(runId);
+        settleInitialProfessionalTurn(db, runId, !!agent, session?.claudeSessionId ?? session?.codexSessionId
+          ?? session?.geminiSessionId ?? session?.cursorSessionId ?? session?.fxSessionId ?? session?.antigravitySessionId ?? null);
+      }
       // Consume a Stop that landed while the spawn was in flight (see
       // `pendingCancelRunIds`) on every settle path, agent or not.
       const cancelledWhilePending = pendingCancelRunIds.delete(runId);
-      if (!agent) return { ok: false as const, message: message ?? "unknown error" };
+      if (!agent) {
+        if (computerWorkflow) abortComputerWorkflow(runId, cancelledWhilePending ? "stopped" : "runtime");
+        const { settleTaskWorkspace } = await import("./task-workspace.ts");
+        settleTaskWorkspace(runId, -1, cancelledWhilePending ? { reason: "manual", limitSeconds: null } : null);
+        return { ok: false as const, message: message ?? "unknown error" };
+      }
 
       // Ownership guard: by the time the spawn settles the task may have
       // been deleted, archived, or this run may no longer be the task's
@@ -1817,9 +2372,12 @@ async function startTaskInner(
       // hasn't run yet) must be treated the same as delete/replace here.
       const fresh = tasks.get(taskId);
       if (!fresh || fresh.archivedAt != null || fresh.runId !== runId || cancelledWhilePending) {
+        if (computerWorkflow) abortComputerWorkflow(runId);
         agent.kill();
         if (harness.kind === "claude-code") await dropSession(taskId);
         runs.update(runId, { status: "cancelled", endedAt: Date.now(), exitCode: -1 });
+        const { settleTaskWorkspace } = await import("./task-workspace.ts");
+        settleTaskWorkspace(runId, -1, { reason: "manual", limitSeconds: null });
         if (cancelledWhilePending && fresh && fresh.runId === runId) {
           // A user Stop, not a delete/replace: settle the task like the done
           // handler would for a cancelled run (`ready`, this run stays its
@@ -1839,7 +2397,17 @@ async function startTaskInner(
         return { ok: true as const };
       }
 
-      registerActiveRun(runId, taskId, fresh, agent);
+      const execution = computerWorkflow && computerPlan
+        ? finishComputerWorkflow(fresh, runId, computerWorkflow, agent, computerPlan.text)
+        : agent;
+      registerActiveRun(runId, taskId, fresh, execution);
+      if (options?.supervisedRun) {
+        const limit = supervisedRunLimit();
+        if (limit.seconds != null) {
+          armRunLimit(runId, limit.seconds, Date.now() + limit.seconds * 1000);
+          appendRunStatusLine(taskId, runId, `time limit: this run is stopped after ${limit.seconds} s`);
+        }
+      }
       emit({
         runId,
         taskId,
@@ -1858,7 +2426,7 @@ async function startTaskInner(
       for (const line of worktreeDriftStatusLines(task, prepared)) {
         appendRunStatusLine(taskId, runId, line);
       }
-      attachDoneHandler(runId, taskId, agent);
+      attachDoneHandler(runId, taskId, execution);
       return { ok: true as const };
     } catch (err) {
       // `spawnAgentOrFail` never throws (it catches internally and already
@@ -1870,6 +2438,7 @@ async function startTaskInner(
       return { ok: false as const, message };
     } finally {
       startingTaskIds.delete(taskId);
+      reconcileProjectDrainForTask(taskId);
     }
   })();
 
@@ -1885,7 +2454,10 @@ async function startTaskInner(
   if (!raced.value.ok) return { error: `failed to start agent: ${raced.value.message}` };
   return { runId, ...(unresolvedRefs.length ? { unresolvedRefs } : {}) };
   } finally {
-    if (!claimTransferred) startingTaskIds.delete(taskId);
+    if (!claimTransferred) {
+      startingTaskIds.delete(taskId);
+      reconcileProjectDrainForTask(taskId);
+    }
   }
 }
 
@@ -2287,7 +2859,21 @@ function makeChunkHandler(
   kind: AgentKind,
   _mode: Task["mode"],
 ) {
+  const transportId = kind === "claude-code" ? runId : professionalTransportId(runId);
   return (stream: RunEvent["stream"], data: string, lineUuid?: string) => {
+    if (lineUuid && transportId !== runId) lineUuid = `${transportId}:${lineUuid}`;
+    // One-shot CLIs can restart tool IDs (e.g. item_0) in each resumed process.
+    // The Run is shared, so pair both sides within their originating Turn.
+    if (transportId !== runId && (stream === "tool_use" || stream === "tool_result")) {
+      try {
+        const tool = JSON.parse(data) as Record<string, unknown>;
+        const key = stream === "tool_use" ? "id" : "toolUseId";
+        if (tool && !Array.isArray(tool) && typeof tool[key] === "string" && tool[key]) {
+          tool[key] = `${transportId}:${tool[key]}`;
+          data = JSON.stringify(tool);
+        }
+      } catch { /* Preserve existing handling of malformed adapter output. */ }
+    }
     const eventId = runs.appendEvent(runId, stream, data, lineUuid);
     emit({ runId, taskId, stream, data, ts: Date.now() });
     // Todo/task-tools board summary: re-derive + persist on any
@@ -2425,7 +3011,7 @@ function registerActiveRun(
   // used as if it were the resolved agent).
   agent: SpawnedAgent,
 ): void {
-  active.set(runId, {
+  const handle: ActiveRun = {
     taskId,
     agent: task.agent,
     kill: () => agent.kill(),
@@ -2433,8 +3019,13 @@ function registerActiveRun(
     apiError: false,
     sessionDied: false,
     unknownCommand: false,
+    exited: false,
+    ...(agent.terminate ? { terminate: () => agent.terminate!() } : {}),
     writeInput: (line) => agent.writeInput(line),
-  });
+  };
+  active.set(runId, handle);
+  // Registered before `attachDoneHandler`'s own continuation, so by the time that runs the flag is already set.
+  agent.done.then(() => { handle.exited = true; }, () => { handle.exited = true; });
 }
 
 /**
@@ -2550,6 +3141,10 @@ function attachDoneHandler(
       // Nothing can arrive for a run that's no longer running — drop its
       // sent-files scratch space (plan §3 decision 4) so it can't leak.
       pendingSentFilesByRun.delete(runId);
+      clearRunLimit(runId);
+      // A stop that was not confirmed has now ended with the process: the driver only resolves `done` once it saw it gone.
+      const termination = wasCancelled ? runTerminations.get(runId) : null;
+      if (termination?.outcome === "unconfirmed") runTerminations.markExitedLate(runId);
 
       // API error / session-death / unknown-command override the exit-code
       // mapping: the driver resolves the turn with code 0 (a clean end_turn
@@ -2559,7 +3154,41 @@ function attachDoneHandler(
         ? "cancelled"
         : (wasApiError || wasSessionDied || wasUnknownCommand) ? "failed"
         : code === 0 ? "succeeded" : "failed";
-      runs.update(runId, { status: newStatus, endedAt: Date.now(), exitCode: code });
+      const settledRun = runs.update(runId, { status: newStatus, endedAt: Date.now(), exitCode: code });
+      if (settledRun?.endedAt != null) recordProfessionalTurnRunOutcome(db, runId, newStatus, settledRun.endedAt);
+      try {
+        // Observation only: a recognized provider usage-limit refusal, or a provider answer, bound to
+        // the identity this run launched with. It never retries, routes or changes QC or Done rules.
+        noteRunProviderOutcome(runId);
+      } catch {
+        // An observation must never break run settlement.
+      }
+      if (!runs.get(runId)?.qcReviewId) {
+        try {
+          const { settleTaskWorkspace } = await import("./task-workspace.ts");
+          settleTaskWorkspace(runId, code, wasCancelled ? { reason: termination?.reason ?? "manual", limitSeconds: termination?.limitSeconds ?? null } : null);
+        } catch {
+          // Settlement of the run must not depend on staging classification.
+        }
+      }
+      if (newStatus === "succeeded" && !runs.get(runId)?.qcReviewId) {
+        try {
+          // The core, not the worker, reads the worker's structured suggestion from the output it
+          // already persisted. At most one pending request; nothing is started. See project-permissions.ts.
+          const { ingestWorkerTestSuggestion } = await import("./project-permissions.ts");
+          ingestWorkerTestSuggestion(runId);
+        } catch {
+          // A suggestion is optional. It never affects settlement.
+        }
+      }
+      if (newStatus === "succeeded" && !runs.get(runId)?.qcReviewId) {
+        try {
+          const { captureDeveloperSourceEvidence } = await import("./review-evidence.ts");
+          await captureDeveloperSourceEvidence(runId);
+        } catch {
+          // A missing snapshot stays null. Settlement does not depend on it.
+        }
+      }
       // Run settle is a last-seen-checkout refresh point for every harness
       // kind (the agent may have switched branches during the turn).
       // Fire-and-forget: one `git symbolic-ref`, never on the settle path.
@@ -2618,6 +3247,7 @@ function attachDoneHandler(
           && !wasSessionDied
           && !wasUnknownCommand
           && subagents.hasRunning(taskId);
+        const qcReviewId = runs.get(runId)?.qcReviewId ?? null;
         if (holdForSubagents) {
           const runningCount = subagents.runningCountForTask(taskId);
           emit({
@@ -2627,6 +3257,9 @@ function attachDoneHandler(
             data: `background agents still running (${runningCount}) — holding in running`,
             ts: Date.now(),
           });
+        } else if (qcReviewId) {
+          const m = await import("./task-quality-control-settle.ts");
+          await m.settleQcReviewRun(runId, newStatus);
         } else {
           // Cancellation wins over api-error here, matching the newStatus
           // resolution above — a user-cancelled run shouldn't land in
@@ -2636,6 +3269,24 @@ function attachDoneHandler(
             : (wasApiError || wasSessionDied || wasUnknownCommand) ? "blocked"
             : newStatus === "succeeded" ? "review" : "ready";
           updateColumn(taskId, runId, nextColumn);
+          if (newStatus === "succeeded" && task) {
+            void (async () => {
+              try {
+                const { ingestExtractionEvent } = await import("./brain-extractor.ts");
+                await ingestExtractionEvent({
+                  kind: "successful_run",
+                  taskId,
+                  runId,
+                  agent: task.agent,
+                  projectPath: task.workdir,
+                  approachSummary: `Developer run succeeded for task: ${task.title}`,
+                  endedAt: Date.now(),
+                });
+              } catch {
+                // nonblocking
+              }
+            })();
+          }
         }
       }
       emit({
@@ -2669,17 +3320,24 @@ function attachDoneHandler(
       const wasUnknownCommand = handle?.unknownCommand ?? false;
       active.delete(runId);
       pendingSentFilesByRun.delete(runId);
+      clearRunLimit(runId);
       const newStatus: RunStatus = wasCancelled ? "cancelled" : "failed";
       runs.update(runId, { status: newStatus, endedAt: Date.now(), exitCode: -1 });
       void noteRunSettledCheckout(taskId);
       const task = tasks.get(taskId);
       const isTerminalRun = !!task && task.runId === runId;
       if (isTerminalRun) {
-        // A session-death / unknown-command that reaches the reject path (not
-        // the case today — both drivers resolve on these — but keep the
-        // column consistent with the resolve path if a future refactor ever
-        // rejects instead).
-        updateColumn(taskId, runId, (wasSessionDied || wasUnknownCommand) ? "blocked" : "ready");
+        const qcReviewId = runs.get(runId)?.qcReviewId ?? null;
+        if (qcReviewId) {
+          const m = await import("./task-quality-control-settle.ts");
+          await m.settleQcReviewRun(runId, newStatus);
+        } else {
+          // A session-death / unknown-command that reaches the reject path (not
+          // the case today — both drivers resolve on these — but keep the
+          // column consistent with the resolve path if a future refactor ever
+          // rejects instead).
+          updateColumn(taskId, runId, (wasSessionDied || wasUnknownCommand) ? "blocked" : "ready");
+        }
       }
       emit({
         runId,
@@ -2732,6 +3390,12 @@ function attachDoneHandler(
 export async function reconcileTaskSession(taskId: string, before: Task, after: Task): Promise<void> {
   const beforeKind = resolveHarness(before.agent)?.kind ?? null;
   const afterKind = resolveHarness(after.agent)?.kind ?? null;
+  if (before.agent === after.agent && afterKind === "claude-code" && (before.mode === "bounded-print" || after.mode === "bounded-print")) {
+    // Print has no live REPL settings to mirror. A settled interactive session
+    // must not be reused when the next reviewed start chooses bounded print.
+    if (before.mode !== "bounded-print") await dropSession(taskId);
+    return;
+  }
   // Treat any harness id change as a session-killing event for claude — the
   // alias's HOME/env block changes, so the on-disk JSONL & login differ. Even
   // same-kind alias swaps (claude-work → claude-personal) need a fresh tmux.
@@ -3276,7 +3940,84 @@ async function stopHeldTask(taskId: string, reason: string): Promise<void> {
   orphanRunningSubagents(taskId);
 }
 
-export async function cancelRun(runId: string): Promise<boolean> {
+/** The result of a Stop, as far as the core can say: a request is not proof, `termination` carries the evidence. */
+export interface StopResult {
+  cancelled: boolean;
+  termination: RunTermination | null;
+}
+
+const stopsInFlight = new Map<string, Promise<StopResult>>();
+const limitTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearRunLimit(runId: string): void {
+  const timer = limitTimers.get(runId);
+  if (timer) { clearTimeout(timer); limitTimers.delete(runId); }
+}
+
+/** Enforce the limit for one registered run. The deadline is recorded so a restart can still enforce it. */
+function armRunLimit(runId: string, seconds: number, deadlineAt: number): void {
+  runTerminations.arm(runId, seconds, deadlineAt);
+  clearRunLimit(runId);
+  const timer = setTimeout(() => {
+    limitTimers.delete(runId);
+    void stopRun(runId, "time-limit").catch((err) => console.warn(`[agetor] time limit stop failed for run ${runId}:`, err));
+  }, Math.max(0, deadlineAt - Date.now()));
+  (timer as unknown as { unref?: () => void }).unref?.();
+  limitTimers.set(runId, timer);
+}
+
+function stopStatusLine(reason: TerminationReason, limitSeconds: number | null): string {
+  return reason === "time-limit"
+    ? `time limit${limitSeconds != null ? ` of ${limitSeconds} s` : ""} reached — stopping the run`
+    : "stop requested by the Owner";
+}
+
+async function performStop(runId: string, h: ActiveRun, reason: TerminationReason): Promise<StopResult> {
+  const taskId = h.taskId;
+  const prior = runTerminations.get(runId);
+  // A repeated Stop after the process was already observed gone changes nothing: the run is settling.
+  if (prior?.requestedAt != null && (prior.outcome === "exited" || prior.outcome === "no-process")) {
+    return { cancelled: true, termination: prior };
+  }
+  runTerminations.request(runId, reason);
+  const requested = runTerminations.get(runId)!;
+  h.stopReason ??= requested.reason ?? reason;
+  // Stop targets the whole task, not just one run.
+  for (const [, handle] of active) {
+    if (handle.taskId === taskId) handle.cancelled = true;
+  }
+  cancelPendingForTask(taskId, h.stopReason === "time-limit" ? "time limit reached" : "cancelled by user");
+  if (requested.attempts === 1) appendRunStatusLine(taskId, runId, stopStatusLine(h.stopReason, requested.limitSeconds));
+  let evidence: TerminationEvidence | null = null;
+  try {
+    if (h.terminate) evidence = await h.terminate();
+    else h.kill();
+  } catch (err) {
+    console.warn(`[agetor] stop of run ${runId} failed:`, err);
+  }
+  if (evidence) {
+    runTerminations.record(runId, {
+      outcome: evidence.outcome, processId: evidence.processId, processStarted: evidence.processStarted,
+      methods: evidence.methods, note: evidence.note, checkedAt: evidence.checkedAt,
+    });
+    if (evidence.outcome === "unconfirmed") {
+      appendRunStatusLine(taskId, runId, `stop not confirmed — ${evidence.note} The run stays open and still counts as running.`);
+    } else if (requested.attempts === 1) {
+      appendRunStatusLine(taskId, runId, `process exit confirmed — ${evidence.note}`);
+    }
+  } else {
+    runTerminations.record(runId, { outcome: "unverified", note: "Stop was requested. This harness does not report whether the process exited." });
+    if (requested.attempts === 1) appendRunStatusLine(taskId, runId, "stop requested — this harness does not report process exit, so exit is not verified");
+  }
+  return { cancelled: true, termination: runTerminations.get(runId) };
+}
+
+/**
+ * Stop one run and say what happened to its process. Idempotent: a repeated Stop shares the attempt in flight,
+ * and after an unconfirmed outcome it tries again. A run whose process already exited on its own is left to
+ * settle with its natural outcome (`cancelled: false`).
+ */
+export async function stopRun(runId: string, reason: TerminationReason = "manual"): Promise<StopResult> {
   const h = active.get(runId);
   if (!h) {
     // A held task (turn succeeded, background agents still running) has no
@@ -3286,17 +4027,17 @@ export async function cancelRun(runId: string): Promise<boolean> {
     // restart. Interrupt the live session and release the hold; the run itself
     // already succeeded, so the card advances to `review`.
     const taskId = runs.get(runId)?.taskId;
-    if (!taskId) return false;
+    if (!taskId) return { cancelled: false, termination: null };
     if (isHeldByBackgroundAgents(taskId)) {
       await stopHeldTask(taskId, "cancelled by user");
-      return true;
+      return { cancelled: true, termination: null };
     }
     // A paused fx task has no `active` handle either — there's no live
     // process to interrupt — but Stop should still do something when a
     // pending auto-resume timer is what's left to act on (plan §3 T2 item 8):
     // cancel the schedule rather than reporting failure.
     if (fxAutoResumeTimers.has(taskId)) {
-      return cancelFxAutoResume(taskId, "stopped");
+      return { cancelled: cancelFxAutoResume(taskId, "stopped"), termination: null };
     }
     // Bounded-spawn pending window: the run is the task's current run and
     // still `running`, but its agent hasn't registered yet. Record the
@@ -3306,13 +4047,25 @@ export async function cancelRun(runId: string): Promise<boolean> {
     if (run && run.status === "running" && tasks.get(taskId)?.runId === runId) {
       pendingCancelRunIds.add(runId);
       cancelPendingForTask(taskId, "cancelled by user");
-      return true;
+      runTerminations.request(runId, reason);
+      runTerminations.record(runId, { outcome: "not-launched", note: "The stop arrived before the agent was launched; no process was started." });
+      return { cancelled: true, termination: runTerminations.get(runId) };
     }
-    return false;
+    return { cancelled: false, termination: null };
   }
-  // Stop targets the whole task, not just one run.
-  stopActiveHandle(h, "cancelled by user");
-  return true;
+  // The driver already reported the process finished and the settle handler has not run yet: the natural
+  // outcome stands, and nothing is flagged cancelled.
+  if (h.exited) return { cancelled: false, termination: runTerminations.get(runId) };
+  const open = stopsInFlight.get(runId);
+  if (open) return open;
+  const attempt = performStop(runId, h, reason).finally(() => { stopsInFlight.delete(runId); });
+  stopsInFlight.set(runId, attempt);
+  return attempt;
+}
+
+/** Stop a run on the Owner's behalf. Existing callers want only whether a stop was accepted. */
+export async function cancelRun(runId: string): Promise<boolean> {
+  return (await stopRun(runId, "manual")).cancelled;
 }
 
 /**
@@ -3435,18 +4188,134 @@ export type SendInputResult =
  * that order), so a send the CLI floor refuses — even a late-refused one —
  * never un-archives the task or re-creates its worktree.
  */
+/** Exact session only. Never falls back to another Run or to "latest". */
+function professionalRunSessionId(run: NonNullable<ReturnType<typeof runs.get>>, kind: AgentKind): string | null {
+  return kind === "claude-code" ? run.claudeSessionId ?? null : kind === "codex" ? run.codexSessionId ?? null
+    : kind === "cursor" ? run.cursorSessionId ?? null : kind === "gemini" ? run.geminiSessionId ?? null
+    : kind === "antigravity" ? run.antigravitySessionId ?? null : run.fxSessionId ?? null;
+}
+
+function professionalTransportId(runId: string): string {
+  const turn = db.query<{ id: string; turn_number: number }, [string]>(
+    "SELECT id, turn_number FROM employee_execution_turns WHERE run_id = ? AND status != 'reviewed' AND status != 'failed' ORDER BY turn_number DESC LIMIT 1").get(runId);
+  return turn && turn.turn_number > 1 ? turn.id : runId;
+}
+
+/** Driver dedup consumes native IDs; persistence consumes Turn-prefixed IDs. */
+function professionalReattachSeen(taskId: string, runId: string): Set<string> {
+  const professional = db.query("SELECT 1 FROM employee_execution_turns WHERE run_id = ? LIMIT 1").get(runId);
+  if (!professional) return runs.seenLineUuidsForTask(taskId);
+  const transportId = professionalTransportId(runId), prefix = `${transportId}:`;
+  const rows = runs.mainStreamLineUuidsForRun(runId);
+  return new Set(rows.flatMap(u => transportId === runId ? [u] : u.startsWith(prefix) ? [u.slice(prefix.length)] : []));
+}
+
+export function professionalSession(runId: string, allowStarting = false): { state: "attached" | "recoverable"; sessionId: string; cwd: string } | null {
+  const run = runs.get(runId), task = run && tasks.get(run.taskId);
+  if (task?.mode === "bounded-print") return null;
+  if (!run || !task || run.agent !== task.agent || task.runId !== runId || task.archivedAt != null || (!allowStarting && startingTaskIds.has(task.id))) return null;
+  const kind = resolveHarness(task.agent)?.kind;
+  if (!kind) return null;
+  const sessionId = professionalRunSessionId(run, kind);
+  if (!sessionId || !/^[a-zA-Z0-9_-]{1,200}$/.test(sessionId) || sessionId === "latest") return null;
+  const cwd = task.worktreePath ?? task.workdir;
+  const handle = active.get(runId);
+  if (run.status === "running") {
+    if (allowStarting && ((startingTaskIds.has(task.id) && !handle) || (handle && !handle.cancelled && !handle.sessionDied && !handle.apiError))) return { state: "recoverable", sessionId, cwd };
+    if (kind !== "claude-code" || !handle || handle.cancelled || handle.sessionDied || handle.apiError) return null;
+    if (process.env.AGETOR_CLAUDE_DRIVER === "fake") return sessionId === `fake-claude-session-${task.id}` ? { state: "attached", sessionId, cwd } : null;
+    const identity = attachedClaudeIdentity(task.id);
+    return identity?.sessionId === sessionId && identity.cwd === cwd ? { state: "attached", ...identity } : null;
+  }
+  // Uncertain/cancelled/orphaned process fate must be resolved by a new canonical review/start.
+  if (run.status !== "succeeded" || handle || subagents.hasRunning(task.id)) return null;
+  const attached = kind === "claude-code" && attachedClaudeIdentity(task.id);
+  if (attached && (attached.sessionId !== sessionId || attached.cwd !== cwd)) return null;
+  return { state: attached ? "attached" : "recoverable", sessionId, cwd };
+}
+
+/** The existing adapter pipeline, same Run, approved user bytes only. */
+export async function deliverProfessionalTurn(runId: string, turnId: string, sessionId: string, prompt: string, authorize: () => boolean): Promise<boolean> {
+  const gate = () => { try { return professionalSession(runId)?.sessionId === sessionId && authorize(); } catch { return false; } };
+  if (!gate()) return false;
+  const run = runs.get(runId)!, task = tasks.get(run.taskId)!, harness = resolveHarness(task.agent)!;
+  if (projectLifecycleTaskRefusal(task.id)) return false;
+  const echo = () => { runs.appendEvent(runId, "user", prompt); emit({ runId, taskId: task.id, stream: "user", data: prompt, ts: Date.now() }); };
+  if (active.has(runId)) {
+    if (harness.kind !== "claude-code") return false;
+    const delivery = process.env.AGETOR_CLAUDE_DRIVER === "fake"
+      ? active.get(runId)!.writeInput(prompt)
+      : await (async () => { const d = await pasteFollowUp(task.id, prompt, { authorize: gate }); return !!d && (await d.pasteOutcome).ok; })();
+    if (delivery) echo();
+    return delivery;
+  }
+  // All preflight/authority checks above complete synchronously before taking the canonical start slot.
+  startingTaskIds.add(task.id);
+  try {
+    const valid = () => { try { return !projectLifecycleTaskRefusal(task.id) && authorize() && tasks.get(task.id)?.runId === runId; } catch { return false; } };
+    if (!valid()) return false;
+    cancelPendingForTask(task.id, "Superseded by a new Owner-approved professional Turn");
+    db.transaction(() => {
+      runs.update(runId, { status: "running", endedAt: null, exitCode: null });
+      tasks.update(task.id, { column: "running" });
+      db.run("UPDATE employee_executions SET finished_at = NULL, result = NULL, reason = NULL WHERE run_id = ? AND status = 'started'", [runId]);
+    }).immediate();
+    emitGlobal({ kind: "column", taskId: task.id, runId, column: "running", prev: task.column, ts: Date.now() });
+    const onChunk = makeChunkHandler(runId, task.id, harness.kind, task.mode);
+    let mismatch = false;
+    const attached = harness.kind === "claude-code" && attachedClaudeIdentity(task.id);
+    const result = attached
+      ? { agent: await sendTurn(task.id, prompt, onChunk, { authorize: valid }) }
+      : await spawnAgentOrFail({ taskId: task.id, runId, transportId: turnId, authorize: valid, harness, cwd: task.worktreePath ?? task.workdir,
+        prompt, onChunk, onSessionId: id => {
+          if (id === sessionId) return;
+          mismatch = true;
+          onChunk("status", `${SESSION_DIED_STATUS_PREFIX}approved session identity mismatch — task blocked`);
+          active.get(runId)?.kill();
+        },
+        opts: { resumeSessionId: sessionId, mode: task.mode, model: task.model ?? DEFAULT_MODEL[harness.kind], effort: task.effort, fast: task.fast, maxMode: task.maxMode } });
+    const agent = result.agent;
+    if (!agent) return false;
+    if (mismatch || pendingCancelRunIds.delete(runId) || !valid()) {
+      agent.kill(); void agent.done.catch(() => undefined);
+      runs.update(runId, { status: "failed", endedAt: Date.now(), exitCode: -1 });
+      updateColumn(task.id, runId, "blocked");
+      return false;
+    }
+    registerActiveRun(runId, task.id, tasks.get(task.id)!, agent);
+    attachDoneHandler(runId, task.id, agent);
+    const included = agent.pasteOutcome ? (await agent.pasteOutcome).ok : true;
+    if (included) echo();
+    return included;
+  } finally {
+    startingTaskIds.delete(task.id);
+    reconcileProjectDrainForTask(task.id);
+  }
+}
+
 export async function sendInput(
   runId: string,
   line: string,
   opts: { bounded?: boolean } = {},
 ): Promise<SendInputResult> {
-  const row = db.query<{ task_id: string; agent: string }, [string]>(
-    `SELECT task_id, agent FROM runs WHERE id = ?`,
+  const row = db.query<{ id: string; task_id: string; agent: string }, [string]>(
+    `SELECT id, task_id, agent FROM runs WHERE id = ?`,
   ).get(runId);
   if (!row) return { delivered: false, reason: "run not found" };
 
   const task = tasks.get(row.task_id);
   if (!task) return { delivered: false, reason: "task not found" };
+  if (task.computerWorkflowRevision || db.query("SELECT 1 FROM task_computer_runs WHERE run_id = ?").get(runId)) {
+    return { delivered: false, reason: "Computer workflows run once from their reviewed scope. Review a new scope before retrying." };
+  }
+  if (objectiveTaskIsManaged(task.id)) {
+    return { delivered: false, reason: "Use the mission to launch this task's next operation." };
+  }
+  const lifecycleBlock = projectLifecycleTaskRefusal(task.id);
+  if (lifecycleBlock) return { delivered: false, reason: lifecycleBlock };
+  if (task.mode === "bounded-print") return { delivered: false, reason: "Bounded Claude does not accept continuation; prepare a new Owner-reviewed run." };
+  const professionalProblem = professionalContinuationProblem(db, task.id);
+  if (professionalProblem) return { delivered: false, reason: professionalProblem };
 
   // Everything past the two cheap lookups above — the codex floor probe, the
   // teardown wait, the worktree restore, `@`-expansion and the per-kind
@@ -3531,10 +4400,16 @@ function settleLateSend(taskId: string, rawLine: string, result: SendInputResult
  * later steps re-read it where a stale view would matter).
  */
 async function sendInputInner(
-  row: { task_id: string; agent: string },
+  row: { id: string; task_id: string; agent: string },
   task: Task,
   line: string,
 ): Promise<SendInputResult> {
+  if (isProductionOwnerGateActive()) {
+    return {
+      delivered: false,
+      reason: "Follow-up CLI resume without a fresh macOS Owner confirmation is blocked in the Owner-signed production build.",
+    };
+  }
   // Pre-flight 1b for a one-shot kind (today codex) BEFORE any side effect
   // below — the archivedAt clear and the worktree restore both mutate state,
   // and a follow-up the CLI floor is going to refuse must not un-archive the
@@ -3543,7 +4418,47 @@ async function sendInputInner(
   // PATCH-able while a message sits in the queue), so this is the early
   // gate, not the only one.
   {
+    const priorProcess = await priorProcessBlock(row.task_id);
+    if (priorProcess) return { delivered: false, reason: priorProcess };
+    if (task.agent !== row.agent) {
+      return {
+        delivered: false,
+        reason: "Account mismatch: the task's execution resource changed since this run started. A session cannot be resumed on another profile or the ambient account.",
+      };
+    }
     const taskHarness = resolveHarness(task.agent);
+    if (taskHarness && (isCodexProfile(taskHarness) || isClaudeProfile(taskHarness))) {
+      if (!taskHarness.enabled) {
+        return {
+          delivered: false,
+          reason: `${taskHarness.label} is disabled — re-enable it in Settings to start or resume runs. No fallback account was used.`,
+        };
+      }
+      try {
+        if (isCodexProfile(taskHarness)) await assertCodexProfileAuthentication(taskHarness);
+        if (isClaudeProfile(taskHarness)) await assertClaudeProfileAuthentication(taskHarness);
+      } catch (err) {
+        return { delivered: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+      const priorIdentity = db.query<{ data: string }, [string]>(
+        `SELECT data FROM run_events WHERE run_id = ? AND stream = 'status' AND data LIKE '%"kind":"execution-identity"%' ORDER BY id DESC LIMIT 1`,
+      ).get(row.id);
+      if (priorIdentity) {
+        try {
+          const parsed = JSON.parse(priorIdentity.data) as { accountProfile?: { id?: string } | null };
+          const priorAccountId = parsed.accountProfile?.id ?? null;
+          const currentAccount = isCodexProfile(taskHarness) ? selectedCodexAccount(taskHarness) : selectedClaudeAccount(taskHarness);
+          if (priorAccountId !== (currentAccount?.id ?? null)) {
+            return {
+              delivered: false,
+              reason: "Account mismatch: a session from another profile cannot be resumed. No ambient or fallback account was used.",
+            };
+          }
+        } catch (err) {
+          return { delivered: false, reason: err instanceof Error ? err.message : String(err) };
+        }
+      }
+    }
     if (taskHarness?.kind === "codex") {
       const floorError = await minCliVersionError(taskHarness, task.model ?? DEFAULT_MODEL[taskHarness.kind]);
       if (floorError !== null) return { delivered: false, reason: floorError };
@@ -3612,6 +4527,12 @@ async function sendInputInner(
 
   const harness = resolveHarness(row.agent);
   const kind = harness?.kind;
+  if ((cwdTask.accessMode ?? "workspace") !== "workspace") {
+    const diagnostics = await diagnoseTaskLaunch(cwdTask);
+    if (!diagnostics.launchAllowed) {
+      return { delivered: false, reason: diagnostics.blockReason ?? "Follow-up blocked by access-mode policy." };
+    }
+  }
 
   // Re-check the argv-launch budget AFTER expansion, mirroring `startTask`'s
   // pre-check (R5, code review): expanding a handful of short `@tokens` into
@@ -3837,7 +4758,19 @@ export async function minCliVersionError(
     const floor = MODEL_MIN_CLI_VERSION[harness.kind]?.[modelId];
     if (floor === undefined) return null;
     const probed = status ?? await checkHarness(harness);
-    if (cliVersionSatisfies(probed.version, floor) !== false) return null;
+    // The packaged QA stub prints 0.0.0-qa. That string parses as an old CLI,
+    // but the file is not Codex and the fake driver never asks the model catalog.
+    // A real binary keeps the floor, including one that prints the same text.
+    if (process.env.AGETOR_CODEX_DRIVER === "fake" && isInertQaStub(probed.path)) return null;
+    const satisfied = cliVersionSatisfies(probed.version, floor);
+    if (satisfied === null && parseCliVersion(probed.version) === null && !agentDriverIsFake(harness.kind)) {
+      // Direction 9: a model that needs a minimum CLI version is not launched on an executable that printed
+      // no version at all. Not for the recorded fixture driver (it queries no CLI catalog), and an
+      // at-floor pre-release still parses, so it is not caught here.
+      const modelName = AGENT_OPTIONS[harness.kind]?.models.find((m) => m.id === modelId)?.label ?? modelId;
+      return formatUnreadableVersionError({ harnessLabel: harness.label, where: probed.path ?? probed.bin, model: modelName, kind: harness.kind, min: floor });
+    }
+    if (satisfied !== false) return null;
     const modelLabel = AGENT_OPTIONS[harness.kind]?.models.find((m) => m.id === modelId)?.label ?? modelId;
     return formatMinCliVersionError({
       harnessLabel: harness.label,
@@ -3880,7 +4813,10 @@ async function spawnCodexTurnNow(task: Task, taskId: string, line: string): Prom
   startingTaskIds.add(taskId);
   try {
     const priorThreadId = findLastCodexSessionId(taskId);
-    const cwd = task.worktreePath ?? task.workdir;
+    const { stagingCwdForTask } = await import("./task-workspace.ts");
+    const staged = stagingCwdForTask(taskId);
+    if (staged.block) return { declined: staged.block };
+    const cwd = staged.cwd ?? task.worktreePath ?? task.workdir;
     const harness = resolveHarness(task.agent);
 
     // Pre-flight 1b — before any state mutation (see this function's doc).
@@ -3953,6 +4889,7 @@ async function spawnCodexTurnNow(task: Task, taskId: string, line: string): Prom
         fast: task.fast,
         maxMode: task.maxMode,
         resumeSessionId: priorThreadId,
+        accessMode: task.accessMode ?? "workspace",
       },
     });
     if (!agent) {
@@ -5200,6 +6137,11 @@ export async function rearmFxAutoResumes(): Promise<number> {
   let armed = 0;
   let staggerIndex = 0;
   for (const { id: taskId, fxRecovery: rec } of pending) {
+    if (projectLifecycleTaskRefusal(taskId)) {
+      // Preserve `fxRecovery` untouched while the owning project is stopped;
+      // do not arm an auto-resume timer that would launch AI work behind Stop.
+      continue;
+    }
     const pause = latestResumableFxPause(taskId);
     if (!pause || pause.runId !== rec.runId) {
       tasks.setFxRecovery(taskId, null);
@@ -5301,6 +6243,10 @@ export async function resumeFxRecovery(
   try {
     let task = tasks.get(taskId);
     if (!task) return { ok: false, status: 404, error: "not found" };
+    const lifecycleBlock = projectLifecycleTaskRefusal(task.id);
+    if (lifecycleBlock) return { ok: false, status: 409, error: lifecycleBlock };
+    const professionalProblem = professionalContinuationProblem(db, task.id);
+    if (professionalProblem) return { ok: false, status: 409, error: professionalProblem };
     if (task.archivedAt != null) return { ok: false, status: 400, error: "task is archived" };
     if (resolveHarness(task.agent)?.kind !== "fx") {
       return { ok: false, status: 400, error: "only fx tasks can resume a paused response" };
@@ -5333,10 +6279,27 @@ export async function resumeFxRecovery(
       }
     }
 
-    const result = await spawnFxRun(task, taskId, {
-      continueRecovery: true,
-      ...(origin === "auto" ? { origin, attempt: opts?.attempt, max: opts?.max } : {}),
-    });
+    // An automatic resume is a Run ForgeOrbit chooses to make on a timer. It
+    // needs the same resource eligibility as any other automatic Run, and a
+    // bounded autonomous grant does not cover it at all (FO-ORCH08). Both are
+    // asked here for a readable refusal, and again by the guard on the Run
+    // write itself. Nothing is switched or retried.
+    let result: Awaited<ReturnType<typeof spawnFxRun>>;
+    try {
+      if (origin === "auto") {
+        const gate = await import("./autonomy.ts");
+        const refusal = gate.autonomyRunRefusal(taskId, "fx-auto-resume") ?? gate.taskResourceRefusal(taskId);
+        if (refusal) return { ok: false, status: 409, error: refusal };
+      }
+      const turn: FxTurn = {
+        continueRecovery: true,
+        ...(origin === "auto" ? { origin, attempt: opts?.attempt, max: opts?.max } : {}),
+      };
+      result = origin === "auto" ? await withAutonomyOrigin("fx-auto-resume", () => spawnFxRun(task, taskId, turn)) : await spawnFxRun(task, taskId, turn);
+    } catch (err) {
+      if (err instanceof AutonomyRefusedError) return { ok: false, status: 409, error: err.reason };
+      throw err;
+    }
     if (result === null) {
       return { ok: false, status: 409, error: "a turn is already starting for this task" };
     }
@@ -5900,6 +6863,10 @@ function startContinuationRun(
   const task = tasks.get(taskId);
   if (!task || task.archivedAt != null) return null;
   if (resolveHarness(task.agent)?.kind !== "claude-code") return null;
+  // Allow an already-held task's background subagents to finish their existing
+  // continuation while draining, otherwise block new continuation runs when
+  // the owning project is stopped.
+  if (!isTaskHeldByBackgroundAgents(task) && projectLifecycleTaskRefusal(taskId)) return null;
 
   const newRunId = randomUUID();
   const now = Date.now();
@@ -6199,6 +7166,8 @@ export interface CreateTaskInput extends Partial<Task> {
  * `CreateTaskInput`, so anything on that type is client-supplied.
  */
 export interface CreateTaskInternal {
+  /** Internal, durable approval id and a final scope check after asynchronous Git reads. */
+  reservedTask?: { id: string; beforeInsert: () => void };
   /**
    * A profile the caller has ALREADY resolved and validated (e.g.
    * `POST /projects/clone`, which checks the profile's harness and the
@@ -6212,6 +7181,18 @@ export interface CreateTaskInternal {
    * an unknown id still fails the create.
    */
   resolvedAgentProfile?: AgentProfile;
+  /**
+   * Server-internal recurring occurrence binding (FO-KANBAN-RECURRING01).
+   * Set only by the recurring materialization service; never patchable or
+   * accepted directly from client `POST /tasks` bodies.
+   */
+  recurringBinding?: {
+    templateId: string;
+    occurrenceId: string;
+    nominalUtc: string;
+  };
+  /** Optional explicit creation timestamp override for deterministic tests. */
+  createdAt?: number;
 }
 
 /**
@@ -6244,14 +7225,32 @@ export async function createTask(
   input: CreateTaskInput,
   internal: CreateTaskInternal = {},
 ): Promise<{ task: Task } | { error: string }> {
-  const now = Date.now();
+  const prepared = await prepareTaskCreation(input, internal);
+  return "error" in prepared ? prepared : prepared.commit();
+}
+
+/** Separate asynchronous preparation from the write for callers committing a set of tasks atomically. */
+export async function prepareTaskCreation(
+  input: CreateTaskInput,
+  internal: CreateTaskInternal = {},
+): Promise<{ commit: () => { task: Task } } | { error: string }> {
+  const now = internal.createdAt ?? Date.now();
   // Only the trimmed, explicitly-provided workdir counts as user intent. We
   // still fall back to process.cwd() for the task itself so direct API
   // callers don't break, but we DON'T register that fallback as a project —
   // the projects list should only contain folders the user actually chose.
   const explicitWorkdir = input.workdir?.trim() ? input.workdir.trim() : null;
   const workdir = explicitWorkdir ?? process.cwd();
-  const isolation = input.isolation ?? "worktree";
+  const rawAccessMode = (input as { accessMode?: unknown }).accessMode;
+  const parsedAccessMode = rawAccessMode === undefined || rawAccessMode === null ? "workspace" : normalizeAccessMode(rawAccessMode);
+  if (!parsedAccessMode) {
+    return { error: `invalid accessMode "${String(rawAccessMode)}" — expected workspace, isolated, or full-computer` };
+  }
+  const accessMode = parsedAccessMode;
+  const isolation = input.isolation ?? (accessMode === "isolated" ? "none" : "worktree");
+  if (accessMode === "isolated" && isolation === "worktree") {
+    return { error: "Isolated mode uses a prepared disposable staging workspace rather than a project Git worktree; use isolation \"none\" or switch to Workspace mode." };
+  }
   const requestedRef = input.baseRef?.trim() || "HEAD";
   const existingBranch = input.existingBranch?.trim() || null;
 
@@ -6305,7 +7304,7 @@ export async function createTask(
   // Previously we upserted on every task create, which silently surfaced
   // worktree temp paths and stray ad-hoc dirs in the sidebar.
 
-  const id = randomUUID();
+  const id = internal.reservedTask?.id ?? randomUUID();
 
   // Pipeline binding (D1, docs/plans/pipelines.md): mutually exclusive with
   // `agentProfileId` — a pipeline task never launches an agent of its own
@@ -6319,6 +7318,9 @@ export async function createTask(
   let pipeline: Pipeline | null = null;
   const requestedPipelineId = input.pipelineId?.trim();
   if (requestedPipelineId) {
+    if (accessMode !== "workspace") {
+      return { error: `pipeline tasks require Workspace access mode (cannot use "${accessMode}")` };
+    }
     if (input.agentProfileId?.trim()) {
       return { error: "a task can't bind both a pipeline and an agent" };
     }
@@ -6433,6 +7435,17 @@ export async function createTask(
   // the row (the picker only ever sends one of the canonical ids, but
   // direct API callers don't have that constraint).
   const requestedType = input.taskType;
+  // Kanban urgency: absent means Normal; a value that is present must be an integer 1..5 (never clamped).
+  if (input.urgency !== undefined && input.urgency !== null && !isUrgency(input.urgency)) {
+    return { error: "urgency must be a whole number from 1 (Minimal) to 5 (Critical)" };
+  }
+  // Scheduled availability: absent/null means available immediately; a string must be canonical ISO-8601 with explicit TZ.
+  let availableFromUtc: string | null = null;
+  if (input.availableFromUtc !== undefined) {
+    const parsedAvailability = parseAvailableFromUtc(input.availableFromUtc);
+    if (!parsedAvailability.ok) return { error: parsedAvailability.error };
+    availableFromUtc = parsedAvailability.value;
+  }
   const taskType: TaskType =
     requestedType && TASK_TYPES.some((t) => t.id === requestedType)
       ? requestedType
@@ -6513,89 +7526,98 @@ export async function createTask(
     ? snapshotFromProfile(profile, { kind: harness.kind, label: harness.label }, now)
     : null;
 
-  const task = tasks.insert({
-    id,
-    title: input.title,
-    prompt: input.prompt,
-    column: input.column ?? "backlog",
-    agent: agentId,
-    workdir,
-    isolation,
-    taskType,
-    branch: plannedBranch,
-    branchSource,
-    worktreePath: null,
-    baseRef,
-    // No PR exists for a brand-new task; set server-side by pull-create.
-    prUrl: null,
-    issueUrl: validatedIssueUrl,
-    mode: defaultsProfile ? defaultsProfile.mode : (input.mode ?? null),
-    model,
-    effort,
-    fast: defaultsProfile ? defaultsProfile.fast : input.fast === true,
-    maxMode: defaultsProfile ? defaultsProfile.maxMode : input.maxMode === true,
-    agentProfileId: profile?.id ?? null,
-    agentProfile: agentProfileSnapshot,
-    // Pipeline binding (D1): only the parent row carries `pipelineId` (set
-    // above once, validated) — a brand-new task is never itself a hidden
-    // step (`pipelineParentId`/`pipelineStepId` are only ever set by the
-    // runner's own `launchStep`, never by `createTask`). `pipelineRun`
-    // starts idle (`snapshot: null`) until the first Run.
-    pipelineId: pipeline?.id ?? null,
-    pipelineRun: pipeline ? initialPipelineRunState(pipeline) : null,
-    pipelineParentId: null,
-    pipelineStepId: null,
-    references: input.references ?? [],
-    // Brand-new tasks start with an empty backlog; drafts are added later from
-    // the run panel.
-    backlog: [],
-    // Composer draft starts empty; autosaved from the run panel thereafter.
-    draft: null,
-    // Brand-new tasks have no detected Cursor/claude plans yet — populated
-    // later by `attachDoneHandler` (cursor) or the chunk handler (claude).
-    plans: [],
-    // Brand-new tasks have no todo-family tool activity yet — populated
-    // later by the chunk handler's `maybeUpdateTodoProgress`.
-    todoProgress: null,
-    runId: null,
-    // Derived at fetch time via SQL EXISTS — supply `false` here so the
-    // `Task` shape is complete; `tasks.insert` re-fetches and the real
-    // value flows back to the caller.
-    hasOpenableRun: false,
-    // Derived from the in-memory interactions Maps in `interactions.ts`; a
-    // brand-new task has no pending interactions, so 0 is the correct seed.
-    pendingInteractionCount: 0,
-    // Derived from the in-memory terminal manager in `terminals.ts`; a
-    // brand-new task has no open terminals, so 0 is the correct seed.
-    openTerminalCount: 0,
-    createdAt: now,
-    updatedAt: now,
-    archivedAt: null,
-  });
+  return { commit: () => {
+    internal.reservedTask?.beforeInsert();
+    const task = tasks.insert({
+      id,
+      title: input.title,
+      prompt: input.prompt,
+      column: input.column ?? "backlog",
+      agent: agentId,
+      workdir,
+      isolation,
+      accessMode,
+      taskType,
+      urgency: normalizeUrgency(input.urgency),
+      availableFromUtc,
+      recurringTemplateId: internal.recurringBinding?.templateId ?? null,
+      recurringOccurrenceId: internal.recurringBinding?.occurrenceId ?? null,
+      recurringNominalUtc: internal.recurringBinding?.nominalUtc ?? null,
+      branch: plannedBranch,
+      branchSource,
+      worktreePath: null,
+      baseRef,
+      // No PR exists for a brand-new task; set server-side by pull-create.
+      prUrl: null,
+      issueUrl: validatedIssueUrl,
+      mode: defaultsProfile ? defaultsProfile.mode : (input.mode ?? null),
+      model,
+      effort,
+      fast: defaultsProfile ? defaultsProfile.fast : input.fast === true,
+      maxMode: defaultsProfile ? defaultsProfile.maxMode : input.maxMode === true,
+      agentProfileId: profile?.id ?? null,
+      agentProfile: agentProfileSnapshot,
+      // Pipeline binding (D1): only the parent row carries `pipelineId` (set
+      // above once, validated) — a brand-new task is never itself a hidden
+      // step (`pipelineParentId`/`pipelineStepId` are only ever set by the
+      // runner's own `launchStep`, never by `createTask`). `pipelineRun`
+      // starts idle (`snapshot: null`) until the first Run.
+      pipelineId: pipeline?.id ?? null,
+      pipelineRun: pipeline ? initialPipelineRunState(pipeline) : null,
+      pipelineParentId: null,
+      pipelineStepId: null,
+      references: input.references ?? [],
+      // Brand-new tasks start with an empty backlog; drafts are added later from
+      // the run panel.
+      backlog: [],
+      // Composer draft starts empty; autosaved from the run panel thereafter.
+      draft: null,
+      // Brand-new tasks have no detected Cursor/claude plans yet — populated
+      // later by `attachDoneHandler` (cursor) or the chunk handler (claude).
+      plans: [],
+      // Brand-new tasks have no todo-family tool activity yet — populated
+      // later by the chunk handler's `maybeUpdateTodoProgress`.
+      todoProgress: null,
+      runId: null,
+      // Derived at fetch time via SQL EXISTS — supply `false` here so the
+      // `Task` shape is complete; `tasks.insert` re-fetches and the real
+      // value flows back to the caller.
+      hasOpenableRun: false,
+      // Derived from the in-memory interactions Maps in `interactions.ts`; a
+      // brand-new task has no pending interactions, so 0 is the correct seed.
+      pendingInteractionCount: 0,
+      // Derived from the in-memory terminal manager in `terminals.ts`; a
+      // brand-new task has no open terminals, so 0 is the correct seed.
+      openTerminalCount: 0,
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: null,
+    });
 
-  // Write the full thread snapshot (issue body + every fetched comment) to
-  // its own per-task directory and reference it, so the agent can read the
-  // complete thread regardless of the prompt's inline cap. Best-effort: the
-  // prompt already carries an inline excerpt, so a write failure shouldn't
-  // fail task creation — just log and hand back the task as-is.
-  if (validatedIssueUrl && parsedIssue && input.issueSnapshot) {
-    try {
-      const snapshotDir = join(dataDir, "issue-threads", task.id);
-      mkdirSync(snapshotDir, { recursive: true });
-      const snapshotPath = join(snapshotDir, ISSUE_SNAPSHOT_FILENAME(parsedIssue.number));
-      writeFileSync(snapshotPath, input.issueSnapshot);
-      if (!task.references.some((r) => r.path === snapshotPath)) {
-        const updated = tasks.update(task.id, {
-          references: [...task.references, { path: snapshotPath, isDirectory: false }],
-        });
-        if (updated) return { task: updated };
+    // Write the full thread snapshot (issue body + every fetched comment) to
+    // its own per-task directory and reference it, so the agent can read the
+    // complete thread regardless of the prompt's inline cap. Best-effort: the
+    // prompt already carries an inline excerpt, so a write failure shouldn't
+    // fail task creation — just log and hand back the task as-is.
+    if (validatedIssueUrl && parsedIssue && input.issueSnapshot) {
+      try {
+        const snapshotDir = join(dataDir, "issue-threads", task.id);
+        mkdirSync(snapshotDir, { recursive: true });
+        const snapshotPath = join(snapshotDir, ISSUE_SNAPSHOT_FILENAME(parsedIssue.number));
+        writeFileSync(snapshotPath, input.issueSnapshot);
+        if (!task.references.some((r) => r.path === snapshotPath)) {
+          const updated = tasks.update(task.id, {
+            references: [...task.references, { path: snapshotPath, isDirectory: false }],
+          });
+          if (updated) return { task: updated };
+        }
+      } catch (e) {
+        console.warn(`[agetor] failed to write issue thread snapshot for task ${task.id}:`, e);
       }
-    } catch (e) {
-      console.warn(`[agetor] failed to write issue thread snapshot for task ${task.id}:`, e);
     }
-  }
 
-  return { task };
+    return { task };
+  } };
 }
 
 /**
@@ -7336,6 +8358,104 @@ export async function reapIdleSessions(): Promise<{ reaped: string[] }> {
   } finally {
     reapInFlight = false;
   }
+}
+
+/** Harnesses whose task session name is `sessionNameFor(taskId)` on this
+ *  instance's tmux socket. `fx` is an ACP child, not a tmux session. */
+const TMUX_SESSION_KINDS = new Set<AgentKind>(["claude-code", "codex", "cursor", "gemini", "antigravity"]);
+
+/**
+ * Quit-time release of settled tmux sessions this data dir owns.
+ *
+ * A finished Claude REPL is kept alive while the process is up so the next
+ * message can paste into it. `reapIdleSessions` only runs on the in-process
+ * timer, so once the process exits that REPL (and any other settled harness
+ * session that failed to self-dispose) keeps its memory until the user
+ * relaunches and waits out another idle window. Cmd+Q of a succeeded run is
+ * that hole: the run is not `running`, so boot reconciliation will not
+ * reattach it, and nothing kills it.
+ *
+ * This kills by exact session name (`=agetor-<task id prefix>`) on this
+ * instance's socket only. It never lists sessions and never runs
+ * `kill-server`. A session is kept when this process may still need it on
+ * the next boot: a `running` run, an in-memory active or starting handle, a
+ * pending prompt, or a subagent that is still `running` (including a held
+ * task whose terminal run already succeeded). Follow-up after a settled
+ * Claude release uses the persisted `claude_session_id` and `--resume`, the
+ * same path as the 30-minute reaper. Run rows, columns, and existing journal
+ * events are left as they are; a Claude kill appends one status line.
+ */
+export function releaseSettledSessionsSync(): { released: string[] } {
+  const released: string[] = [];
+  let bin: string;
+  try {
+    bin = resolveTmuxBin();
+  } catch {
+    return { released };
+  }
+  const socketArgs = tmuxSocketArgs();
+  const runningTaskIds = new Set(
+    db.query<{ task_id: string }, []>(
+      `SELECT DISTINCT task_id FROM runs WHERE status = 'running'`,
+    ).all().map((row) => row.task_id),
+  );
+  const activeTaskIds = new Set<string>();
+  for (const handle of active.values()) activeTaskIds.add(handle.taskId);
+
+  for (const task of tasks.list()) {
+    const kind = resolveHarness(task.agent)?.kind;
+    if (!kind || !TMUX_SESSION_KINDS.has(kind)) continue;
+    if (!task.runId && !hasSessionState(task.id)) continue;
+    if (
+      runningTaskIds.has(task.id)
+      || activeTaskIds.has(task.id)
+      || startingTaskIds.has(task.id)
+      || subagents.hasRunning(task.id)
+      || countPendingForTask(task.id) > 0
+    ) continue;
+
+    const name = sessionNameFor(task.id);
+    let killed = false;
+    try {
+      const proc = Bun.spawnSync(
+        [bin, ...socketArgs, "kill-session", "-t", `=${name}`],
+        { stdin: "ignore", stdout: "ignore", stderr: "ignore", env: tmuxClientEnv() },
+      );
+      killed = proc.exitCode === 0;
+    } catch {
+      killed = false;
+    }
+    if (!killed) continue;
+    released.push(task.id);
+
+    // Only Claude has a resume contract. Other harnesses are one-shot; a
+    // leftover session dying on quit is cleanup, not a context change the
+    // transcript needs to explain.
+    if (kind !== "claude-code") continue;
+    const recent = runs.listForTask(task.id)[0];
+    if (!recent) continue;
+    const data = findLastClaudeSessionId(task.id)
+      ? "session released on quit — next message will resume it"
+      : "session released on quit — no saved session id, next message starts a fresh context";
+    try {
+      if (runs.lastEventData(recent.id) !== data) {
+        runs.appendEvent(recent.id, "status", data);
+      }
+    } catch {
+      /* the process is on the way out; the kill already happened */
+    }
+  }
+  return { released };
+}
+
+/** Once per process. `before-quit` and the `exit` hook both call this so a
+ *  quit path that skips one of them still releases, without a second pass
+ *  of `kill-session` forks. */
+let settledSessionsReleasedOnQuit = false;
+export function releaseSettledSessionsOnQuit(): { released: string[] } {
+  if (settledSessionsReleasedOnQuit) return { released: [] };
+  settledSessionsReleasedOnQuit = true;
+  return releaseSettledSessionsSync();
 }
 
 /**

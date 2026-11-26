@@ -65,7 +65,7 @@ function runPanel(page: Page): Locator {
 }
 
 function taskCard(page: Page, title: string): Locator {
-  return page.locator('[class*="cursor-grab"]').filter({ hasText: title });
+  return page.locator('[data-testid="task-card"]').filter({ hasText: title });
 }
 
 test("a drifted worktree opens a terminal in place and every surface shows the live branch", async ({ page, request, freshBackend }) => {

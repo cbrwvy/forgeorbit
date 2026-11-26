@@ -34,7 +34,7 @@ function fakeTmux(stdout: string, code = 0) {
 }
 
 test("panePidFor: exact session-name match on the list-panes listing", async () => {
-  const restore = fakeTmux("agetor-other\t111\nagetor-x\t4242\nagetor-x2\t9\n");
+  const restore = fakeTmux("agetor-other 111\nagetor-x 4242\nagetor-x2 9\n");
   try {
     expect(await panePidFor("agetor-x")).toBe(4242);
     expect(await panePidFor("agetor-x2")).toBe(9);
@@ -43,23 +43,52 @@ test("panePidFor: exact session-name match on the list-panes listing", async () 
 });
 
 test("panePidFor: a name prefix never matches (agetor-x must not read agetor-x2's pid)", async () => {
-  const restore = fakeTmux("agetor-x2\t9\n");
+  const restore = fakeTmux("agetor-x2 9\n");
   try { expect(await panePidFor("agetor-x")).toBeNull(); } finally { restore(); }
 });
 
 test("panePidFor: the first listed pane wins when the user split the window", async () => {
-  const restore = fakeTmux("agetor-x\t4242\nagetor-x\t5151\n");
+  const restore = fakeTmux("agetor-x 4242\nagetor-x 5151\n");
   try { expect(await panePidFor("agetor-x")).toBe(4242); } finally { restore(); }
 });
 
 test("panePidFor: an empty/unparseable pid field is null, never 0 (tmux 3.6a empty-format trap)", async () => {
-  for (const out of ["agetor-x\t\n", "agetor-x\tabc\n", "agetor-x\t0\n", "agetor-x\n", ""]) {
+  for (const out of ["agetor-x \n", "agetor-x abc\n", "agetor-x 0\n", "agetor-x\n", ""]) {
     const restore = fakeTmux(out);
     try { expect(await panePidFor("agetor-x")).toBeNull(); } finally { restore(); }
   }
 });
 
 test("panePidFor: a failing tmux is null", async () => {
-  const restore = fakeTmux("agetor-x\t4242\n", 1);
+  const restore = fakeTmux("agetor-x 4242\n", 1);
   try { expect(await panePidFor("agetor-x")).toBeNull(); } finally { restore(); }
+});
+
+test("panePidFor: a session name that itself contains a space is matched whole", async () => {
+  const restore = fakeTmux("my session 77\nmy 5\n");
+  try {
+    expect(await panePidFor("my session")).toBe(77);
+    expect(await panePidFor("my")).toBe(5);
+  } finally { restore(); }
+});
+
+test("panePidFor: reads the pid of a real tmux session (tmux 3.8 turns a TAB in -F output into '_')", async () => {
+  const bin = Bun.which("tmux");
+  if (!bin) return;
+  const prevBin = process.env.AGETOR_TMUX_BIN;
+  const prevSocket = process.env.AGETOR_TMUX_SOCKET;
+  const socket = `agetor-panepid-${process.pid}`;
+  process.env.AGETOR_TMUX_BIN = bin;
+  process.env.AGETOR_TMUX_SOCKET = socket;
+  try {
+    const started = Bun.spawnSync([bin, "-L", socket, "new-session", "-d", "-s", "agetor-real-pane", "sleep", "30"]);
+    expect(started.exitCode).toBe(0);
+    const pid = await panePidFor("agetor-real-pane");
+    expect(pid).not.toBeNull();
+    expect(() => process.kill(pid!, 0)).not.toThrow();
+  } finally {
+    Bun.spawnSync([bin, "-L", socket, "kill-server"]);
+    if (prevBin === undefined) delete process.env.AGETOR_TMUX_BIN; else process.env.AGETOR_TMUX_BIN = prevBin;
+    if (prevSocket === undefined) delete process.env.AGETOR_TMUX_SOCKET; else process.env.AGETOR_TMUX_SOCKET = prevSocket;
+  }
 });

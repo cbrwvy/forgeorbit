@@ -1,3 +1,6 @@
+import { intlLocale, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { History } from "lucide-react";
 import { api, type SentMessageItem } from "@/lib/api";
@@ -28,7 +31,7 @@ interface CleanedItem {
 }
 
 function formatTime(ts: number): string {
-  return new Date(ts).toLocaleString(undefined, {
+  return new Date(ts).toLocaleString(intlLocale(), {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -51,6 +54,7 @@ function formatTime(ts: number): string {
  * cleaned text (first occurrence wins — items arrive newest-first).
  */
 export function MessageHistoryPicker({ taskId, disabled, onPick, className }: Props) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<CleanedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +122,7 @@ export function MessageHistoryPicker({ taskId, disabled, onPick, className }: Pr
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load message history.");
+        setError(err instanceof Error ? err.message : tr("common.failed_to_load_message_history"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -133,8 +137,8 @@ export function MessageHistoryPicker({ taskId, disabled, onPick, className }: Pr
         data-testid="message-history-trigger"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        title="Insert a past message"
-        aria-label="Insert a past message"
+        title={tr("tasks.insert_a_past_message")}
+        aria-label={tr("tasks.insert_a_past_message")}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
@@ -160,15 +164,13 @@ export function MessageHistoryPicker({ taskId, disabled, onPick, className }: Pr
           className="absolute bottom-full right-0 z-50 mb-1 w-80 max-h-64 overflow-y-auto rounded-md border border-border bg-card text-card-foreground shadow-xl"
         >
           {loading && (
-            <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+            <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="common.loading" /></p>
           )}
           {!loading && error && (
             <p className="px-3 py-2 text-xs text-destructive">{error}</p>
           )}
           {!loading && !error && items !== null && items.length === 0 && (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              No past messages yet.
-            </p>
+            <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="tasks.no_past_messages_yet" />{" "}</p>
           )}
           {!loading && !error && items !== null && items.length > 0 && (
             <ul className="py-1" role="listbox">

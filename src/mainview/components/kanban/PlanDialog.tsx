@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -23,30 +25,23 @@ import type { AgentKind, Task, TaskPlan } from "../../../shared/types.ts";
  *  one-way import (RunPanel -> PlanDialog) since RunPanel already imports the
  *  `PlanDialog` component from this module. */
 export function PlanStatusBadge({ status }: { status: TaskPlan["status"] }) {
+  useUILocale();
   switch (status) {
     case "pending":
       return (
-        <Badge variant="outline" className="border-primary/50 text-primary">
-          Awaiting approval
-        </Badge>
+        <Badge variant="outline" className="border-primary/50 text-primary"><I18nText id="common.awaiting_approval" />{" "}</Badge>
       );
     case "approved":
       return (
-        <Badge variant="outline" className="border-success/50 text-success">
-          Approved
-        </Badge>
+        <Badge variant="outline" className="border-success/50 text-success"><I18nText id="common.approved" />{" "}</Badge>
       );
     case "superseded":
       return (
-        <Badge variant="outline" className="border-muted-foreground/40 text-muted-foreground">
-          Superseded
-        </Badge>
+        <Badge variant="outline" className="border-muted-foreground/40 text-muted-foreground"><I18nText id="tasks.superseded" />{" "}</Badge>
       );
     case "rejected":
       return (
-        <Badge variant="outline" className="border-danger/50 text-danger">
-          Rejected
-        </Badge>
+        <Badge variant="outline" className="border-danger/50 text-danger"><I18nText id="common.rejected" />{" "}</Badge>
       );
   }
 }
@@ -98,6 +93,7 @@ interface Props {
  * edit/approve/revert affordances, per docs/plans/claude-code-plan-mode-and-todo-tracker.md T4.
  */
 export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focusComposer }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const pending = plan.status === "pending";
   const approved = plan.status === "approved";
   // Claude plans are read-only history — approval already happened (or
@@ -118,7 +114,7 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
   // trusted tier as the transcript — not third-party markdown.
   const mdImageScope = useMemo<MdImageScope>(
     () => ({ taskId: task.id, roots: [task.worktreePath, task.workdir], allowLocal: true }),
-    [task.id, task.worktreePath, task.workdir],
+    [task.id, task.worktreePath, task.workdir, uiLocale],
   );
 
   // Local draft text — seeded once from the plan the dialog opened with (this
@@ -240,7 +236,7 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
   const checkNoPendingInteractions = async () => {
     const list = await api.listPendingInteractions(task.id);
     if (list.length > 0) {
-      throw new Error("A prompt is waiting for a response on this task — resolve it, then approve the plan.");
+      throw new Error(tr("common.a_prompt_is_waiting_for_a_response_on"));
     }
   };
 
@@ -352,23 +348,19 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
         <div className="min-w-0">
           <div id="plan-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
             <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">{plan.name ?? "Implementation plan"}</span>
+            <span className="truncate">{plan.name ?? tr("common.implementation_plan")}</span>
           </div>
           <div className="mt-1 flex items-center gap-2">
             <PlanStatusBadge status={plan.status} />
             {plan.status === "superseded" && (
-              <span className="text-[10px] text-muted-foreground">
-                A newer plan replaced this one before it was approved.
-              </span>
+              <span className="text-[10px] text-muted-foreground"><I18nText id="tasks.a_newer_plan_replaced_this_one_before_it" />{" "}</span>
             )}
             {plan.status === "rejected" && claude && (
-              <span className="text-[10px] text-muted-foreground">
-                Claude's plan was declined or the turn was interrupted before approval.
-              </span>
+              <span className="text-[10px] text-muted-foreground"><I18nText id="tasks.claude_s_plan_was_declined_or_the_turn" />{" "}</span>
             )}
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => requestClose()} aria-label="Close">
+        <Button variant="ghost" size="icon" onClick={() => requestClose()} aria-label={tr("common.close")}>
           <X className="size-4" />
         </Button>
       </header>
@@ -383,9 +375,7 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
                 "rounded-md px-2 py-1 text-[11px] font-medium uppercase tracking-wide",
                 mode === "preview" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40",
               )}
-            >
-              Preview
-            </button>
+            ><I18nText id="common.preview" />{" "}</button>
             <button
               type="button"
               onClick={() => setMode("edit")}
@@ -394,9 +384,7 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
                 "rounded-md px-2 py-1 text-[11px] font-medium uppercase tracking-wide disabled:opacity-50",
                 mode === "edit" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted/40",
               )}
-            >
-              Edit
-            </button>
+            ><I18nText id="common.edit" />{" "}</button>
           </div>
         )}
         {editable && mode === "edit" ? (
@@ -424,9 +412,7 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
       <div className="shrink-0 border-t border-border/60 p-3">
         {sentButUnconfirmed ? (
           <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="size-3.5 shrink-0" /> The approval was delivered to the agent, but the plan record
-            could not be updated — it may refresh shortly.
-          </div>
+            <Info className="size-3.5 shrink-0" />{" "}<I18nText id="tasks.the_approval_was_delivered_to_the_agent_but" />{" "}</div>
         ) : error && (
           <div className="mb-2 flex items-center gap-2 text-xs text-danger">
             <AlertCircle className="size-3.5 shrink-0" /> {error}
@@ -434,13 +420,9 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
         )}
         <div className="flex items-center justify-end gap-2">
           {editable && edited && (
-            <Button size="sm" variant="outline" onClick={() => void doRevert()} disabled={busy}>
-              Revert Changes
-            </Button>
+            <Button size="sm" variant="outline" onClick={() => void doRevert()} disabled={busy}><I18nText id="tasks.revert_changes" />{" "}</Button>
           )}
-          <Button size="sm" variant="secondary" onClick={chatAboutIt} disabled={busy}>
-            Chat about it
-          </Button>
+          <Button size="sm" variant="secondary" onClick={chatAboutIt} disabled={busy}><I18nText id="tasks.chat_about_it" />{" "}</Button>
           {editable && (
             <Button
               size="sm"
@@ -448,38 +430,28 @@ export function PlanDialog({ task, plan, agentKind, onClose, onPlanUpdated, focu
               disabled={busy || sentButUnconfirmed}
             >
               {saving && <Loader2 className="mr-1 size-3 animate-spin" />}
-              {edited ? "Save & Approve" : "Approve Plan"}
+              {edited ? tr("common.save_approve") : tr("common.approve_plan")}
             </Button>
           )}
           {approved && (
-            <Button size="sm" disabled>
-              Approved
-            </Button>
+            <Button size="sm" disabled><I18nText id="common.approved" />{" "}</Button>
           )}
         </div>
       </div>
 
       {confirmClose && (
         <Dialog open onClose={() => setConfirmClose(null)} labelledBy="plan-dialog-unsaved-title" className="max-w-sm">
-          <h2 id="plan-dialog-unsaved-title" className="text-sm font-semibold">
-            You have unsaved plan edits
-          </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Save your edits as a draft before closing, or discard them.
-          </p>
+          <h2 id="plan-dialog-unsaved-title" className="text-sm font-semibold"><I18nText id="tasks.you_have_unsaved_plan_edits" />{" "}</h2>
+          <p className="mt-2 text-xs text-muted-foreground"><I18nText id="tasks.save_your_edits_as_a_draft_before_closing" />{" "}</p>
           {closeError && (
             <div className="mt-2 flex items-center gap-2 text-xs text-danger">
               <AlertCircle className="size-3.5 shrink-0" /> {closeError}
             </div>
           )}
           <div className="mt-4 flex justify-end gap-2">
-            <Button variant="outline" onClick={closeWithoutSaving} disabled={closeSaving}>
-              Close without saving
-            </Button>
+            <Button variant="outline" onClick={closeWithoutSaving} disabled={closeSaving}><I18nText id="tasks.close_without_saving" />{" "}</Button>
             <Button onClick={() => void saveAndClose()} disabled={closeSaving}>
-              {closeSaving && <Loader2 className="mr-1 size-3 animate-spin" />}
-              Save & close
-            </Button>
+              {closeSaving && <Loader2 className="mr-1 size-3 animate-spin" />}<I18nText id="tasks.save_close" />{" "}</Button>
           </div>
         </Dialog>
       )}

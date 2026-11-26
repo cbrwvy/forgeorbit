@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoApp, openAllTasks } from "./helpers";
 import { startGitHubStub, type GitHubStub, type StubRoute } from "./github-stub";
 
 /**
@@ -466,6 +466,7 @@ test.describe("agent profile picker in the shared launch dialogs", () => {
     // task fresh from a clean board.
     await page.goto("about:blank");
     await gotoApp(page, backend.bootBase);
+    await openAllTasks(page);
 
     // Transcript: the injected "Agent instructions" block precedes the
     // issue-derived "Your task:" body.

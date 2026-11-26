@@ -298,7 +298,7 @@ async function closeTaskPanel(page: Page): Promise<void> {
  *  anything inside the run panel or the context menu. Mirrors
  *  `e2e/task-context-menu.spec.ts`'s identical helper. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 /**

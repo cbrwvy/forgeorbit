@@ -1,0 +1,146 @@
+{
+  "base": "23c702d7134a3cf01aa9e5ce3b0e75835eacc891",
+  "totalPass": 406,
+  "totalFail": 0,
+  "suiteCount": 14,
+  "suites": [
+    {
+      "suite": "src/bun/migrate.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 43,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/portfolio-adapter.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 28,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/shared/portfolio/portfolio.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 40,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/usage/poller.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 11,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/account-usage.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 13,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/mainview/lib/usage.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 48,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/agent-profiles.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 33,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/shared/agent-profile.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 53,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/project-manager.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 32,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/portfolio-manager.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 26,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/shared/estimation/estimate.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 39,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/account-core.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 32,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/account-migration.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 2,
+        "fail": 0
+      }
+    },
+    {
+      "suite": "src/bun/account-endpoint.test.ts",
+      "exit": 0,
+      "counts": {
+        "pass": 6,
+        "fail": 0
+      }
+    }
+  ],
+  "checks": {
+    "bun run typecheck": "PASS",
+    "git diff --check": "PASS"
+  },
+  "isolation": "Each suite ran in a separate Bun process with temporary home/data directories, offline usage and fake CLI drivers. New account endpoint tests block process launches and non-local fetches. No real provider acceptance claimed.",
+  "sha256": {
+    "src/bun/account-core.test.ts": "07d6b3ea26f1b9659b9e8fcacb1330728a11e21df3e3ed8cb78bcad94da8cdf3",
+    "src/bun/account-core.ts": "24b2ab35250225cb042a7e07900231285b5dd528f24493cba1a0a47d234e13b7",
+    "src/bun/account-endpoint.test.ts": "3676f66f4ff9f23f7f77fea01ea4c87a1ae5f62ea8c08e2d0e4c6b22f2d5879a",
+    "src/bun/account-http.ts": "a7ffe1083c4fdc90b87762a6e9163907727ada9cfc7e022ad4d9f1d234da6b67",
+    "src/bun/account-migration.test.ts": "aa124c2a187330ec81e72a2e4a7da9bf7f76da8d7e50f83249d464cbd6f92b01",
+    "src/bun/account-portfolio.ts": "e5844ae24369bf5734f2608d5867230e765e31d718097ab3f31346f6723f1edc",
+    "src/bun/account-usage-bridge.ts": "27da0fc293aa32d6a2d91e0d53677e0f8a4e6ea55d54720ecc149ab43c2c660b",
+    "src/bun/db.ts": "22a922cd329d6d0c5a1f0622cc1f40f89ba47c9462708a8f7b1c95021e21f119",
+    "src/bun/migrate.test.ts": "74781505fc34d806c17f8216adff38fa0ee98420f2b130ab44f639e3409204bb",
+    "src/bun/migrations/076_account_quota_core.sql": "b9cc442de9f67e8ba31d3fe34e73562fe94c6607fad8e519203c345fea6b56a0",
+    "src/bun/migrations/index.ts": "08d6193e6ae5e176e70354e90ed628519b5104f345f24cb91a1b1669471df534",
+    "src/bun/portfolio-adapter.test.ts": "ce0080a268ef299b0739c9c48b5947e5fc2d1420359c7fe5c2df6a4d53ed9dd6",
+    "src/bun/portfolio-adapter.ts": "8ea716b62f4abebfd2d9fdee2833e908988102d4dd772689a2f34fb2681e39ef",
+    "src/bun/portfolio-http.ts": "b0a02b73105f293dcf7a9bbef4842c50da480b021a5073c8d1a869a3ae15fb93",
+    "src/bun/portfolio-manager.ts": "7e77d0a2a6e97512889a4e364db3e23c964f951208264024db4b3d747a5b8c87",
+    "src/bun/server.ts": "d41e9f18b2d20c0e9251e4f81d3fb7e2f01da985c6e47a44712620fa34298c53",
+    "src/shared/accounts/capabilities.ts": "d6a02bac155c4755aecc02d3d2459decace8080d6e46f97b67eb2694f3204689",
+    "src/shared/accounts/resolve.ts": "f05be4ef4b7b4bf1f8f0f7d940b1a548d83e7f486486c221685c3ed0dff8f408",
+    "src/shared/accounts/types.ts": "5a6f695677285940c4ab6a068a67e3c1d96e047eddfe696760d0ef95836ad904"
+  }
+}

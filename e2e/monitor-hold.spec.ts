@@ -153,7 +153,7 @@ async function openTask(page: Page, title: string) {
  *  styling, unique to board cards; the run panel's `<aside>` never has it),
  *  mirroring `e2e/unread-indicator.spec.ts`'s identical helper. */
 function taskCard(page: Page, title: string) {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 /** Scopes a locator to one kanban column's container div by its visible
@@ -171,7 +171,7 @@ function boardColumn(page: Page, label: string) {
 
 /** True once the given task's card renders inside the named column. */
 function taskInColumn(page: Page, label: string, title: string) {
-  return boardColumn(page, label).locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return boardColumn(page, label).locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 test.describe("claude code monitor hold", () => {

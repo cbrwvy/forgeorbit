@@ -1,16 +1,20 @@
+import { t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { iconForRef } from "@/lib/file-icons";
 import { cn } from "@/lib/utils";
 import { searchProjectFiles, type FileScope } from "@/lib/use-project-files";
-import { findActiveAtQuery, formatAtToken, MAX_PROJECT_FILES } from "../../../shared/at-refs.ts";
+import { findActiveAtQuery, formatAtToken } from "../../../shared/at-refs.ts";
 import { descendInto, filterFileEntries, fuzzyPathMatch, type FileEntry } from "../../../shared/at-file-filter.ts";
 
 interface Props {
   /** File/directory entries to suggest, scoped to the surface's project +
-   *  branch/worktree (see `useProjectFiles`). Empty list disables the
-   *  popover regardless of the caret position. */
+   *  branch/worktree (see `useProjectFiles`). */
   entries: FileEntry[];
-  /** True when the underlying listing hit the server's file-count cap — a
+  /** Explicit false enables the empty-state notice after loading. */
+  loading?: boolean;
+  /** True when the underlying listing hit a server discovery limit — a
    *  muted footer row tells the user to keep typing to narrow instead of
    *  silently showing an incomplete set with no explanation, UNLESS
    *  `fileScope` is also given (see that prop's doc), in which case the
@@ -97,7 +101,8 @@ function landCaret(el: HTMLTextAreaElement, caret: number, next: string) {
  * misreports a real search as "nothing found" — while a request is in flight
  * or unavailable.
  */
-export function AtFileAutocomplete({ entries, truncated, value, onChange, textareaRef, placement = "below", fileScope, error }: Props) {
+export function AtFileAutocomplete({ entries, loading, truncated, value, onChange, textareaRef, placement = "below", fileScope, error }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const [caret, setCaret] = useState<number>(0);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -118,7 +123,7 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
     };
   }, [textareaRef]);
 
-  const slice = useMemo<Slice | null>(() => findActiveAtQuery(value, caret), [value, caret]);
+  const slice = useMemo<Slice | null>(() => findActiveAtQuery(value, caret), [value, caret, uiLocale]);
 
   // Escape dismisses the popover WITHOUT moving the caret — identical
   // reasoning to SlashAutocomplete's `dismissedSlice`: forcing the caret to
@@ -138,7 +143,7 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
   const filtered = useMemo<FileEntry[]>(() => {
     if (!slice) return [];
     return filterFileEntries(entries, slice.query, 50);
-  }, [entries, slice]);
+  }, [entries, slice, uiLocale]);
 
   // --- Truncated-scope fallback: server-side search over the full listing --
   // Only consulted when the base listing is `truncated` AND a scope is
@@ -208,6 +213,7 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
   // (not `rows`) is the load-bearing half: a stale error string next to a
   // later-successful listing must never override real suggestions.
   const errorOpen = slice !== null && !isDismissed && !open && entries.length === 0 && !!error;
+  const emptyOpen = slice !== null && !isDismissed && !open && !error && loading === false && !!fileScope;
   const listboxId = useId();
 
   // ARIA combobox wiring (WAI-ARIA 1.2 pattern for an input with a popup
@@ -324,9 +330,9 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
     const el = textareaRef.current;
     if (!el) return;
     const onKey = (e: KeyboardEvent) => {
-      // Error-notice mode handles ONLY Escape (dismiss) — everything else,
+      // Notice mode handles ONLY Escape (dismiss) — everything else,
       // Enter-to-send included, must behave as if no popover were up.
-      if (errorOpen) {
+      if (errorOpen || emptyOpen) {
         if (e.key === "Escape") {
           e.preventDefault();
           if (slice) setDismissedSlice(slice);
@@ -360,9 +366,9 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
     // `commit`/`descend` close over the current value/slice; rebinding on
     // those changes keeps the closure fresh without holding a stale snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, errorOpen, rows, active, value, slice?.start, slice?.end]);
+  }, [open, errorOpen, emptyOpen, rows, active, value, slice?.start, slice?.end]);
 
-  if (!open && !errorOpen) return null;
+  if (!open && !errorOpen && !emptyOpen) return null;
 
   return (
     <div
@@ -378,13 +384,16 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
       )}
     >
       {errorOpen && (
-        <p role="status" data-testid="at-file-error" className="px-3 py-2 text-[11px] text-warning">
-          Couldn't list this project's files — @ suggestions unavailable
-          {error ? <span className="block truncate text-[10px] text-muted-foreground">{error}</span> : null}
+        <p role="status" data-testid="at-file-error" className="px-3 py-2 text-[11px] text-warning"><I18nText id="tasks.couldn_t_list_this_project_s_files_suggestions" />{" "}{error ? <span className="block truncate text-[10px] text-muted-foreground">{error}</span> : null}
+        </p>
+      )}
+      {emptyOpen && (
+        <p role="status" data-testid="at-file-empty" className="px-3 py-2 text-[11px] text-muted-foreground">
+          <I18nText id={truncated ? "tasks.file_search_limited_empty" : "tasks.no_matching_project_files"} />
         </p>
       )}
       {open && (
-      <ul ref={listRef} role="listbox" id={listboxId} aria-label="Project file suggestions" className="py-1">
+      <ul ref={listRef} role="listbox" id={listboxId} aria-label={tr("tasks.project_file_suggestions")} className="py-1">
         {rows.map((entry, i) => {
           const Icon = iconForRef(entry);
           const match = slice ? fuzzyPathMatch(slice.query, entry.path) : null;
@@ -422,13 +431,9 @@ export function AtFileAutocomplete({ entries, truncated, value, onChange, textar
                   itself be partial. That `truncated` flag on the q-mode
                   response isn't plumbed up here; this copy is worded to stay
                   true whether or not it was hit, rather than overclaiming
-                  coverage. */}
-              Large repo — matches searched server-side
-            </li>
+                  coverage. */}<I18nText id="tasks.file_search_limited_remote" />{" "}</li>
           ) : (
-            <li className="px-3 py-1.5 text-[10px] text-muted-foreground">
-              Showing the first {MAX_PROJECT_FILES.toLocaleString()} files — keep typing to narrow
-            </li>
+            <li className="px-3 py-1.5 text-[10px] text-muted-foreground"><I18nText id="tasks.file_search_limited" /></li>
           )
         )}
       </ul>

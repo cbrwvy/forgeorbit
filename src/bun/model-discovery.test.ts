@@ -274,7 +274,7 @@ test("refreshAllModels: claude-code's kind-level list has no discoverer (always 
   const events: AppEvent[] = [];
   const unsubscribe = subscribeAppEvents((e) => events.push(e));
   try {
-    await scheduler.refreshAllModels();
+    await scheduler.refreshAllModels({ codexProcessConsent: true });
     for (const e of events) {
       if (e.type === "agent_models_changed") expect(e.harnessIds).not.toContain("claude-code");
     }
@@ -291,7 +291,7 @@ test("refreshAllModels: broadcasts agent_models_changed with the changed harness
     await withFxBin(plantFakeFxModelsBin(`echo '{"ids":["m1","m2"]}'; exit 0`), async () => {
       const created = insertFxHarness({ id: "fx-broadcast-live" });
 
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
       const changeEvents = events.filter((e): e is Extract<AppEvent, { type: "agent_models_changed" }> => e.type === "agent_models_changed");
       expect(changeEvents.length).toBeGreaterThanOrEqual(1);
       const ourEvent = changeEvents.find((e) => e.harnessIds.includes(created.id));
@@ -300,7 +300,7 @@ test("refreshAllModels: broadcasts agent_models_changed with the changed harness
       events.length = 0;
 
       // Same catalog again -> no change for our harness -> not broadcast again.
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
       for (const e of events) {
         if (e.type === "agent_models_changed") expect(e.harnessIds).not.toContain(created.id);
       }
@@ -318,12 +318,12 @@ test("refreshHarnessModels: probing one fx harness broadcasts that harness's id 
     const created = insertFxHarness({ id: "fx-single-refresh" });
     // Seed a non-broadcasting baseline first publish.
     await withFxBin(plantFakeFxModelsBin(`exit 1`), async () => {
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
     });
     events.length = 0;
 
     await withFxBin(plantFakeFxModelsBin(`echo '{"ids":["fresh"]}'; exit 0`), async () => {
-      await scheduler.refreshHarnessModels(created.id);
+      await scheduler.refreshHarnessModels(created.id, { codexProcessConsent: true });
     });
     const changeEvents = events.filter((e): e is Extract<AppEvent, { type: "agent_models_changed" }> => e.type === "agent_models_changed");
     expect(changeEvents.some((e) => e.harnessIds.includes(created.id))).toBe(true);
@@ -355,7 +355,7 @@ test("refreshHarnessModels: a known non-fx harness id (e.g. codex, a real built-
   resetAll();
   const codexBin = plantFakeCodexAppServer({ pages: [[{ id: "gpt-9-test" }]] });
   await withCodexBin(codexBin, async () => {
-    await expect(scheduler.refreshHarnessModels("codex")).resolves.toBeUndefined();
+    await expect(scheduler.refreshHarnessModels("codex", { codexProcessConsent: true })).resolves.toBeUndefined();
     expect(discovery.getDiscoveredModels("codex")).toEqual([{ id: "gpt-9-test", label: "gpt-9-test" }]);
   });
 });
@@ -377,7 +377,7 @@ test("refreshHarnessModels: an efforts-only catalog change (same ids, different 
     // First refresh (resetAll() cleared previousSnapshot, so this is the
     // "first publish" — any non-empty harness catalog counts as changed).
     await withCodexBin(plantFakeCodexAppServer({ pages: [[{ id: "m", efforts: ["low", "high"] }]] }), async () => {
-      await scheduler.refreshHarnessModels("codex");
+      await scheduler.refreshHarnessModels("codex", { codexProcessConsent: true });
     });
     expect(discovery.getDiscoveredModels("codex")).toEqual([{ id: "m", label: "m", efforts: ["low", "high"] }]);
     let changeEvents = events.filter((e): e is Extract<AppEvent, { type: "agent_models_changed" }> => e.type === "agent_models_changed");
@@ -387,7 +387,7 @@ test("refreshHarnessModels: an efforts-only catalog change (same ids, different 
     // Same id ("m"), but the reported effort list grew -> snapshot key
     // changed even though the id set didn't -> publishes again.
     await withCodexBin(plantFakeCodexAppServer({ pages: [[{ id: "m", efforts: ["low", "high", "ultra"] }]] }), async () => {
-      await scheduler.refreshHarnessModels("codex");
+      await scheduler.refreshHarnessModels("codex", { codexProcessConsent: true });
     });
     expect(discovery.getDiscoveredModels("codex")).toEqual([{ id: "m", label: "m", efforts: ["low", "high", "ultra"] }]);
     changeEvents = events.filter((e): e is Extract<AppEvent, { type: "agent_models_changed" }> => e.type === "agent_models_changed");
@@ -397,7 +397,7 @@ test("refreshHarnessModels: an efforts-only catalog change (same ids, different 
     // Identical output as the previous refresh -> snapshot key unchanged ->
     // not published again.
     await withCodexBin(plantFakeCodexAppServer({ pages: [[{ id: "m", efforts: ["low", "high", "ultra"] }]] }), async () => {
-      await scheduler.refreshHarnessModels("codex");
+      await scheduler.refreshHarnessModels("codex", { codexProcessConsent: true });
     });
     changeEvents = events.filter((e): e is Extract<AppEvent, { type: "agent_models_changed" }> => e.type === "agent_models_changed");
     expect(changeEvents.some((e) => e.harnessIds.includes("codex"))).toBe(false);
@@ -413,14 +413,14 @@ test("getHarnessModelMap: ready mirrors isDiscoveryReady() — false before any 
   resetAll();
   expect(scheduler.getHarnessModelMap().ready).toBe(false);
   expect(scheduler.getHarnessModelMap().ready).toBe(discovery.isDiscoveryReady());
-  await scheduler.refreshAllModels();
+  await scheduler.refreshAllModels({ codexProcessConsent: true });
   expect(scheduler.getHarnessModelMap().ready).toBe(true);
   expect(scheduler.getHarnessModelMap().ready).toBe(discovery.isDiscoveryReady());
 });
 
 test("getHarnessModelMap: includes the built-in claude-code harness (enabled by default) mapped to the kind-level list", async () => {
   resetAll();
-  await scheduler.refreshAllModels();
+  await scheduler.refreshAllModels({ codexProcessConsent: true });
   const map = scheduler.getHarnessModelMap();
   expect(map.byHarness["claude-code"]).toEqual(discovery.getDiscoveredModels("claude-code"));
 });
@@ -430,7 +430,7 @@ test("getHarnessModelMap: an enabled fx harness is keyed by its own per-harness 
   const homeA = mkdtempSync(path.join(tmpdir(), "agetor-model-discovery-home-map-"));
   await withFxBin(plantHomeBranchingFxBin(homeA), async () => {
     const created = insertFxHarness({ id: "fx-map-live", home: homeA });
-    await scheduler.refreshAllModels();
+    await scheduler.refreshAllModels({ codexProcessConsent: true });
 
     const map = scheduler.getHarnessModelMap();
     expect(map.byHarness[created.id]).toEqual([{ id: "a/one" }]);
@@ -466,7 +466,7 @@ test("refreshAllModels: a full sweep probes each enabled codex harness under its
     await withCodexBin(binA, async () => {
       const created = insertCodexHarness({ id: "codex-2", home: homeB, bin: binB });
 
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
 
       const map = scheduler.getHarnessModelMap();
       expect(map.byHarness["codex"]).toEqual([{ id: "codex-sweep-a", label: "codex-sweep-a" }]);
@@ -501,7 +501,7 @@ test("refreshHarnessModels: refreshing an additional codex harness re-probes onl
     await withCodexBin(binA, async () => {
       const created = insertCodexHarness({ id: "codex-2-refresh", home: homeB, bin: binB });
 
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
       expect(discovery.getDiscoveredModels("codex")).toEqual([{ id: "codex-refresh-a", label: "codex-refresh-a" }]);
       expect(discovery.getHarnessDiscoveredModels(created.id)).toEqual([{ id: "codex-refresh-b1", label: "codex-refresh-b1" }]);
       events.length = 0;
@@ -511,7 +511,7 @@ test("refreshHarnessModels: refreshing an additional codex harness re-probes onl
       // just that harness must see the new models.
       plantFakeCodexAppServer({ dir: dirB, pages: [[{ id: "codex-refresh-b2" }]] });
 
-      await scheduler.refreshHarnessModels(created.id);
+      await scheduler.refreshHarnessModels(created.id, { codexProcessConsent: true });
 
       expect(discovery.getHarnessDiscoveredModels(created.id)).toEqual([{ id: "codex-refresh-b2", label: "codex-refresh-b2" }]);
       // The built-in "codex" kind-level cache must be untouched by a
@@ -543,7 +543,7 @@ test("getHarnessModelMap: an additional codex harness is keyed by its own per-ha
 
     await withCodexBin(binA, async () => {
       const created = insertCodexHarness({ id: "codex-2-map", home: homeB, bin: binB });
-      await scheduler.refreshAllModels();
+      await scheduler.refreshAllModels({ codexProcessConsent: true });
 
       const map = scheduler.getHarnessModelMap();
       expect(map.byHarness[created.id]).toEqual([{ id: "codex-map-b", label: "codex-map-b" }]);
@@ -565,7 +565,7 @@ test("noteHarnessRemoved: prunes the harness's discovered-models cache entry (mi
   resetAll();
   await withFxBin(plantFakeFxModelsBin(`echo '{"ids":["m1"]}'; exit 0`), async () => {
     const created = insertFxHarness({ id: "fx-remove-cache-test" });
-    await scheduler.refreshHarnessModels(created.id);
+    await scheduler.refreshHarnessModels(created.id, { codexProcessConsent: true });
     expect(discovery.getHarnessDiscoveredModels(created.id)).toEqual([{ id: "m1" }]);
 
     harnesses.delete(created.id);
@@ -580,7 +580,7 @@ test("noteHarnessRemoved: prunes an additional codex harness's per-harness disco
   const bin = plantFakeCodexAppServer({ pages: [[{ id: "codex-prune-model" }]] });
   const created = insertCodexHarness({ id: "codex-2-prune", home, bin });
 
-  await scheduler.refreshHarnessModels(created.id);
+  await scheduler.refreshHarnessModels(created.id, { codexProcessConsent: true });
   expect(discovery.getHarnessDiscoveredModels(created.id)).toEqual([{ id: "codex-prune-model", label: "codex-prune-model" }]);
 
   harnesses.delete(created.id);
@@ -657,4 +657,34 @@ test("noteHarnessStatuses: the scheduled debounce timer is unref'd (never itself
   const timer = scheduler.__testing.debounceTimerFor("unref-check");
   expect(timer).toBeDefined();
   expect((timer as unknown as { hasRef: () => boolean }).hasRef()).toBe(false);
+});
+
+
+test("FO-009F: boot sweeps, status transitions and targeted refresh never launch Codex without process consent", async () => {
+  resetAll();
+  const dir = mkdtempSync(path.join(tmpdir(), "fo009f-forbidden-discovery-"));
+  const marker = path.join(dir, "launched");
+  const bin = path.join(dir, "fake-codex");
+  writeFileSync(bin, `#!/bin/sh\nprintf launched > '${marker}'\nexit 1\n`, { mode: 0o700 });
+  const wasEnabled = harnesses.get("codex")?.enabled !== false;
+  harnesses.setEnabled("codex", true);
+  const created = insertCodexHarness({ id: "codex-no-consent", bin });
+  const { existsSync } = await import("node:fs");
+  try {
+    await withCodexBin(bin, async () => {
+      await scheduler.refreshAllModels();
+      await scheduler.refreshHarnessModels("codex");
+      await scheduler.refreshHarnessModels(created.id);
+      const base = { harnessId: created.id, kind: "codex", available: true, path: bin, version: "fixture", loggedIn: true } as HarnessStatus;
+      scheduler.noteHarnessStatuses([base]);
+      scheduler.noteHarnessStatuses([{ ...base, loggedIn: false }]);
+      await Bun.sleep(650);
+      scheduler.startPeriodicDiscovery(20);
+      await Bun.sleep(60);
+      scheduler.stopPeriodicDiscovery();
+      expect(existsSync(marker)).toBe(false);
+      expect(discovery.getDiscoveredModels("codex")).toEqual([]);
+      expect(discovery.getHarnessDiscoveredModels(created.id)).toEqual([]);
+    });
+  } finally { scheduler.stopPeriodicDiscovery(); harnesses.setEnabled("codex", wasEnabled); }
 });

@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useState } from "react";
 import { Folder, GitBranch, Plus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -45,6 +47,7 @@ export function ProjectPicker({
   placement,
   autoSelectFirst,
 }: Props) {
+  useUILocale();
   const [projects, setProjects] = useState<Project[]>([]);
   const [picking, setPicking] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
@@ -109,8 +112,8 @@ export function ProjectPicker({
         disabled={disabled}
         title={title}
         placement={placement}
-        placeholder="Search projects…"
-        emptyLabel={emptyLabel ?? "Select project…"}
+        placeholder={tr("common.search_projects")}
+        emptyLabel={emptyLabel ?? tr("common.select_project")}
         leadingIcon={<Folder className="size-3.5" />}
         displayValue={(v) => basename(v) || v}
         footer={
@@ -122,7 +125,7 @@ export function ProjectPicker({
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent/60 disabled:opacity-50"
             >
               <Plus className="size-3.5" aria-hidden />
-              {picking ? "Opening folder dialog…" : "Browse for folder…"}
+              {picking ? tr("common.opening_folder_dialog") : tr("common.browse_for_folder")}
             </button>
             <button
               type="button"
@@ -130,9 +133,7 @@ export function ProjectPicker({
               onClick={() => setCloneOpen(true)}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent/60"
             >
-              <GitBranch className="size-3.5" aria-hidden />
-              Clone repository…
-            </button>
+              <GitBranch className="size-3.5" aria-hidden /><I18nText id="tasks.clone_repository" />{" "}</button>
           </>
         }
       />

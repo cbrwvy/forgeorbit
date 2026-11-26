@@ -1,7 +1,7 @@
 {
   "name": "forgeorbit",
-  "version": "1.0.2",
-  "description": "Your agents. One orbit. — Local-first AI Agent Orchestrator for macOS Apple Silicon by Lunarian Forge.",
+  "version": "1.0.3",
+  "description": "Your agents. One orbit. — Local-first AI Agent Orchestrator for macOS Apple Silicon.",
   "type": "module",
   "private": true,
   "bin": {
@@ -9,23 +9,30 @@
     "agetor": "./src/cli/index.ts"
   },
   "scripts": {
-    "dev": "AGETOR_DATA_DIR=\"$HOME/.agetor-dev\" AGETOR_API_PORT=4318 electrobun dev --watch",
+    "dev": "AGETOR_DATA_DIR=\"$HOME/.agetor-dev\" AGETOR_API_PORT=4318 bun scripts/dev-native.ts --watch",
     "dev:hmr": "AGETOR_DATA_DIR=\"$HOME/.agetor-dev\" AGETOR_API_PORT=4318 concurrently -k -n vite,bun \"bun run hmr\" \"bun run dev\"",
     "hmr": "vite --port 5173",
     "wipe:dev": "bun scripts/wipe-dev.ts",
     "vendor:tmux": "bun scripts/fetch-tmux.ts",
     "vendor:notifier": "bun scripts/build-notifier.ts",
     "vendor:disclaim": "bun scripts/build-disclaim.ts",
+    "vendor:owner-trust": "bun scripts/build-owner-trust.ts",
+    "vendor:native-computer": "bun scripts/build-native-computer.ts",
+    "vendor:browser": "bun scripts/prepare-browser.ts",
     "verify:vendor": "bun scripts/verify-vendor-signing.ts",
-    "build": "bun run vendor:tmux && bun run vendor:notifier && bun run vendor:disclaim && bun run verify:vendor && vite build && electrobun build && bun scripts/rename-dmg.ts",
-    "build:canary": "bun run vendor:tmux && bun run vendor:notifier && bun run vendor:disclaim && bun run verify:vendor && vite build && electrobun build --env=canary && bun scripts/rename-dmg.ts",
-    "build:stable": "bun run vendor:tmux && bun run vendor:notifier && bun run vendor:disclaim && bun run verify:vendor && vite build && electrobun build --env=stable && bun scripts/rename-dmg.ts",
+    "build": "bun run vendor:tmux && bun run vendor:notifier && bun run vendor:disclaim && bun run vendor:owner-trust && bun run vendor:native-computer && bun run vendor:browser && bun run verify:vendor && vite build && bun scripts/build-native-secure.ts && bun scripts/rename-dmg.ts",
+    "build:local": "bun --no-env-file scripts/build-local.ts",
+    "build:qa-native": "bun --no-env-file scripts/build-qa-native.ts",
+    "build:stable": "bun run vendor:tmux && bun run vendor:notifier && bun run vendor:disclaim && bun run vendor:owner-trust && bun run vendor:native-computer && bun run vendor:browser && bun run verify:vendor && vite build && bun scripts/build-native-secure.ts --env=stable && bun scripts/rename-dmg.ts",
     "build:cli": "bun scripts/build-cli.ts",
     "release": "bun scripts/release.ts",
     "release:build-only": "bun run build:stable && bun scripts/verify-release.ts",
     "release:upload-only": "bun scripts/upload-release.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "version:next": "bun scripts/version.ts",
+    "version:build": "bun scripts/version.ts build",
+    "verify:provenance": "bun scripts/verify-provenance.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -52,17 +59,20 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.2.8",
     "@lobehub/icons": "^5.8.0",
+    "@xenova/transformers": "^2.17.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "@xyflow/react": "^12.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ignore": "7.0.5",
     "ink": "^7.0.5",
     "ink-spinner": "^5.0.0",
     "lucide-react": "^1.14.0",
     "motion": "^13.4",
     "pdfjs-dist": "6.2.108",
     "picocolors": "^1.1.1",
+    "playwright": "^1.62.1",
     "react": "^19.2.6",
     "react-devtools-core": "^6.1.2",
     "react-dom": "^19.2.6",
@@ -73,5 +83,6 @@
   },
   "overrides": {
     "shell-quote": "^1.9.0"
-  }
+  },
+  "forgeorbitBuildNumber": 4
 }

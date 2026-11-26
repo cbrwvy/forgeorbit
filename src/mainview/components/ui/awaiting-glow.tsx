@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 /**
  * The "waiting on you" glow — a separate overlay whose OPACITY pulses,
  * rather than animating `filter: drop-shadow` (or a box-shadow keyframe) on
@@ -14,6 +15,7 @@
  * and the pipeline run view's `StepNode`.
  */
 export function AwaitingGlow() {
+  useUILocale();
   return (
     <span
       aria-hidden

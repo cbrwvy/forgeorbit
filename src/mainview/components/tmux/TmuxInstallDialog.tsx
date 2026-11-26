@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, Copy, Download, Package, RefreshCw, Terminal, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -24,7 +26,7 @@ const INSTALL_COMMANDS: InstallCommand[] = [
   {
     label: "Homebrew",
     cmd: "brew install tmux",
-    hint: "Recommended if you already have Homebrew.",
+    get hint() { return tr("common.recommended_if_you_already_have_homebrew"); },
   },
   {
     label: "MacPorts",
@@ -40,6 +42,7 @@ const INSTALL_COMMANDS: InstallCommand[] = [
  * within the next polling cycle.
  */
 export function TmuxInstallDialog({ open, onClose, onResolved }: Props) {
+  useUILocale();
   const [view, setView] = useState<View>("choice");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +107,7 @@ export function TmuxInstallDialog({ open, onClose, onResolved }: Props) {
               variant="ghost"
               size="icon"
               onClick={showChoice}
-              aria-label="Back"
+              aria-label={tr("common.back")}
             >
               <ChevronLeft className="size-4" />
             </Button>
@@ -113,10 +116,10 @@ export function TmuxInstallDialog({ open, onClose, onResolved }: Props) {
             <Terminal className="size-4" />
           </div>
           <h2 id="tmux-install-title" className="text-base font-semibold">
-            {view === "choice" ? "tmux is required for Claude Code" : "Install tmux"}
+            {view === "choice" ? tr("common.tmux_is_required_for_claude_code") : tr("common.install_tmux")}
           </h2>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
           <X className="size-4" />
         </Button>
       </div>
@@ -152,25 +155,21 @@ function ChoiceView({
   onUseBundled: () => void;
   onShowInstructions: () => void;
 }) {
+  useUILocale();
   return (
     <div className="space-y-4 pt-4 text-sm">
-      <p id="tmux-install-desc" className="text-muted-foreground">
-        ForgeOrbit drives the Claude Code REPL through a per-task{" "}
-        <span className="font-mono text-foreground/80">tmux</span> session, but we
-        couldn't find <span className="font-mono text-foreground/80">tmux</span> on
-        your <span className="font-mono">PATH</span>. Pick how you'd like to
-        resolve this — ForgeOrbit will remember your choice.
-      </p>
+      <p id="tmux-install-desc" className="text-muted-foreground"><I18nText id="projects.forgeorbit_drives_the_claude_code_repl_through_a" />{" "}
+        <span className="font-mono text-foreground/80">tmux</span>{" "}<I18nText id="projects.session_but_we_couldn_t_find" />{" "}<span className="font-mono text-foreground/80">tmux</span>{" "}<I18nText id="projects.on_your" />{" "}<span className="font-mono">PATH</span><I18nText id="projects.pick_how_you_d_like_to_resolve_this" />{" "}</p>
 
       <div className="space-y-2">
         <Option
           ref={useBundledRef}
           icon={<Package className="size-5" />}
-          title="Use ForgeOrbit's bundled tmux"
+          title={tr("projects.use_forgeorbit_s_bundled_tmux")}
           description={
             bundledAvailable === false
-              ? "Not available in this build. Use the manual install option instead."
-              : "Runs the copy of tmux that ships inside ForgeOrbit. No extra installation, works offline."
+              ? tr("common.not_available_in_this_build_use_the_manual")
+              : tr("common.runs_the_copy_of_tmux_that_ships_inside")
           }
           recommended
           disabled={bundledAvailable === false || busy}
@@ -178,8 +177,8 @@ function ChoiceView({
         />
         <Option
           icon={<Download className="size-5" />}
-          title="I'll install tmux myself"
-          description="Show install commands for Homebrew or MacPorts."
+          title={tr("projects.i_ll_install_tmux_myself")}
+          description={tr("projects.show_install_commands_for_homebrew_or_macports")}
           disabled={busy}
           onClick={onShowInstructions}
         />
@@ -207,6 +206,7 @@ const Option = forwardRef<HTMLButtonElement, OptionProps>(function Option(
   { icon, title, description, recommended, disabled, onClick },
   ref,
 ) {
+  useUILocale();
   return (
     <button
       ref={ref}
@@ -227,9 +227,7 @@ const Option = forwardRef<HTMLButtonElement, OptionProps>(function Option(
         <span className="flex items-center gap-2">
           <span className="font-medium">{title}</span>
           {recommended && (
-            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] uppercase text-primary">
-              recommended
-            </span>
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] uppercase text-primary"><I18nText id="common.recommended" />{" "}</span>
           )}
         </span>
         <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -247,12 +245,10 @@ function InstructionsView({
   busy: boolean;
   onRecheck: () => void;
 }) {
+  useUILocale();
   return (
     <div className="space-y-4 pt-4 text-sm">
-      <p className="text-muted-foreground">
-        Run one of these in your terminal, then click <strong>Re-check</strong>{" "}
-        below.
-      </p>
+      <p className="text-muted-foreground"><I18nText id="projects.run_one_of_these_in_your_terminal_then" />{" "}<strong><I18nText id="projects.re_check" /></strong>{" "}<I18nText id="projects.below" />{" "}</p>
       <div className="space-y-2">
         {INSTALL_COMMANDS.map((c) => (
           <CommandRow key={c.label} command={c} />
@@ -260,15 +256,14 @@ function InstructionsView({
       </div>
       <div className="flex justify-end pt-2">
         <Button onClick={onRecheck} disabled={busy}>
-          <RefreshCw className={cn("mr-2 size-3.5", busy && "animate-spin")} />
-          Re-check
-        </Button>
+          <RefreshCw className={cn("mr-2 size-3.5", busy && "animate-spin")} /><I18nText id="projects.re_check" />{" "}</Button>
       </div>
     </div>
   );
 }
 
 function CommandRow({ command }: { command: InstallCommand }) {
+  useUILocale();
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -290,12 +285,10 @@ function CommandRow({ command }: { command: InstallCommand }) {
         >
           {copied ? (
             <>
-              <Check className="size-3" /> Copied
-            </>
+              <Check className="size-3" />{" "}<I18nText id="common.copied" />{" "}</>
           ) : (
             <>
-              <Copy className="size-3" /> Copy
-            </>
+              <Copy className="size-3" />{" "}<I18nText id="common.copy" />{" "}</>
           )}
         </button>
       </div>

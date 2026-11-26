@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { computeAtHighlights, isListedPath } from "@/lib/at-highlight";
@@ -99,6 +100,7 @@ function stylesEqual(a: React.CSSProperties, b: React.CSSProperties): boolean {
  * (inherited-ambient) metrics, not even for one frame.
  */
 export function AtHighlightBackdrop({ textareaRef, value, validPaths, className }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const backdropRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties | null>(null);
 
@@ -180,7 +182,7 @@ export function AtHighlightBackdrop({ textareaRef, value, validPaths, className 
 
   const segments = useMemo(
     () => computeAtHighlights(value, (p, isDirectory) => isListedPath(validPaths, p, isDirectory)),
-    [value, validPaths],
+    [value, validPaths, uiLocale],
   );
 
   return (

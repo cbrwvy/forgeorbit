@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { buildTaskContextMenu, type TaskMenuAction, type TaskMenuGroup } from "./task-context-menu.ts";
+import { EMPTY_QC_STATE } from "../../shared/task-quality-control.ts";
 import type { PipelineRunState, Task, TaskFxRecovery } from "../../shared/types.ts";
 
 /** Minimal hand-built Task fixture, mirroring `task-unread.test.ts`'s
@@ -51,6 +52,7 @@ const ACTION_GROUP: Record<TaskMenuAction, TaskMenuGroup> = {
   "resume-recovery": "primary",
   "cancel-auto-resume": "primary",
   "mark-done": "primary",
+  "admit-inbox": "primary",
   archive: "primary",
   unarchive: "primary",
   diff: "inspect",
@@ -83,6 +85,15 @@ describe("buildTaskContextMenu", () => {
     for (const e of entries) {
       expect(e.group).toBe(ACTION_GROUP[e.action]);
     }
+  });
+
+  test("QC BLOCKED hides mark-done on the review column", () => {
+    const task = makeTask({
+      column: "review",
+      hasOpenableRun: true,
+      qcState: { ...EMPTY_QC_STATE, roundCount: 1, latestVerdict: "BLOCKED" },
+    });
+    expect(actions(buildTaskContextMenu(task, { isOpen: false }))).not.toContain("mark-done");
   });
 
   test("hasOpenableRun: true (review column) -> no start, has mark-done", () => {

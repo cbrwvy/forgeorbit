@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { createPortal } from "react-dom";
 import { Bot, X } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
@@ -61,8 +63,9 @@ export function AgentProfileDetailsDialog({
   harnesses: Harness[];
   onOpenSettingsAgents: (profileId?: string) => void;
 }) {
+  useUILocale();
   const snapshot = task.agentProfile ?? null;
-  const name = snapshot?.name ?? display?.name ?? "Agent";
+  const name = snapshot?.name ?? display?.name ?? tr("common.agent");
   const harnessKind: AgentKind = snapshot?.harnessKind ?? display?.harnessKind ?? "claude-code";
   const harnessLabel = snapshot?.harnessLabel ?? display?.harnessLabel ?? "";
   const harnessId = snapshot?.harness ?? task.agent;
@@ -80,10 +83,10 @@ export function AgentProfileDetailsDialog({
   // longer resolves — not only once the task has run — so `deleted` takes
   // priority over the run-count-based copy below even at zero runs.
   const statusText = deleted
-    ? "Frozen — the agent it was created from no longer exists."
+    ? tr("common.frozen_the_agent_it_was_created_from_no")
     : hasRun
-      ? "Frozen since the task's first run — edits to the agent no longer affect it."
-      : "Follows the live agent until the task's first run.";
+      ? tr("common.frozen_since_the_task_s_first_run_edits")
+      : tr("common.follows_the_live_agent_until_the_task_s");
 
   if (!open) return null;
 
@@ -101,50 +104,48 @@ export function AgentProfileDetailsDialog({
               <Bot className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{name}</span>
               {deleted && (
-                <span className="text-xs font-normal text-warning" data-testid="agent-profile-details-deleted">
-                  (deleted)
-                </span>
+                <span className="text-xs font-normal text-warning" data-testid="agent-profile-details-deleted"><I18nText id="common.deleted" />{" "}</span>
               )}
             </div>
             <p className="mt-1 text-[10px] text-muted-foreground" data-testid="agent-profile-details-status">
               {statusText}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
             <X className="size-4" />
           </Button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <dl className="grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-1.5 text-xs">
-            <dt className="text-muted-foreground">Harness</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.harness" /></dt>
             <dd className="flex min-w-0 flex-wrap items-center gap-1.5">
               <AgentIcon kind={harnessKind} className="size-3.5 shrink-0" />
               <span>{harnessLabel || harnessId}</span>
               <span className="font-mono text-[10px] text-muted-foreground">({harnessId})</span>
-              {harnessDisabled && <span className="text-warning">(harness disabled)</span>}
+              {harnessDisabled && <span className="text-warning"><I18nText id="tasks.harness_disabled" /></span>}
             </dd>
 
-            <dt className="text-muted-foreground">Model</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.model" /></dt>
             <dd className="min-w-0">{model ?? "—"}</dd>
 
-            <dt className="text-muted-foreground">Effort</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.effort" /></dt>
             <dd className="min-w-0">{effort ?? "—"}</dd>
 
-            <dt className="text-muted-foreground">Mode</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.mode" /></dt>
             <dd className="min-w-0">{mode ?? "default"}</dd>
 
             {harnessKind === "cursor" && (
               <>
-                <dt className="text-muted-foreground">Fast</dt>
-                <dd className="min-w-0">{fast ? "on" : "off"}</dd>
+                <dt className="text-muted-foreground"><I18nText id="tasks.fast" /></dt>
+                <dd className="min-w-0">{fast ? tr("common.on") : "off"}</dd>
 
-                <dt className="text-muted-foreground">Max mode</dt>
-                <dd className="min-w-0">{maxMode ? "on" : "off"}</dd>
+                <dt className="text-muted-foreground"><I18nText id="tasks.max_mode_a69890" /></dt>
+                <dd className="min-w-0">{maxMode ? tr("common.on") : "off"}</dd>
               </>
             )}
 
-            <dt className="text-muted-foreground">Skills</dt>
+            <dt className="text-muted-foreground"><I18nText id="common.skills" /></dt>
             <dd className="min-w-0">
               {skills.length > 0 ? (
                 <div className="flex flex-wrap gap-1">
@@ -155,19 +156,19 @@ export function AgentProfileDetailsDialog({
                   ))}
                 </div>
               ) : (
-                <span className="text-muted-foreground">none</span>
+                <span className="text-muted-foreground"><I18nText id="common.none" /></span>
               )}
             </dd>
           </dl>
 
           <div className="mt-3">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Instructions</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground"><I18nText id="common.instructions" /></div>
             {instructions.length > 0 ? (
               <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-snug">
                 {instructions}
               </p>
             ) : (
-              <p className="mt-1 text-xs text-muted-foreground">none</p>
+              <p className="mt-1 text-xs text-muted-foreground"><I18nText id="common.none" /></p>
             )}
           </div>
         </div>
@@ -182,13 +183,9 @@ export function AgentProfileDetailsDialog({
                 onOpenSettingsAgents(task.agentProfileId ?? undefined);
                 onClose();
               }}
-            >
-              Edit in Settings
-            </Button>
+            ><I18nText id="common.edit_in_settings" />{" "}</Button>
           )}
-          <Button size="sm" data-testid="agent-profile-details-close" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" data-testid="agent-profile-details-close" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </div>
       </div>
     </Dialog>,

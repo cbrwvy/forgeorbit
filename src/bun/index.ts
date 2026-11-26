@@ -1,15 +1,35 @@
+import { recoverHeadAuto } from "./head-pm-auto.ts";
 import { writeFileSync, existsSync } from "node:fs";
+import { parentPort } from "node:worker_threads";
 import { isAbsolute } from "node:path";
 import Electrobun, { ApplicationMenu, BrowserWindow, Screen, Updater, Utils } from "electrobun/bun";
 import { rehydratePath } from "./login-path.ts";
-import { startApiServer, API_PORT, API_TOKEN, type ApiNative } from "./server.ts";
+import { startApiServer, disposeActiveBackupService, API_PORT, API_TOKEN, type ApiNative } from "./server.ts";
 import { DEFAULT_API_HOST, resolveApiHost } from "./api-config.ts";
 import { db, harnesses, pidFilePath, tasks, dataDir } from "./db.ts";
-import { reconcileOrphans, rearmFxAutoResumes, sweepArchivedTeardowns, reapIdleSessions, stopFxAutoResumeTimers } from "./orchestrator.ts";
+import { reconcileOrphans, rearmFxAutoResumes, sweepArchivedTeardowns, reapIdleSessions, releaseSettledSessionsOnQuit, stopFxAutoResumeTimers } from "./orchestrator.ts";
 import { initPipelineRunner, reconcilePipelineRuns } from "./pipeline-runner.ts";
+import { initExecutionBatches, recoverExecutionBatches } from "./execution-batches.ts";
+import { initOrchestratedWorkflows, recoverOrchestratedWorkflows } from "./pm-orchestrated-workflow.ts";
+import { initOrchestratedBatches, recoverOrchestratedBatches } from "./pm-orchestrated-batch.ts";
+import { recoverPortfolioDelegations } from "./portfolio-manager.ts";
+import { initEmployeeExecutionTracking, recoverEmployeeExecutions } from "./employee-run.ts";
+import { initHandsoff, recoverHandsoff, stopHandsoffTimers } from "./handsoff/driver.ts";
+import { recoverHandsoffAuthorizations } from "./handsoff/authorization.ts";
+import { initRecurringScheduler, recoverRecurringTasks, stopRecurringScheduler } from "./recurring/scheduler.ts";
+import { recoverBrainContext } from "./brain-context.ts";
+import { recoverBrainProposals } from "./brain-proposals.ts";
+import { recoverBrowserAgentGrants } from "./browser-agent.ts";
+import { recoverNativeAgentGrants } from "./native-computer-agent.ts";
+import { closeLiveBrowserSessionsSync, reconcileBrowserSessionsOnBoot } from "./browser-session.ts";
+import { closeLiveNativeComputerSessionsSync, reconcileNativeComputerOnBoot } from "./native-computer-session.ts";
+import { recoverKnowledgeContext } from "./knowledge-context.ts";
 import { startLagMonitor, stopLagMonitor } from "./event-loop-lag.ts";
 import { scheduleRetention, stopRetentionTimers } from "./retention.ts";
 import { ensureDisclaimedServer } from "./tmux-resolution.ts";
+import { stopInterviewTurnsSync, sweepInterviewLeftovers } from "./project-interview.ts";
+import { reconcileProjectLifecyclesOnBoot } from "./project-lifecycle.ts";
+import { disposeEnvironmentManager, startEnvironmentManager } from "./environment/runtime.ts";
 import { SESSION_REAP_SWEEP_MS, USAGE_POLL_SWEEP_MS, FONT_SIZE_DEFAULT, FONT_SIZE_BASE_PX } from "../shared/types.ts";
 import { pollAllUsage } from "./usage/poller.ts";
 import { resolveThemePreference, resolveFontSizePreference, buildWindowHash } from "./window-url.ts";
@@ -20,11 +40,13 @@ import { getMainWindow, setMainWindow } from "./window.ts";
 import { makeWindowLifecycle, type Frame } from "./window-lifecycle.ts";
 import { focusWindow } from "./window-focus.ts";
 import { repairFrame } from "./screen-frame.ts";
-import { writeCoreCreds, removeCoreCreds, readCoreCreds, probeLiveCore, waitForPortFree } from "./core-creds.ts";
+import { writeCoreCreds, readCoreCreds, probeLiveCore, waitForPortFree } from "./core-creds.ts";
 import { resolveNotifier, resolveNotifierApp, buildNotifierArgs } from "./notifier.ts";
 import { buildTaskDeepLink, parseTaskDeepLink } from "./deep-link.ts";
 import { setPendingOpenTask } from "./pending-open.ts";
 import pkg from "../../package.json" with { type: "json" };
+import { nativeQaRoot } from "./native-qa-state.ts";
+import { markNativeBackendReady, ownNativeCredentials } from "./native-runtime-cleanup.ts";
 
 /** Drop a pid file in the data dir so out-of-process tools (notably
  *  `bun run wipe:dev`) can tell whether an agetor instance is using this
@@ -33,12 +55,8 @@ import pkg from "../../package.json" with { type: "json" };
  *  alive with `kill(pid, 0)` before trusting the file. Best-effort; a
  *  failed write doesn't block boot.
  *
- *  Single-instance enforcement at the application layer is intentionally
- *  absent: macOS Launch Services already dedupes packaged-app launches by
- *  bundle identifier (see `electrobun.config.ts:app.identifier`), so a
- *  double-click in Finder/Spotlight/Dock can't spawn a second process. In
- *  dev mode, dev and prod use different default ports (4318 vs 4317), so
- *  the common stale-process case can't collide. If a port is still held
+ *  The native startup lock above also covers direct launcher invocations,
+ *  which bypass LaunchServices' bundle-identifier deduplication. If a port is still held
  *  by something else, the try/catch around `startApiServer()` below fails
  *  loudly with a useful `lsof` hint rather than silently fighting it. */
 try {
@@ -100,8 +118,12 @@ function installNativeMenu() {
 
 const VITE_PORT = 5173;
 const VITE_URL = `http://localhost:${VITE_PORT}`;
+declare const __FORGEORBIT_LOCAL_BUILD__: boolean | undefined;
 
 async function getMainViewUrl(): Promise<string> {
+  // Personal packages always load their own view, even beside a running Vite.
+  if (typeof __FORGEORBIT_LOCAL_BUILD__ !== "undefined" && __FORGEORBIT_LOCAL_BUILD__) return "views://mainview/index.html";
+  if (nativeQaRoot()) return "views://mainview/index.html";
   const channel = await Updater.localInfo.channel();
   if (channel === "dev") {
     try {
@@ -122,7 +144,7 @@ async function getMainViewUrl(): Promise<string> {
 // `Bun.which("claude")` / "codex" / "tmux" can find what's there. Has to run
 // before the API server starts handling /agents probes. Idempotent and safe
 // in dev runs — the merge dedupes.
-rehydratePath();
+if (!nativeQaRoot()) rehydratePath();
 
 // Mark any runs that were "running" when we last shut down as orphaned, so the
 // kanban doesn't show stuck cards. Awaited (top-level await — this module is
@@ -152,6 +174,9 @@ startLagMonitor({ sampleMs: 100 });
 // a socket auto-starts its server — un-disclaimed, if this didn't run
 // first — leaving every session that server ever hosts un-disclaimed too.
 await ensureDisclaimedServer();
+// FO-003.1: kill the tmux session of any interview turn a previous process
+// left running (crash, force quit), by its exact name, and clear its files.
+await sweepInterviewLeftovers();
 // Subscribe the pipeline runner to the global lifecycle stream BEFORE
 // reconcileOrphans() runs, so a step task's boot-time orphan→ready
 // transition (an ordinary `run-status` "orphaned" event, fired by
@@ -160,6 +185,19 @@ await ensureDisclaimedServer();
 // `running` forever (docs/plans/pipelines.md §3, T3).
 initPipelineRunner();
 await reconcileOrphans();
+reconcileProjectLifecyclesOnBoot();
+await reconcileBrowserSessionsOnBoot();
+await reconcileNativeComputerOnBoot();
+void recoverBrowserAgentGrants();
+await recoverNativeAgentGrants();
+
+// Local environments: reload profiles and probe whatever is still running.
+// Does not spawn and does not signal. A failure here must not block the UI.
+try {
+  await startEnvironmentManager();
+} catch (error) {
+  console.warn(`[environment] manager failed to start: ${error instanceof Error ? error.message : String(error)}`);
+}
 
 // M16: reconcile every pipeline parent whose `pipelineRun` was left mid-flight
 // by a prior process crash/restart — placed right after `reconcileOrphans`
@@ -169,6 +207,34 @@ await reconcileOrphans();
 // `initPipelineRunner()` above) before this does its own pass over parent
 // rows directly.
 const reconciledPipelineRunCount = await reconcilePipelineRuns();
+// Approved execution batches (FO-005C.1): after runs and pipelines are
+// reconciled, restore unfinished batches — a running one comes back
+// paused and a start that was in flight is adopted or held, never
+// relaunched. Nothing new starts until the owner resumes it.
+recoverExecutionBatches();
+recoverHeadAuto();
+recoverOrchestratedWorkflows();
+recoverOrchestratedBatches();
+const { recoverProviderRecoveries } = await import("./pm-provider-recovery.ts");
+recoverProviderRecoveries();
+const { recoverQcRecoveryGrants } = await import("./qc-recovery.ts");
+await recoverQcRecoveryGrants();
+recoverPortfolioDelegations();
+recoverEmployeeExecutions();
+const { recoverTaskWorkspaces } = await import("./task-workspace.ts");
+recoverTaskWorkspaces();
+void recoverKnowledgeContext();
+void recoverBrainContext();
+recoverBrainProposals();
+initExecutionBatches();
+initOrchestratedWorkflows();
+initOrchestratedBatches();
+initEmployeeExecutionTracking();
+initHandsoff();
+recoverHandsoffAuthorizations();
+recoverHandsoff();
+initRecurringScheduler();
+void recoverRecurringTasks();
 if (reconciledPipelineRunCount > 0) {
   console.log(`[agetor] reconciled ${reconciledPipelineRunCount} pipeline run(s)`);
 }
@@ -437,6 +503,7 @@ try {
 // Publish the per-launch API port + token so the CLI (and a second app launch)
 // can discover and authenticate to this core. `kind: "app"` tells a future
 // daemon spawn that the richer surface owns the port.
+const cleanupNativeApi = ownNativeCredentials(dataDir, API_TOKEN, () => { apiServer.stop(true); });
 writeCoreCreds(
   {
     port: apiServer.port!,
@@ -448,6 +515,7 @@ writeCoreCreds(
   },
   dataDir,
 );
+markNativeBackendReady();
 
 // Archived-history retention: first pass ~90 s after boot (after the API is
 // up and restore/seed work has settled), then every 24 h; each fire reads the
@@ -469,7 +537,16 @@ scheduleRetention();
 // is in flight.
 Electrobun.events.on("before-quit", (event: { response?: { allow: boolean } }) => {
   if (consumeForceQuit()) {
-    removeCoreCreds(dataDir);
+    // Running runs stay (boot reattach). Settled sessions on this socket
+    // are released here, before the process goes away and the idle reaper
+    // can no longer run.
+    releaseSettledSessionsOnQuit();
+    disposeEnvironmentManager();
+    // Backup/Restore lifecycle: bounded worker termination that preserves
+    // published artifacts and receipts. Initiated, not awaited — Electrobun's
+    // before-quit handler is synchronous and must answer promptly.
+    void disposeActiveBackupService();
+    cleanupNativeApi();
     event.response = { allow: true };
     return;
   }
@@ -489,7 +566,13 @@ Electrobun.events.on("before-quit", (event: { response?: { allow: boolean } }) =
     // of a missed warning is small; the cost of trapping the user is high.
   }
   if (runningCount === 0) {
-    removeCoreCreds(dataDir);
+    releaseSettledSessionsOnQuit();
+    disposeEnvironmentManager();
+    // Backup/Restore lifecycle: bounded worker termination that preserves
+    // published artifacts and receipts. Initiated, not awaited — Electrobun's
+    // before-quit handler is synchronous and must answer promptly.
+    void disposeActiveBackupService();
+    cleanupNativeApi();
     event.response = { allow: true };
     return;
   }
@@ -517,6 +600,31 @@ Electrobun.events.on("before-quit", (event: { response?: { allow: boolean } }) =
 // about letting the process exit at all; it touches no persisted
 // `fxRecovery` row — `rearmFxAutoResumes()` re-arms from the DB on next boot.
 process.on("exit", stopFxAutoResumeTimers);
+process.on("exit", stopHandsoffTimers);
+process.on("exit", stopRecurringScheduler);
+process.on("exit", closeLiveBrowserSessionsSync);
+process.on("exit", closeLiveNativeComputerSessionsSync);
+// Backup/Restore: an exit that skipped before-quit still initiates bounded
+// worker termination. dispose() is idempotent and signals children before its
+// first await.
+process.on("exit", () => {
+  void disposeActiveBackupService();
+});
+// Interview turns (FO-003) are one-shot CLIs hosted in tmux and not
+// reattachable; kill them synchronously so none keeps running after quit.
+process.on("exit", () => { stopInterviewTurnsSync(); });
+// Settled harness sessions are not reattached on the next boot. Release
+// them on the way out (exact name, this socket). `before-quit` already
+// calls the same once-guard; this covers an exit that skipped that hook.
+// In-flight runs are left for reconcileOrphans.
+process.on("exit", () => { releaseSettledSessionsOnQuit(); });
+// Packaged Cmd+Q exits the native launcher before this worker's quit hooks.
+// The lifecycle supervisor posts this and waits for the ack, then forceExit.
+parentPort?.on("message", (message: { type?: string }) => {
+  if (message?.type !== "fo-native004-release-settled") return;
+  try { releaseSettledSessionsOnQuit(); } catch { /* ack anyway so quit can finish */ }
+  try { parentPort?.postMessage({ type: "fo-native004-released" }); } catch { /* worker is closing */ }
+});
 // Same for the retention timers (a running pass is told to stop between
 // chunks; trimmed rows stay trimmed and the next boot resumes) and the lag
 // sampler.

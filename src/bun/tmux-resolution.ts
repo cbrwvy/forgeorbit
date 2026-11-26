@@ -219,8 +219,10 @@ export async function ensureDisclaimedServer(): Promise<void> {
 export async function spawnTmuxNewSession(
   tmux: string,
   args: string[],
+  authorize?: () => boolean,
 ): Promise<{ status: number | null; stderr: string }> {
   await ensureDisclaimedServer();
+  if (authorize && !authorize()) return { status: 1, stderr: "Owner authorization changed before adapter submission." };
   try {
     const proc = Bun.spawn([tmux, ...args], {
       stdin: "ignore",

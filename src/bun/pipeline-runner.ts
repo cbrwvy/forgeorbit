@@ -48,6 +48,12 @@ import {
 } from "./orchestrator.ts";
 import { cancelPendingForTask, listPendingForTask } from "./interactions.ts";
 import { prepareWorkdir, recordableCheckout } from "./worktree.ts";
+import { evaluateResourceEligibility, eligibilityRefusal } from "./resource-eligibility.ts";
+import { AutonomyRefusedError, withAutonomyOrigin } from "./autonomy-origin.ts";
+import { autonomyRunRefusal } from "./autonomy.ts";
+import { projectLifecycleTaskRefusal } from "./project-lifecycle.ts";
+import { ownershipOf } from "./project-ownership.ts";
+import { DEFAULT_MODEL } from "../shared/types.ts";
 import { composeLaunchPrompt, snapshotFromProfile } from "../shared/agent-profile.ts";
 import {
   classifyStepResponse,
@@ -629,6 +635,55 @@ function holdForArchivedParent(
  * current. Mutates `run` and calls `persist` itself — callers don't need to
  * persist again around this (though doing so is harmless/idempotent).
  */
+/**
+ * The shared resource-eligibility contract, asked about THIS step's own agent
+ * (FO-ORCH07.2): the step row carries the harness, model and agent profile this
+ * very run will use, copied from the run's frozen snapshot. Nothing carries over
+ * from an earlier step, and nothing is substituted. Only CONFIRMED exhaustion,
+ * denial or an Owner prohibition refuses; Unknown, stale and unverified evidence
+ * does not (same rule as batches and Employee Execution). Synchronous, so when
+ * passed as `verifyBeforeRun` it also runs inside the transaction that records
+ * the run. The routing requirements come from the pipeline's board task, since a
+ * hidden step row is not part of the project estimation facts.
+ */
+export function stepEligibilityRefusal(stepTaskId: string): string | null {
+  const step = tasks.get(stepTaskId);
+  const parent = step?.pipelineParentId ? tasks.get(step.pipelineParentId) : null;
+  if (!step || !parent) return null;
+  const harness = harnesses.getByIdOrKind(step.agent);
+  if (!harness) return null; // the ordinary harness pre-flight refuses an unknown harness
+  const owner = ownershipOf(parent.workdir, { fresh: true });
+  if (owner.kind !== "owned") return null;
+  const verdict = evaluateResourceEligibility({
+    task: parent,
+    projectPath: owner.projectPath,
+    harness,
+    model: step.model || DEFAULT_MODEL[harness.kind] || null,
+    profileId: step.agentProfileId ?? null,
+  });
+  if (!verdict.blocked) return null;
+  const name = parent.pipelineRun?.snapshot?.graph.steps.find((item) => item.id === step.pipelineStepId)?.name ?? "this step";
+  return `“${name}” is held: ${eligibilityRefusal(verdict)}`;
+}
+
+/**
+ * Every Run the runner starts on its own authority goes through here: the
+ * step's own resource eligibility, then — when the pipeline belongs to a batch
+ * with a bounded autonomous grant (FO-ORCH08) — the grant. Both are asked up
+ * front for a readable reason and again, synchronously, by the guard on the
+ * Run write itself (the origin mark below is what lets it recognise this call).
+ */
+async function startStepTask(taskId: string): Promise<Awaited<ReturnType<typeof startTask>>> {
+  return withAutonomyOrigin("pipeline-step", async () => {
+    try {
+      return await startTask(taskId, { verifyBeforeRun: () => stepEligibilityRefusal(taskId) ?? autonomyRunRefusal(taskId, "pipeline-step") });
+    } catch (err) {
+      if (err instanceof AutonomyRefusedError) return { error: err.reason };
+      throw err;
+    }
+  });
+}
+
 async function launchStep(
   parent: Task,
   run: PipelineRunState,
@@ -837,7 +892,7 @@ async function launchStep(
   run.history.push({ seq, stepId: step.id, taskId: childId, startedAt: now, endedAt: null, outcome: null, handoff: null, nextStepIds: [] });
   persist(parent.id, run);
 
-  const started = await startTask(childId);
+  const started = await startStepTask(childId);
 
   // M7: the parent may have been deleted WHILE `startTask` was in flight
   // (an unlocked, very-slow spawn racing a delete that queued behind this
@@ -958,7 +1013,7 @@ async function retryActiveExecutions(
   let first: { runId: string; pending?: true } | null = null;
   for (const t of targets) {
     run.blocked = run.blocked.filter((b) => b.taskId !== t.taskId);
-    const started = await startTask(t.taskId);
+    const started = await startStepTask(t.taskId);
     if ("error" in started) {
       // L-R2: `startTask`'s own double-start guards ("task is already
       // starting" — a spawn claim still held, e.g. the bounded-pending
@@ -1117,6 +1172,8 @@ export async function startPipelineRun(
     const fresh = tasks.get(parent.id) ?? parent;
     if (!fresh.pipelineId) return { error: "not a pipeline task" };
     if (fresh.archivedAt != null) return { error: "pipeline task is archived — unarchive it first" };
+    const lifecycleBlock = projectLifecycleTaskRefusal(fresh.id);
+    if (lifecycleBlock) return { error: lifecycleBlock };
 
     let run: PipelineRunState = fresh.pipelineRun ?? {
       pipelineId: fresh.pipelineId,
@@ -1289,6 +1346,8 @@ export async function advancePipeline(
   return runExclusive(parentId, async () => {
     const parent = tasks.get(parentId);
     if (!parent || !parent.pipelineId) return { error: "not a pipeline task", status: 404 as const };
+    const lifecycleBlock = projectLifecycleTaskRefusal(parentId);
+    if (lifecycleBlock) return { error: lifecycleBlock, status: 409 as const };
     // Minor 5: a delete cascade tombstones the parent before tearing down
     // any step task — an advance racing in through this same per-parent
     // lock must bail before ever touching the worktree.
@@ -1297,6 +1356,10 @@ export async function advancePipeline(
     }
     if (parent.archivedAt != null) {
       return { error: "pipeline task is archived — unarchive it first", status: 409 as const };
+    }
+    if (opts.nextStepIds !== null && opts.nextStepIds.length > 0) {
+      const lifecycleBlock = projectLifecycleTaskRefusal(parentId);
+      if (lifecycleBlock) return { error: lifecycleBlock, status: 409 as const };
     }
     if (!parent.pipelineRun || !parent.pipelineRun.snapshot) {
       return { error: "pipeline has never run", status: 409 as const };
@@ -1488,6 +1551,8 @@ export async function retryPipelineStep(
   return runExclusive(parentId, async () => {
     const parent = tasks.get(parentId);
     if (!parent || !parent.pipelineId) return { error: "not a pipeline task", status: 404 as const };
+    const lifecycleBlock = projectLifecycleTaskRefusal(parentId);
+    if (lifecycleBlock) return { error: lifecycleBlock, status: 409 as const };
     if (!parent.pipelineRun) return { error: "pipeline has never run", status: 409 as const };
     const run = parent.pipelineRun;
     if (run.status !== "blocked" && run.status !== "cancelled") {
@@ -1509,6 +1574,8 @@ export async function cancelPipelineRun(parentId: string): Promise<{ task: Task 
   return runExclusive(parentId, async () => {
     const parent = tasks.get(parentId);
     if (!parent || !parent.pipelineId) return { error: "not a pipeline task", status: 404 as const };
+    const lifecycleBlock = projectLifecycleTaskRefusal(parentId);
+    if (lifecycleBlock) return { error: lifecycleBlock, status: 409 as const };
     if (!parent.pipelineRun) return { error: "pipeline has never run", status: 409 as const };
     const run = parent.pipelineRun;
 
@@ -1924,7 +1991,12 @@ async function deliverHandoffReminder(p: PendingReminder): Promise<void> {
   if (await deferReminderToSuccessor(p)) return;
   let sent: Awaited<ReturnType<typeof sendInput>>;
   try {
-    sent = await sendInput(p.runId, p.reminderText);
+    // A reminder can start a fresh one-shot turn, which is a Run the runner
+    // chose to make: it needs the same eligibility as the step itself.
+    const refusal = stepEligibilityRefusal(p.taskId) ?? autonomyRunRefusal(p.taskId, "handoff-reminder");
+    // The origin mark makes the guard on the Run write the last gate: a reminder
+    // that mints a new Run is checked in the same tick it is recorded, not only above.
+    sent = refusal ? { delivered: false, reason: refusal } : await withAutonomyOrigin("handoff-reminder", () => sendInput(p.runId, p.reminderText));
   } catch (err) {
     sent = { delivered: false, reason: err instanceof Error ? err.message : String(err) };
   }

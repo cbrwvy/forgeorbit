@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, GitMerge, Loader2, X } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
@@ -37,6 +39,7 @@ interface Props {
  * `Textarea`.
  */
 export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const launch = useTaskLaunch(open);
 
   const [prompt, setPrompt] = useState("");
@@ -53,7 +56,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
   // `useProjectFiles`'s effect doesn't refire on every unrelated re-render.
   const fileScope = useMemo(
     () => (open && context ? { dir: context.path, ref: context.headRef } : null),
-    [open, context?.path, context?.headRef],
+    [open, context?.path, context?.headRef, uiLocale],
   );
 
   // Reset per-open transient state (prompt dirtiness, errors, references) so
@@ -91,7 +94,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
     setSubmitError(null);
     try {
       const created = await createAndStartTask({
-        title: `Resolve conflicts: PR #${context.number} — ${context.title}`,
+        title: tr("common.resolve_conflicts_pr", { p0: String(context.number), p1: String(context.title) }),
         prompt: prompt.trim(),
         agent: launch.agent,
         workdir: context.path,
@@ -135,9 +138,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
         <header className="flex items-start justify-between gap-3 border-b border-border/60 p-3">
           <div className="min-w-0">
             <div id="resolve-conflicts-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
-              <GitMerge className="size-4 shrink-0 text-muted-foreground" />
-              Resolve with ForgeOrbit
-            </div>
+              <GitMerge className="size-4 shrink-0 text-muted-foreground" /><I18nText id="tasks.resolve_with_forgeorbit" />{" "}</div>
             {context && (
               <div className="mt-0.5 truncate text-xs text-muted-foreground">
                 PR #{context.number} — {context.title}
@@ -148,8 +149,8 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
             variant="ghost"
             size="icon"
             className="shrink-0"
-            title="Close"
-            aria-label="Close"
+            title={tr("common.close")}
+            aria-label={tr("common.close")}
             disabled={submitting}
             onClick={onClose}
           >
@@ -160,8 +161,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
         <div className="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
           {launch.loading && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading harnesses…
-            </div>
+              <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_harnesses" />{" "}</div>
           )}
 
           {!launch.loading && launch.loadError && (
@@ -172,19 +172,14 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
 
           {!launch.loading && !launch.loadError && !context && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <AlertCircle className="size-4" /> The PR's state changed — close and reopen this dialog if
-              you still want to resolve conflicts.
-            </div>
+              <AlertCircle className="size-4" />{" "}<I18nText id="tasks.the_pr_s_state_changed_close_and_reopen" />{" "}</div>
           )}
 
           {!launch.loading && !launch.loadError && !!context && (
             <div className="space-y-3">
               {context && (
-                <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                  Merges <span className="font-mono">origin/{context.baseRef}</span> into{" "}
-                  <span className="font-mono">{context.headRef}</span> in a worktree checked out on that
-                  branch. The agent commits locally; it never pushes.
-                </div>
+                <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground"><I18nText id="tasks.merges" />{" "}<span className="font-mono">origin/{context.baseRef}</span>{" "}<I18nText id="tasks.into" />{" "}
+                  <span className="font-mono">{context.headRef}</span>{" "}<I18nText id="tasks.in_a_worktree_checked_out_on_that_branch" />{" "}</div>
               )}
 
               <PromptComposer
@@ -198,11 +193,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
                 startingFolder={context.path}
                 rows={8}
                 footer={overage && (
-                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
-                    This prompt is {Math.ceil(overage.bytes / 1024)} KB — {selectedHarnessLabel}'s one-shot
-                    launch caps prompts at {Math.floor(overage.limit / 1024)} KB. Pick another harness or
-                    trim the prompt.
-                  </div>
+                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning"><I18nText id="tasks.this_prompt_is" />{" "}{Math.ceil(overage.bytes / 1024)}{" "}<I18nText id="tasks.kb" />{" "}{selectedHarnessLabel}<I18nText id="tasks.s_one_shot_launch_caps_prompts_at" />{" "}{Math.floor(overage.limit / 1024)}{" "}<I18nText id="tasks.kb_pick_another_harness_or_trim_the_prompt" />{" "}</div>
                 )}
               />
 
@@ -211,7 +202,7 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
               <TaskLaunchPickers launch={launch} />
 
               {submitError && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground">
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger">
                   {submitError}
                 </div>
               )}
@@ -220,16 +211,13 @@ export function ResolveConflictsDialog({ open, onClose, context, onCreated }: Pr
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-border/60 p-3">
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
+          <Button variant="outline" onClick={onClose} disabled={submitting}><I18nText id="common.cancel" />{" "}</Button>
           <Button data-testid="resolve-conflicts-submit" onClick={() => void submit()} disabled={!canSubmit}>
             {submitting ? (
               <>
-                <Loader2 className="mr-1 size-3.5 animate-spin" /> Creating…
-              </>
+                <Loader2 className="mr-1 size-3.5 animate-spin" />{" "}<I18nText id="common.creating" />{" "}</>
             ) : (
-              "Create & start"
+              tr("common.create_start")
             )}
           </Button>
         </div>

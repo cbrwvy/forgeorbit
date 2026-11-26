@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2E coverage for the task context menu (docs/plans/task-context-menu.md
@@ -19,16 +19,14 @@ import { gotoApp } from "./helpers";
  * fixture), same idiom as `e2e/unread-indicator.spec.ts` and
  * `e2e/todo-progress.spec.ts`.
  *
- * `test.describe.configure({ mode: "serial" })`: every test in this file
- * shares the one worker backend/DB, and case (e) deliberately reuses the
- * plain backlog task created in case (a) (see `backlogTaskTitle` below) to
- * cover "a task with no assistant messages shows neither read entry" without
- * creating a third throwaway task — that only works if (a) always runs
- * before (e), which serial mode + declaration order guarantees.
+ * `test.describe.configure({ mode: "parallel" })`: each test uses its own
+ * test-scoped `freshBackend` with a private SQLite database. Case (e) creates
+ * its own plain backlog task directly to assert that a task without assistant
+ * messages shows neither read entry, eliminating the cross-test dependency on case (a).
  */
 const FAKE_CLAUDE_TODOS_PROMPT_MARKER = "__agetor_fake_claude_todos__";
 
-test.describe.configure({ mode: "serial" });
+test.describe.configure({ mode: "parallel" });
 
 interface TaskRow {
   id: string;
@@ -42,12 +40,12 @@ interface TaskRow {
 async function createTask(
   request: APIRequestContext,
   backend: E2EBackend,
-  data: { title: string; prompt: string; workdir: string; isolation?: "none" | "worktree" },
+  data: { title: string; prompt: string; workdir?: string; isolation?: "none" | "worktree" },
 ): Promise<TaskRow> {
   const auth = { authorization: `Bearer ${backend.apiToken}` };
   const res = await request.post(`${backend.apiBase}/tasks`, {
     headers: auth,
-    data: { ...data, isolation: data.isolation ?? "none" },
+    data: { ...data, workdir: data.workdir ?? backend.dataDir, isolation: data.isolation ?? "none" },
   });
   expect(res.ok(), `POST /tasks -> ${res.status()}: ${await res.text()}`).toBeTruthy();
   return (await res.json()) as TaskRow;
@@ -79,7 +77,7 @@ async function createAndStartFakeTodoTask(
   const prompt = `${FAKE_CLAUDE_TODOS_PROMPT_MARKER} ${title}`;
   const createRes = await request.post(`${backend.apiBase}/tasks`, {
     headers: auth,
-    data: { title, prompt, isolation: "none", workdir: tmpdir() },
+    data: { title, prompt, isolation: "none", workdir: backend.dataDir },
   });
   expect(createRes.ok(), `POST /tasks -> ${createRes.status()}: ${await createRes.text()}`).toBeTruthy();
   const task = (await createRes.json()) as TaskRow;
@@ -140,7 +138,7 @@ function runPanel(page: Page): Locator {
 /** The New Task sidebar's prompt composer — the one surface case (h) needs
  *  to prove keeps the native context menu (it's editable text). */
 function promptTextarea(page: Page): Locator {
-  return page.locator("aside").first().locator("textarea").first();
+  return page.getByTestId("new-task-panel").locator("textarea").first();
 }
 
 /** Scopes a locator to the board `TaskCard` for the given exact title —
@@ -149,7 +147,7 @@ function promptTextarea(page: Page): Locator {
  *  anything inside the run panel or the menu. Mirrors
  *  `e2e/unread-indicator.spec.ts`'s helper of the same name. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 function unreadDot(page: Page, title: string): Locator {
@@ -218,8 +216,8 @@ function git(cwd: string, args: string[]): void {
  *  case (f) only needs a branch name, not real diff content. Mirrors
  *  `e2e/pr-merged-state.spec.ts`'s `initRepo` (`commit.gpgsign false` avoids
  *  hanging on a machine with commit signing configured). */
-async function initGitRepo(): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "agetor-e2e-ctxmenu-"));
+async function initGitRepo(parentDir: string = tmpdir()): Promise<string> {
+  const dir = await mkdtemp(path.join(parentDir, "agetor-e2e-ctxmenu-"));
   git(dir, ["init", "-q", "-b", "main"]);
   git(dir, ["config", "user.email", "e2e@example.com"]);
   git(dir, ["config", "user.name", "e2e"]);
@@ -228,21 +226,17 @@ async function initGitRepo(): Promise<string> {
   return dir;
 }
 
-// Set by case (a), read by case (e) — see the file header comment for why
-// this cross-test dependency is intentional under serial mode.
-let backlogTaskTitle = "";
-
 test.describe("task context menu", () => {
   test("opens with the expected menu entries for a backlog task, focuses the first item", async ({
     page,
     request,
-    backend,
+    freshBackend: backend,
   }) => {
-    backlogTaskTitle = `ctxmenu-a ${randomUUID()}`;
-    await createTask(request, backend, { title: backlogTaskTitle, prompt: backlogTaskTitle, workdir: tmpdir() });
+    const title = `ctxmenu-a ${randomUUID()}`;
+    await createTask(request, backend, { title, prompt: title, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
-    await rightClickCard(page, backlogTaskTitle);
+    await gotoBoard(page, backend.bootBase);
+    await rightClickCard(page, title);
 
     const panel = menu(page);
     await expect(panel).toBeVisible();
@@ -251,7 +245,7 @@ test.describe("task context menu", () => {
     // A fresh, never-started, isolation="none" backlog task: only Open,
     // Run, View changes, Open in Finder, and Delete apply — no branch, no
     // PR, no active run, not in review/done, no assistant messages yet.
-    for (const action of ["open", "start", "diff", "open-in-finder", "delete"]) {
+    for (const action of ["open", "admit-inbox", "diff", "open-in-finder", "delete"]) {
       await expect(menuItem(page, action)).toBeVisible();
     }
     for (const action of [
@@ -275,11 +269,11 @@ test.describe("task context menu", () => {
     await expect(menuItem(page, "open")).toBeFocused();
   });
 
-  test("Escape and an outside click both close the menu", async ({ page, request, backend }) => {
+  test("Escape and an outside click both close the menu", async ({ page, request, freshBackend: backend }) => {
     const title = `ctxmenu-b ${randomUUID()}`;
-    await createTask(request, backend, { title, prompt: title, workdir: tmpdir() });
+    await createTask(request, backend, { title, prompt: title, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     await rightClickCard(page, title);
     await expect(menu(page)).toBeVisible();
@@ -294,13 +288,13 @@ test.describe("task context menu", () => {
     await expect(menu(page)).toBeHidden();
   });
 
-  test("right-clicking a second card moves the menu to it", async ({ page, request, backend }) => {
+  test("right-clicking a second card moves the menu to it", async ({ page, request, freshBackend: backend }) => {
     const titleA = `ctxmenu-c-a ${randomUUID()}`;
     const titleB = `ctxmenu-c-b ${randomUUID()}`;
-    await createTask(request, backend, { title: titleA, prompt: titleA, workdir: tmpdir() });
-    await createTask(request, backend, { title: titleB, prompt: titleB, workdir: tmpdir() });
+    await createTask(request, backend, { title: titleA, prompt: titleA, workdir: backend.dataDir });
+    await createTask(request, backend, { title: titleB, prompt: titleB, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     await rightClickCard(page, titleA);
     await expect(menu(page)).toBeVisible();
@@ -318,11 +312,11 @@ test.describe("task context menu", () => {
     await expect(panel.getByText(titleB, { exact: true }).first()).toBeVisible();
   });
 
-  test("Open details opens the run panel for the right-clicked task", async ({ page, request, backend }) => {
+  test("Open details opens the run panel for the right-clicked task", async ({ page, request, freshBackend: backend }) => {
     const title = `ctxmenu-d ${randomUUID()}`;
-    await createTask(request, backend, { title, prompt: title, workdir: tmpdir() });
+    await createTask(request, backend, { title, prompt: title, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await rightClickCard(page, title);
     await menuItem(page, "open").click();
 
@@ -331,7 +325,7 @@ test.describe("task context menu", () => {
     await expect(panel.getByText(title, { exact: true }).first()).toBeVisible();
   });
 
-  test("Mark as unread / Mark as read toggle the board's unread dot", async ({ page, request, backend }) => {
+  test("Mark as unread / Mark as read toggle the board's unread dot", async ({ page, request, freshBackend: backend }) => {
     const title = `ctxmenu-e ${randomUUID()}`;
     const task = await createAndStartFakeTodoTask(request, backend, title);
     await waitForUnread(request, backend, task.id, true);
@@ -345,7 +339,7 @@ test.describe("task context menu", () => {
     expect(seenRes.ok()).toBeTruthy();
     await waitForUnread(request, backend, task.id, false);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     // Caught up + has an assistant message -> "Mark as unread" offered,
     // "Mark as read" is not.
@@ -366,17 +360,18 @@ test.describe("task context menu", () => {
     await expect(unreadDot(page, title)).toBeHidden();
     await waitForUnread(request, backend, task.id, false);
 
-    // A task with NO assistant messages at all (the plain backlog task from
-    // case (a)) must show neither read entry — `hasAssistantMessages` gates
+    // A task with NO assistant messages at all (a plain backlog task) must
+    // show neither read entry — `hasAssistantMessages` gates
     // "Mark as unread", and it was never marked unread in the first place.
-    expect(backlogTaskTitle, "case (a) must run before case (e)").not.toBe("");
-    await rightClickCard(page, backlogTaskTitle);
+    const plainBacklogTitle = `ctxmenu-e-plain ${randomUUID()}`;
+    await createTask(request, backend, { title: plainBacklogTitle, prompt: plainBacklogTitle, workdir: backend.dataDir });
+    await rightClickCard(page, plainBacklogTitle);
     await expect(menuItem(page, "mark-read")).toHaveCount(0);
     await expect(menuItem(page, "mark-unread")).toHaveCount(0);
   });
 
-  test("Copy branch name copies the branch and shows a toast", async ({ page, context, request, backend }) => {
-    const repoDir = await initGitRepo();
+  test("Copy branch name copies the branch and shows a toast", async ({ page, context, request, freshBackend: backend }) => {
+    const repoDir = await initGitRepo(backend.dataDir);
     let taskId: string | null = null;
     try {
       const title = `ctxmenu-f ${randomUUID()}`;
@@ -395,7 +390,7 @@ test.describe("task context menu", () => {
       // Playwright API, which is exactly why the toast is the primary
       // assertion below and the clipboard read is best-effort.
       await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-      await gotoApp(page, backend.bootBase);
+      await gotoBoard(page, backend.bootBase);
 
       await rightClickCard(page, title);
       await menuItem(page, "copy-branch").click();
@@ -415,11 +410,11 @@ test.describe("task context menu", () => {
     }
   });
 
-  test("Delete… asks for confirmation before removing the task", async ({ page, request, backend }) => {
+  test("Delete… asks for confirmation before removing the task", async ({ page, request, freshBackend: backend }) => {
     const title = `ctxmenu-g ${randomUUID()}`;
-    await createTask(request, backend, { title, prompt: title, workdir: tmpdir() });
+    await createTask(request, backend, { title, prompt: title, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await rightClickCard(page, title);
     await menuItem(page, "delete").click();
 
@@ -437,20 +432,28 @@ test.describe("task context menu", () => {
   test("keyboard: arrows/Home/End move focus, Enter activates the focused entry, Tab closes and restores focus", async ({
     page,
     request,
-    backend,
+    freshBackend: backend,
   }) => {
     const title = `ctxmenu-kb ${randomUUID()}`;
-    const task = await createTask(request, backend, { title, prompt: title, workdir: tmpdir() });
+    const dir = await mkdtemp(path.join(backend.dataDir, "ctxmenu-kb-"));
+    const registered = await request.post(`${backend.apiBase}/projects`, {
+      headers: { authorization: `Bearer ${backend.apiToken}` },
+      data: { path: dir, name: "Keyboard board" },
+    });
+    expect(registered.ok(), await registered.text()).toBeTruthy();
+    const task = await createTask(request, backend, { title, prompt: title, workdir: dir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
+    const search = page.getByLabel(/search tasks/i);
+    await search.focus();
     await rightClickCard(page, title);
     await expect(menuItem(page, "open")).toBeFocused();
 
     // Roving focus over the fresh-backlog entry order from case (a) —
-    // open, start, diff, open-in-finder, delete: Down → second, End → last,
+    // open, admit-inbox, diff, open-in-finder, delete: Down → second, End → last,
     // Home → first, Up from the first wraps to the last.
     await page.keyboard.press("ArrowDown");
-    await expect(menuItem(page, "start")).toBeFocused();
+    await expect(menuItem(page, "admit-inbox")).toBeFocused();
     await page.keyboard.press("End");
     await expect(menuItem(page, "delete")).toBeFocused();
     await page.keyboard.press("Home");
@@ -458,19 +461,18 @@ test.describe("task context menu", () => {
     await page.keyboard.press("ArrowUp");
     await expect(menuItem(page, "delete")).toBeFocused();
 
-    // Tab closes without activating anything and hands focus back to what
-    // had it before the menu opened — the document body here, since a
-    // right-click deliberately does not focus the card.
+    // Tab closes without activating anything and restores the search box
+    // that had focus; right-click does not focus the card.
     await page.keyboard.press("Tab");
     await expect(menu(page)).toBeHidden();
-    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    await expect(search).toBeFocused();
 
     // Enter activates the FOCUSED entry, not the first one: Down lands on
-    // "Run", Enter starts the task (fake driver), and it leaves Backlog.
+    // Admit to project inbox, and the task leaves Backlog.
     await rightClickCard(page, title);
     await expect(menuItem(page, "open")).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(menuItem(page, "start")).toBeFocused();
+    await expect(menuItem(page, "admit-inbox")).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(menu(page)).toBeHidden();
     await expect(async () => {
@@ -486,12 +488,12 @@ test.describe("task context menu", () => {
   test("suppresses the native context menu everywhere except editable text, and opens our own menu on a task card", async ({
     page,
     request,
-    backend,
+    freshBackend: backend,
   }) => {
     const title = `ctxmenu-h ${randomUUID()}`;
-    await createTask(request, backend, { title, prompt: title, workdir: tmpdir() });
+    await createTask(request, backend, { title, prompt: title, workdir: backend.dataDir });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     // Dispatching a real, cancelable `contextmenu` MouseEvent and reading
     // back `defaultPrevented` proves the actual suppression policy ran

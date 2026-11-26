@@ -209,7 +209,7 @@ test("sendInput (claude follow-up) expands @tokens against the task's live cwd (
   tasks.delete(taskId);
 });
 
-test("startTask (gemini) rejects before any run row exists when @ expansion pushes the prompt over the argv budget, even though the raw prompt fits", async () => {
+test("startTask (gemini) accepts expanded references above the old argv threshold via stdin", async () => {
   const { createTask, startTask } = await import("./orchestrator.ts");
   const { tasks, runs, harnesses } = await import("./db.ts");
   const { expandAtReferences } = await import("./project-files.ts");
@@ -230,7 +230,8 @@ test("startTask (gemini) rejects before any run row exists when @ expansion push
   const rawBytes = new TextEncoder().encode(rawPrompt).length;
   expect(rawBytes).toBeLessThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
   const expandedBytes = new TextEncoder().encode(expandAtReferences(rawPrompt, dir)).length;
-  expect(expandedBytes).toBeGreaterThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
+  expect(expandedBytes).toBeGreaterThan(4096);
+  expect(expandedBytes).toBeLessThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
 
   const created = await createTask({
     title: "at refs gemini overage",
@@ -243,22 +244,14 @@ test("startTask (gemini) rejects before any run row exists when @ expansion push
   const taskId = created.task.id;
 
   const started = await startTask(taskId);
-  expect("error" in started).toBe(true);
-  if ("error" in started) {
-    expect(started.error).toMatch(/byte/);
-    expect(started.error).toMatch(/limit/);
-  }
-
-  // No run row was ever inserted, and the task never left its pre-start column.
-  expect(runs.listForTask(taskId).length).toBe(0);
-  const after = tasks.get(taskId);
-  expect(after?.column).not.toBe("running");
-  expect(after?.runId ?? null).toBeNull();
+  expect("error" in started).toBe(false);
+  expect(runs.listForTask(taskId).length).toBe(1);
+  await settle(100);
 
   tasks.delete(taskId);
 });
 
-test("sendInput (gemini follow-up) rejects a message that only exceeds the argv budget after @ expansion, even though the raw follow-up fits (R5)", async () => {
+test("sendInput (legacy gemini follow-up) accepts expanded input above the old argv threshold", async () => {
   const { createTask, startTask, sendInput } = await import("./orchestrator.ts");
   const { tasks, runs, harnesses } = await import("./db.ts");
   const { expandAtReferences } = await import("./project-files.ts");
@@ -290,18 +283,13 @@ test("sendInput (gemini follow-up) rejects a message that only exceeds the argv 
   const rawBytes = new TextEncoder().encode(rawLine).length;
   expect(rawBytes).toBeLessThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
   const expandedBytes = new TextEncoder().encode(expandAtReferences(rawLine, dir)).length;
-  expect(expandedBytes).toBeGreaterThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
+  expect(expandedBytes).toBeGreaterThan(4096);
+  expect(expandedBytes).toBeLessThan(GEMINI_PROMPT_ARGV_MAX_BYTES);
 
   const sent = await sendInput(started.runId, rawLine);
-  expect(sent.delivered).toBe(false);
-  if (!sent.delivered) {
-    expect(sent.reason).toMatch(/byte/);
-    expect(sent.reason).toMatch(/limit/);
-  }
-
-  // The guard fires before `sendGeminiTurn` is ever called — no follow-up run
-  // was spawned or queued for the rejected message.
-  expect(runs.listForTask(taskId).length).toBe(1);
+  expect(sent.delivered).toBe(true);
+  expect(runs.listForTask(taskId).length).toBe(2);
+  await settle(100);
 
   tasks.delete(taskId);
 });

@@ -1,5 +1,8 @@
+import { staticLabel } from "@/i18n/presentation";
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { Plus, X, TerminalSquare } from "lucide-react";
@@ -11,7 +14,6 @@ import { useTheme } from "../theme-provider.tsx";
 import { TERMINAL_FONT_FAMILY, terminalFontSize } from "@/lib/font-size";
 import { macEditSequence } from "./terminal-keys.ts";
 import type { TerminalTab } from "../../../shared/types.ts";
-import type { ITheme } from "@xterm/xterm";
 
 /**
  * xterm renders to its own canvas and can't read CSS custom properties, so it
@@ -90,6 +92,7 @@ function TerminalPane({
    *  removed (the PTY is gone server-side — reconnecting would be pointless). */
   onExit: (id: string) => void;
 }) {
+  useUILocale();
   const hostRef = useRef<HTMLDivElement>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -311,6 +314,7 @@ const ARCHIVED_HINT = "Unarchive this task to open a terminal";
  * the open affordances instead of letting them fail with a toast.
  */
 export function TerminalView({ taskId, archived = false }: { taskId: string; archived?: boolean }) {
+  useUILocale();
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -342,7 +346,7 @@ export function TerminalView({ taskId, archived = false }: { taskId: string; arc
       setTabs((cur) => [...cur, tab]);
       setActiveId(tab.id);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Could not open terminal");
+      toast.error(e instanceof ApiError ? e.message : tr("common.could_not_open_terminal"));
     } finally {
       setBusy(false);
     }
@@ -381,7 +385,7 @@ export function TerminalView({ taskId, archived = false }: { taskId: string; arc
               <button
                 type="button"
                 className="rounded p-0.5 opacity-60 hover:bg-destructive/20 hover:opacity-100"
-                title="Close terminal"
+                title={tr("tasks.close_terminal")}
                 onClick={() => void closeTab(t.id)}
               >
                 <X className="size-3" />
@@ -392,7 +396,7 @@ export function TerminalView({ taskId, archived = false }: { taskId: string; arc
         <button
           type="button"
           className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent/40 disabled:opacity-50"
-          title={archived ? ARCHIVED_HINT : "New terminal"}
+          title={archived ? staticLabel(ARCHIVED_HINT) : tr("common.new_terminal")}
           data-testid="terminal-open"
           disabled={busy || archived}
           onClick={() => void openTerminal()}
@@ -411,7 +415,7 @@ export function TerminalView({ taskId, archived = false }: { taskId: string; arc
             onClick={() => void openTerminal()}
           >
             <TerminalSquare className="size-6" />
-            <span>{archived ? ARCHIVED_HINT : "Open a terminal in this task's worktree"}</span>
+            <span>{archived ? staticLabel(ARCHIVED_HINT) : tr("common.open_a_terminal_in_this_task_s_worktree")}</span>
           </button>
         ) : (
           tabs.map((t) => (

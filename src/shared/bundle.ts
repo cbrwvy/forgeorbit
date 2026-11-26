@@ -1029,7 +1029,9 @@ export function numberedFileName(filename: string, n: number): string {
     ? BUNDLE_FILE_EXT
     : filename.endsWith(".json")
       ? ".json"
-      : "";
+      : filename.endsWith(".csv")
+        ? ".csv"
+        : "";
   const base = ext ? filename.slice(0, -ext.length) : filename;
   return `${base} (${n})${ext}`;
 }

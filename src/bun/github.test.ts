@@ -917,6 +917,7 @@ test("normalizeWorkflowRun maps snake_case fields, defaults missing ones, and re
       html_url: "https://github.com/o/r/actions/runs/101",
       created_at: "2026-01-01T00:00:00Z",
       workflow_id: 7,
+      head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     }),
   ).toEqual({
     id: 101,
@@ -930,6 +931,7 @@ test("normalizeWorkflowRun maps snake_case fields, defaults missing ones, and re
     htmlUrl: "https://github.com/o/r/actions/runs/101",
     createdAt: "2026-01-01T00:00:00Z",
     workflowId: 7,
+    headSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   });
   // missing `name` falls back to display_title; other optional fields default
   expect(normalizeWorkflowRun({ id: 2, display_title: "Untitled run" })).toEqual({
@@ -944,6 +946,7 @@ test("normalizeWorkflowRun maps snake_case fields, defaults missing ones, and re
     htmlUrl: "",
     createdAt: "",
     workflowId: 0,
+    headSha: null,
   });
   // no id → null
   expect(normalizeWorkflowRun({ name: "CI" })).toBeNull();

@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useState } from "react";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
@@ -26,6 +28,16 @@ import { MdImage } from "./MdImage";
 
 export type MdComponents = NonNullable<React.ComponentProps<typeof ReactMarkdown>["components"]>;
 
+/** Keep wide result tables inside the transcript and reachable by keyboard. */
+export function MarkdownTable({ children }: { children?: React.ReactNode }) {
+  useUILocale();
+  return (
+    <div role="region" aria-label={tr("common.scrollable_table")} tabIndex={0} className="max-w-full overflow-x-auto rounded-sm">
+      <table>{children}</table>
+    </div>
+  );
+}
+
 /**
  * Anchor that hands off http(s)/mailto navigation to the OS default browser
  * via Electrobun's `Utils.openExternal`. The webview is sandboxed —
@@ -38,6 +50,7 @@ export function ExternalLink({
   children,
   ...rest
 }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  useUILocale();
   const safe = typeof href === "string" && /^(https?|mailto):/i.test(href) ? href : null;
   return (
     <a
@@ -101,6 +114,7 @@ export function CodeBlock({
   children: React.ReactNode;
   bgClassName: string;
 }) {
+  useUILocale();
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     const text = nodeToText(children).replace(/\n$/, "");
@@ -109,7 +123,7 @@ export function CodeBlock({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Couldn't copy to clipboard");
+      toast.error(tr("common.couldn_t_copy_to_clipboard"));
     }
   };
   return (
@@ -125,8 +139,8 @@ export function CodeBlock({
       <button
         type="button"
         onClick={onCopy}
-        aria-label={copied ? "Copied" : "Copy code"}
-        title={copied ? "Copied" : "Copy"}
+        aria-label={copied ? tr("common.copied") : tr("common.copy_code")}
+        title={copied ? tr("common.copied") : tr("common.copy")}
         className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded border border-border/60 bg-background/80 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
       >
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
@@ -136,6 +150,7 @@ export function CodeBlock({
 }
 
 export const USER_MD_COMPONENTS: MdComponents = {
+  table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
   a: mdRenderLink,
   code: mdRenderCode,
   img: MdImage,
@@ -146,6 +161,7 @@ export const USER_MD_COMPONENTS: MdComponents = {
 // gets the exact same link/code-block treatment as an assistant message
 // instead of duplicating the `mdRenderLink`/`mdRenderCode`/`CodeBlock` wiring).
 export const ASSISTANT_MD_COMPONENTS: MdComponents = {
+  table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
   a: mdRenderLink,
   code: mdRenderCode,
   img: MdImage,

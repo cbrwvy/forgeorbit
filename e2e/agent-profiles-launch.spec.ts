@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoApp, gotoBoard, openAllTasks } from "./helpers";
 
 /**
  * E2e coverage for the *launch* surfaces of docs/plans/agent-profiles.md
@@ -77,7 +77,7 @@ function auth(backend: E2EBackend): { authorization: string } {
 // ---- Locator helpers (mirror e2e/agent-profiles.spec.ts) ----
 
 function newTaskForm(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 function runPanel(page: Page): Locator {
@@ -85,7 +85,7 @@ function runPanel(page: Page): Locator {
 }
 
 function boardCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 async function openTask(page: Page, title: string): Promise<Locator> {
@@ -107,6 +107,9 @@ async function openTask(page: Page, title: string): Promise<Locator> {
 async function reloadApp(page: Page): Promise<void> {
   await page.reload();
   await expect(page.getByRole("button", { name: "Settings" })).toBeVisible();
+  // A reload boots into Overview (FO-001); the cards live on the board.
+  await openAllTasks(page);
+  await expect(page.getByTestId("all-tasks-bar")).toBeVisible();
 }
 
 /** Closes the run panel via its own "Close task details" button and waits
@@ -138,7 +141,7 @@ async function openSettingsAgents(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Agents", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   await expect(dialog.getByTestId("agent-profiles-section")).toBeVisible();
   return dialog;
 }
@@ -425,7 +428,7 @@ test.describe("agent profiles: launch surfaces", () => {
     await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
     const section = dialog.getByTestId("agent-profiles-section");
     await expect(section).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute(
+    await expect(dialog.getByRole("button", { name: "Library", exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -551,7 +554,7 @@ test.describe("agent profiles: launch surfaces", () => {
     await startTaskRest(request, backend, task.id);
     await waitForColumn(request, backend, task.id, "review", CONVERGE_TIMEOUT);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const card = boardCard(page, title);
     await expect(card).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     const badge = card.getByTestId("task-card-agent-profile");
@@ -598,7 +601,7 @@ test.describe("agent profiles: launch surfaces", () => {
     const plainTask = (await plainRes.json()) as TaskRow;
     createdTaskIds.push(plainTask.id);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const plainPanel = await openTask(page, plainTitle);
     await plainPanel.getByText("Task details", { exact: true }).click();
     await expect(detailsRow(plainPanel, "Agent").getByTestId("task-agent-profile-none")).toHaveText("None");
@@ -609,7 +612,7 @@ test.describe("agent profiles: launch surfaces", () => {
     const unstartedTitle = `agent-profile-launch-unstarted ${randomUUID()}`;
     await createTaskWithProfile(request, backend, unstartedTitle, alphaId, "Do the thing");
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, unstartedTitle);
     await panel.getByText("Task details", { exact: true }).click();
     const detailsChip = detailsRow(panel, "Agent").getByTestId("task-agent-profile-open");
@@ -635,7 +638,7 @@ test.describe("agent profiles: launch surfaces", () => {
     await startTaskRest(request, backend, task.id);
     await waitForColumn(request, backend, task.id, "review", CONVERGE_TIMEOUT);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, taskAlphaTitle);
 
     const chip = panel.getByTestId("task-agent-profile-chip");
@@ -680,7 +683,7 @@ test.describe("agent profiles: launch surfaces", () => {
   });
 
   test("Message history: picker strips the injected preamble before offering resend", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, taskAlphaTitle);
 
     await panel.getByTestId("message-history-trigger").click();
@@ -698,7 +701,7 @@ test.describe("agent profiles: launch surfaces", () => {
   });
 
   test("Transcript block: collapsed by default on a fresh reopen", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, taskAlphaTitle);
 
     const block = panel.getByTestId("agent-instructions-block").first();

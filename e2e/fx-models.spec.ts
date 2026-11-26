@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 import { AGENT_OPTIONS } from "../src/shared/types.ts";
 
 /**
@@ -139,11 +139,10 @@ async function createFxTask(
   return (await createRes.json()) as TaskRow;
 }
 
-/** The New Task sidebar's `<aside>` — mounted first in App.tsx's JSX, ahead
- *  of the run panel's own `<aside>` (see `runPanel` below), so `.first()`
- *  resolves it unambiguously. */
+/** The New Task sidebar, by its test id — the project sidebar is an
+ *  `<aside>` too, so a positional `aside` locator no longer finds it. */
 function newTaskFormPanel(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 /** The run panel's slide-over `<aside>` — same `.last()` idiom
@@ -290,7 +289,7 @@ test.describe("fx model catalog picker", () => {
     // page.reload() — the picker must reach the converged catalog purely
     // through the app's own live triggers.
     await enableFxHarness(backend);
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     await selectHarness(page, "fx.sh");
     const modelSelect = newTaskModelSelect(page);
@@ -324,7 +323,7 @@ test.describe("fx model catalog picker", () => {
     // scratch, so this test also incidentally proves the converged state
     // survives an ordinary reload (as opposed to the specific "must not
     // need one" claim the previous test makes).
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await selectHarness(page, "fx.sh");
     const modelSelect = newTaskModelSelect(page);
     await expectConvergedFxOptions(modelSelect);
@@ -346,7 +345,7 @@ test.describe("fx model catalog picker", () => {
     page,
     backend,
   }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     // Start from fx (already enabled) so this test actually exercises a
     // switch AWAY from the account-scoped kind, not just claude-code's
     // already-default state — guards against the merge helper leaking fx's
@@ -386,7 +385,7 @@ test.describe("fx model catalog picker", () => {
     const title = `fx-models-details-e2e ${randomUUID()}`;
     const task = await createFxTask(request, backend, title);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     // The "Task details" section is a native <details>/<summary> — closed
@@ -441,7 +440,7 @@ test.describe("fx model catalog picker", () => {
       });
       expect(createRes.ok, `POST /harnesses -> ${createRes.status}: ${await createRes.text()}`).toBeTruthy();
 
-      await gotoApp(page, backend.bootBase);
+      await gotoBoard(page, backend.bootBase);
       await selectHarness(page, harnessLabel);
 
       const modelSelect = newTaskModelSelect(page);

@@ -1,3 +1,6 @@
+import { staticLabel } from "@/i18n/presentation";
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useState } from "react";
 import { BookOpen, Trash2 } from "lucide-react";
 import { api, type GitHubTokensResult } from "@/lib/api";
@@ -26,6 +29,7 @@ const EMPTY: GitHubTokensResult = { tokens: [], detectedHosts: [] };
  * successful save.
  */
 export function GitHubTokensSection() {
+  useUILocale();
   const [data, setData] = useState<GitHubTokensResult>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -107,12 +111,8 @@ export function GitHubTokensSection() {
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <label className="text-xs text-muted-foreground">{GIT_HOST_TOKENS_SECTION}</label>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Repos reached through an ssh host alias (git@github-work.com:…, git@gitlab-work.com:…,
-            git@bitbucket-work.com:…) authenticate with the token stored for that alias; github.com,
-            gitlab.com, and bitbucket.org act as the per-provider defaults. Bitbucket credentials are
-            entered as <code className="font-mono">email:api_token</code>.
+          <label className="text-xs text-muted-foreground">{staticLabel(GIT_HOST_TOKENS_SECTION)}</label>
+          <p className="text-[length:var(--text-caption)] leading-snug text-muted-foreground"><I18nText id="settings.repos_reached_through_an_ssh_host_alias_git" />{" "}<code className="font-mono">email:api_token</code>.
           </p>
         </div>
         <Button
@@ -121,12 +121,11 @@ export function GitHubTokensSection() {
           onClick={() => setGuideOpen(true)}
           className="shrink-0"
         >
-          <BookOpen className="mr-1 size-3.5" /> Setup guide
-        </Button>
+          <BookOpen className="mr-1 size-3.5" />{" "}<I18nText id="settings.setup_guide" />{" "}</Button>
       </div>
 
       {loadError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {loadError}
         </div>
       )}
@@ -142,10 +141,10 @@ export function GitHubTokensSection() {
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium">{t.host}</span>
                   {t.label && (
-                    <span className="truncate text-[11px] text-muted-foreground">{t.label}</span>
+                    <span className="truncate text-[length:var(--text-caption)] text-muted-foreground">{t.label}</span>
                   )}
                 </div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                <div className="truncate font-mono text-[length:var(--text-caption)] text-muted-foreground">
                   {t.tokenPreview}
                 </div>
               </div>
@@ -154,22 +153,19 @@ export function GitHubTokensSection() {
                 variant="ghost"
                 onClick={() => void remove(t.host)}
                 disabled={deletingHost === t.host}
-                aria-label={`Delete token for ${t.host}`}
+                aria-label={tr("common.delete_token_for", { p0: String(t.host) })}
               >
                 <Trash2 className="size-4" />
               </Button>
             </div>
           ))}
           {data.tokens.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No tokens stored yet.{" "}
+            <p className="text-xs text-muted-foreground"><I18nText id="settings.no_tokens_stored_yet" />{" "}
               <button
                 type="button"
                 onClick={() => setGuideOpen(true)}
                 className="text-primary underline-offset-4 hover:underline"
-              >
-                How to create one →
-              </button>
+              ><I18nText id="settings.how_to_create_one" />{" "}</button>
             </p>
           )}
           {hostsWithoutToken.map((h) => (
@@ -178,21 +174,21 @@ export function GitHubTokensSection() {
               className="flex items-center gap-2 rounded-md border border-dashed border-border/40 px-3 py-2 opacity-60"
             >
               <div className="min-w-0 flex-1 truncate">{h}</div>
-              <span className="text-[10px] uppercase text-muted-foreground">no token yet</span>
+              <span className="text-[length:var(--text-caption)] uppercase text-muted-foreground"><I18nText id="settings.no_token_yet" /></span>
             </div>
           ))}
         </div>
       )}
 
       {deleteError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {deleteError}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2 pt-1">
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Host</label>
+          <label className="text-xs text-muted-foreground"><I18nText id="settings.host" /></label>
           <Input
             {...IDENTIFIER_INPUT_PROPS}
             // Keeps the detected-hosts <datalist> working — see identifier-input.ts.
@@ -209,16 +205,16 @@ export function GitHubTokensSection() {
           </datalist>
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Label (optional)</label>
+          <label className="text-xs text-muted-foreground"><I18nText id="settings.label_optional" /></label>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Work account"
+            placeholder={tr("settings.work_account")}
           />
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Token</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.token" /></label>
         <Input
           type="password"
           value={token}
@@ -229,14 +225,14 @@ export function GitHubTokensSection() {
       </div>
 
       {saveError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {saveError}
         </div>
       )}
 
       <div className="flex justify-end">
         <Button size="sm" onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving…" : "Save token"}
+          {saving ? tr("common.saving_23e392") : tr("common.save_token")}
         </Button>
       </div>
 

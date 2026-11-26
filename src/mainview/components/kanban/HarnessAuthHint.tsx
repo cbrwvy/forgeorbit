@@ -1,3 +1,4 @@
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import type { AgentStatus } from "../../../shared/types.ts";
 
 /**
@@ -11,10 +12,11 @@ import type { AgentStatus } from "../../../shared/types.ts";
  * returns an actionable error if the turn actually needs credentials.
  */
 export function HarnessAuthHint({ status }: { status: AgentStatus | undefined }) {
+  useUILocale();
   if (!status?.available || status.loggedIn !== false) return null;
   return (
     <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
-      <div className="font-medium">Not logged in</div>
+      <div className="font-medium"><I18nText id="common.not_logged_in" /></div>
       {status.authHelp && <div className="mt-1 opacity-80">{status.authHelp}</div>}
     </div>
   );

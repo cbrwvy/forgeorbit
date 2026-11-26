@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 /**
  * Content for the "Connect ForgeOrbit to GitHub" setup guide (`GitHubSetupDialog.tsx`).
  *
@@ -56,23 +57,16 @@ export const GITHUB_URLS = {
  */
 export const AUTH_RESOLUTION_STEPS: GuideStep[] = [
   {
-    title: "A token saved in this Settings section",
-    detail:
-      "ForgeOrbit looks up the token stored for the repo's remote host (the raw ssh host — " +
-      "e.g. github-work.com for an ssh alias remote). If none is stored for that exact " +
-      "host, it falls back to whatever token is stored under the github.com entry.",
+    get title() { return tr("common.a_token_saved_in_this_settings_section"); },
+    get detail() { return tr("settings.forgeorbit_looks_up_the_token_stored_for_6841b6"); },
   },
   {
-    title: "Environment variables",
-    detail:
-      "If no token is stored for the host, ForgeOrbit reads the GITHUB_TOKEN or GH_TOKEN " +
-      "environment variable from the process it was launched with.",
+    get title() { return tr("common.environment_variables"); },
+    get detail() { return tr("settings.if_no_token_is_stored_for_the_a51533"); },
   },
   {
-    title: "GitHub CLI login",
-    detail:
-      "If neither of the above resolves a token, ForgeOrbit shells out to `gh auth token` " +
-      "and uses whatever the GitHub CLI has you logged in as, if anything.",
+    get title() { return tr("common.github_cli_login"); },
+    get detail() { return tr("settings.if_neither_of_the_above_resolves_a_7d2a8a"); },
   },
 ];
 
@@ -80,29 +74,23 @@ export const AUTH_RESOLUTION_STEPS: GuideStep[] = [
 export const CLASSIC_SCOPES: GuideScopeRow[] = [
   {
     scope: "repo",
-    usedFor:
-      "Pull requests, issues, comments, reviews, labels, milestones, releases, commit " +
-      "statuses, check runs, diffs, and repository Discussions.",
+    get usedFor() { return tr("settings.pull_requests_issues_comments_reviews_labels_milestones_fa1f5e"); },
   },
   {
     scope: "workflow",
-    usedFor:
-      "GitHub Actions — re-running, cancelling, and dispatching workflows, and pushing " +
-      "any changes to workflow files.",
+    get usedFor() { return tr("settings.github_actions_re_running_cancelling_and_dispatching_e98414"); },
   },
   {
     scope: "notifications",
-    usedFor:
-      "The repo's notifications inbox and thread subscribe/unsubscribe. This API only " +
-      "accepts classic tokens — a fine-grained token cannot reach it.",
+    get usedFor() { return tr("settings.the_repo_s_notifications_inbox_and_thread_6f959a"); },
   },
   {
     scope: "project",
-    usedFor: "The Projects panel (classic and Projects v2 boards).",
+    get usedFor() { return tr("common.the_projects_panel_classic_and_projects_v2_boards"); },
   },
   {
     scope: "read:org",
-    usedFor: "Org-owned Projects and other org context needed to resolve them.",
+    get usedFor() { return tr("common.org_owned_projects_and_other_org_context_needed"); },
   },
 ];
 
@@ -112,47 +100,44 @@ export const FINE_GRAINED_PERMISSIONS: GuidePermissionRow[] = [
   {
     name: "Contents",
     level: "Read and write",
-    usedFor: "Merging pull requests, applying review suggestions, releases and tags.",
+    get usedFor() { return tr("common.merging_pull_requests_applying_review_suggestions_releases_and"); },
   },
   {
     name: "Pull requests",
     level: "Read and write",
-    usedFor:
-      "Listing, creating, merging, closing, drafting, and auto-merging PRs; reviews, " +
-      "line comments, suggestions, and review threads.",
+    get usedFor() { return tr("settings.listing_creating_merging_closing_drafting_and_auto_90149a"); },
   },
   {
     name: "Issues",
     level: "Read and write",
-    usedFor:
-      "Issues, comments, labels, milestones, locking/pinning/transferring, and sub-issues.",
+    get usedFor() { return tr("common.issues_comments_labels_milestones_locking_pinning_transferring_and"); },
   },
   {
     name: "Actions",
     level: "Read and write",
-    usedFor: "Listing, re-running, cancelling, and dispatching workflow runs.",
+    get usedFor() { return tr("common.listing_re_running_cancelling_and_dispatching_workflow_runs"); },
   },
   {
     name: "Commit statuses",
     level: "Read-only",
-    usedFor: "The commit status panel.",
+    get usedFor() { return tr("common.the_commit_status_panel"); },
   },
   {
     name: "Metadata",
     level: "Read-only",
-    usedFor: "Added automatically by GitHub — collaborators and repository info.",
+    get usedFor() { return tr("common.added_automatically_by_github_collaborators_and_repository_info"); },
   },
   {
     name: "Projects (Organization permission)",
     level: "Read and write",
-    usedFor: "Org-owned Projects v2.",
+    get usedFor() { return tr("common.org_owned_projects_v2"); },
   },
 ];
 
 /** What a fine-grained PAT cannot reach in ForgeOrbit, even with every
  *  permission above granted — phrased for the dialog's warning list. */
 export const FINE_GRAINED_LIMITATIONS: string[] = [
-  "The notifications inbox — GitHub's Notifications API only supports classic tokens.",
+  tr("common.the_notifications_inbox_github_s_notifications_api_only"),
   "Repository Discussions — there is no fine-grained permission for repo discussions.",
   "Check-run details — the Checks API can't be granted to fine-grained tokens (commit statuses still work).",
   "User-owned (non-organization) Projects.",
@@ -160,7 +145,7 @@ export const FINE_GRAINED_LIMITATIONS: string[] = [
 
 /** Caveats specific to organization-owned repositories. */
 export const ORG_CAVEATS: string[] = [
-  "A fine-grained token used against an organization's repos may need the organization to allow fine-grained tokens at all, and can sit in a \"Pending\" state until an org admin approves it.",
+  tr("common.a_fine_grained_token_used_against_an_organization"),
   "Classic tokens for organizations with SAML SSO enabled must be authorized per-organization via the token's \"Configure SSO\" menu before they'll work against that org's repos.",
   "Organization policies may cap how long any token — classic or fine-grained — is allowed to live.",
 ];
@@ -177,53 +162,47 @@ export const MULTI_ACCOUNT_NOTE: string =
 /** Click-path to create a fine-grained personal access token. */
 export const FINE_GRAINED_CREATE_STEPS: GuideStep[] = [
   {
-    title: "Open GitHub → Settings → Developer settings",
-    detail: "From your GitHub profile picture, go to Settings, then Developer settings in the left sidebar.",
+    get title() { return tr("common.open_github_settings_developer_settings"); },
+    get detail() { return tr("common.from_your_github_profile_picture_go_to_settings"); },
   },
   {
-    title: "Personal access tokens → Fine-grained tokens",
-    detail: "Choose \"Fine-grained tokens\", then click \"Generate new token\".",
+    get title() { return tr("common.personal_access_tokens_fine_grained_tokens"); },
+    get detail() { return tr("common.choose_fine_grained_tokens_then_click_generate_new"); },
   },
   {
-    title: "Name, expiration, and resource owner",
-    detail:
-      "Pick a name and expiration. Set \"Resource owner\" to your personal account, or " +
-      "the organization that owns the repositories you want ForgeOrbit to work with.",
+    get title() { return tr("common.name_expiration_and_resource_owner"); },
+    get detail() { return tr("settings.pick_a_name_and_expiration_set_resource_62fbbe"); },
   },
   {
-    title: "Repository access",
-    detail:
-      "Choose \"Only select repositories\" and pick the repos ForgeOrbit should touch (or " +
-      "\"All repositories\" if you want it to cover everything under that owner).",
+    get title() { return tr("common.repository_access"); },
+    get detail() { return tr("settings.choose_only_select_repositories_and_pick_the_f643aa"); },
   },
   {
-    title: "Set permissions",
-    detail: "Grant the permissions listed below, then click \"Generate token\" and copy it — it's shown only once.",
+    get title() { return tr("common.set_permissions"); },
+    get detail() { return tr("common.grant_the_permissions_listed_below_then_click_generate"); },
   },
 ];
 
 /** Click-path to create a classic personal access token. */
 export const CLASSIC_CREATE_STEPS: GuideStep[] = [
   {
-    title: "Open GitHub → Settings → Developer settings",
-    detail: "From your GitHub profile picture, go to Settings, then Developer settings in the left sidebar.",
+    get title() { return tr("common.open_github_settings_developer_settings"); },
+    get detail() { return tr("common.from_your_github_profile_picture_go_to_settings"); },
   },
   {
-    title: "Personal access tokens → Tokens (classic)",
-    detail: "Choose \"Tokens (classic)\", then \"Generate new token\" → \"Generate new token (classic)\".",
+    get title() { return tr("common.personal_access_tokens_tokens_classic"); },
+    get detail() { return tr("common.choose_tokens_classic_then_generate_new_token_generate"); },
   },
   {
-    title: "Note and expiration",
-    detail: "Give the token a note describing what it's for, and pick an expiration.",
+    get title() { return tr("common.note_and_expiration"); },
+    get detail() { return tr("common.give_the_token_a_note_describing_what_it"); },
   },
   {
-    title: "Select scopes",
-    detail: "Tick the scopes listed below, then click \"Generate token\" and copy it — it's shown only once.",
+    get title() { return tr("common.select_scopes"); },
+    get detail() { return tr("common.tick_the_scopes_listed_below_then_click_generate"); },
   },
   {
-    title: "SAML SSO organizations",
-    detail:
-      "If the token needs to reach an org with SAML SSO enabled, open the token's " +
-      "\"Configure SSO\" menu afterward and authorize it for that organization.",
+    get title() { return tr("common.saml_sso_organizations"); },
+    get detail() { return tr("settings.if_the_token_needs_to_reach_an_618f64"); },
   },
 ];

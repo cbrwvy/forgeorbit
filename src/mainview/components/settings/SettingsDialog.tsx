@@ -1,8 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { englishPluralSuffix, t as tr, t as translate, type TranslationKey } from "@/i18n/core";
+import { staticLabel } from "@/i18n/presentation";
+
+import { I18nText, useLocale, useLocale as useUILocale } from "@/i18n/react";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { applyDensity, DENSITIES, readDensity, writeDensity, type Density } from "@/lib/density";
+import { setShowTechnicalDetails, useShowTechnicalDetails } from "@/lib/technical-details-pref";
+import { useNewTaskPinned, writeNewTaskPinned } from "@/lib/new-task-presentation";
+import { scrollWithin } from "@/lib/scroll-within";
 import { createPortal } from "react-dom";
 import { BarChart3, ChevronLeft, Loader2, Minus, Monitor, Moon, Plus, Sun, Terminal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, api, type AccountUsageDay, type HarnessesPayload, type HarnessInput } from "@/lib/api";
+import { ApiError, api, type AccountUsageDay, type AppBuildInfo, type HarnessesPayload, type HarnessInput } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -13,14 +22,28 @@ import { useConfirm } from "@/components/ui/confirm";
 import { AgentIcon } from "@/components/kanban/AgentIcon";
 import { AgentProfileForm } from "@/components/kanban/AgentProfileFormDialog";
 import { AgentProfilesSection } from "@/components/settings/AgentProfilesSection";
+import { AccountsDashboard } from "@/components/accounts/AccountsDashboard";
+import { ProviderRuntimeMatrix } from "@/components/settings/ProviderRuntimeMatrix";
+import { AiRouterDashboard } from "@/components/router/AiRouterDashboard";
 import { GitHubTokensSection } from "@/components/settings/GitHubTokensSection";
 import { PipelinesSection } from "@/components/settings/PipelinesSection";
+import { SettingsSubsection } from "@/components/settings/SettingsSubsection";
+import { ProjectPermissionsPanel } from "@/components/permissions/ProjectPermissionsPanel";
+import { SettingsSearch } from "@/components/settings/SettingsSearch";
+import { AutonomyLayers } from "@/components/settings/AutonomyLayers";
+import { AutonomyPolicyPanel } from "@/components/orchestration/AutonomyControlPanel";
+import { OwnerTrustPanel, type OwnerReviewContext } from "@/components/orchestration/OwnerTrustPanel";
+import { SelfImprovementPanel } from "@/components/orchestration/SelfImprovementPanel";
+import { MissionControlPage } from "@/components/orchestration/MissionControlPage";
+import type { ProjectSurfacePage } from "@/lib/workspace";
+import { routerV2Api } from "@/lib/router-v2-api";
+import type { SettingsIndexEntry } from "@/lib/settings-index";
 import { SavedPromptsSection } from "@/components/settings/SavedPromptsSection";
 import { useFontSize } from "@/components/font-size-provider";
 import { useTheme } from "@/components/theme-provider";
 import { isMacPlatform } from "@/lib/platform";
 import { IDENTIFIER_INPUT_PROPS } from "@/lib/identifier-input";
-import { ONBOARDING_DISMISSED_PREF } from "@/lib/onboarding";
+import { ONBOARDING_DISMISSED_PREF } from "@/lib/getting-started";
 import { FX_AUTO_RESUME_MAX, parseFxAutoResumeDelayInput } from "@/lib/fx-auto-resume-prefs";
 import {
   ARCHIVED_HISTORY_RETENTION_PREF,
@@ -32,10 +55,15 @@ import {
   retentionSelectOptions,
 } from "@/lib/retention-prefs";
 import { abbreviateHome, cn, formatTokens } from "@/lib/utils";
+import { shortenPath } from "@/lib/path-display";
 import { resolveTemplateInitialHome } from "@/lib/harness-template";
 import { harnessEditorDirty } from "@/lib/harness-editor-dirty";
 import {
+  KEEP_MOUNTED_SECTIONS,
   SETTINGS_SECTIONS,
+  sectionOfSubsection,
+  type PrimarySectionId,
+  type SubsectionId,
   activeSection,
   backFromSubview,
   initialView,
@@ -48,6 +76,7 @@ import {
   type SettingsSectionId,
   type SettingsView,
 } from "@/lib/settings-dialog-view";
+import { BackupRecoverySection } from "@/components/settings/BackupRecoverySection";
 import {
   FONT_SIZE_DEFAULT,
   FONT_SIZE_MAX,
@@ -63,7 +92,7 @@ import {
   type Harness,
   type HarnessTemplate,
   type ThemePreference,
-} from "../../../shared/types.ts";
+} from "@/i18n/options";
 
 // Computed once at module load, same convention as `isMacPlatform()` in
 // `lib/platform.ts` (the single sniff) — the Settings → General font-size
@@ -71,9 +100,9 @@ import {
 // calls out "outside a terminal" because `font-size-provider.tsx`'s keydown
 // handler lets a focused `.xterm` pane keep Ctrl+-/Ctrl+_ for readline's
 // undo/literal bindings there.
-const FONT_SIZE_HINT = isMacPlatform()
-  ? "⌘= and ⌘− also work anywhere; ⌘0 resets."
-  : "Ctrl+= and Ctrl+− also work anywhere outside a terminal; Ctrl+0 resets.";
+const fontSizeHint = () => isMacPlatform()
+  ? tr("common.and_also_work_anywhere_0_resets")
+  : tr("common.ctrl_and_ctrl_also_work_anywhere_outside_a");
 
 /** Icon shown per theme preference in the Settings → General picker. */
 const THEME_PREFERENCE_ICON: Record<ThemePreference, typeof Monitor> = {
@@ -99,7 +128,7 @@ interface Props {
   homeDir: string;
   /** Active data dir from `GET /defaults` — substituted into `{dataDir}` in
    *  template `home` paths so new harnesses default under the running dir
-   *  (~/.agetor for the .app, ~/.agetor-dev for `bun run dev`). */
+   *  (the ForgeOrbit platform default, or an explicit development root). */
   dataDir: string;
   /** Section to land on when the dialog opens. Applied on every open
    *  transition (not just the first) — absent/undefined preserves today's
@@ -113,6 +142,22 @@ interface Props {
    *  `PipelinesSection`'s `onOpenPipelines` prop. The caller closes this
    *  dialog in the same callback. */
   onOpenPipelines: (id: string | null, editing: boolean) => void;
+  onOpenPortfolio?: () => void;
+  /** Open Browser / Native Computer (they left the global rail in M3). The caller closes this dialog. */
+  onOpenTool?: (tool: "browser" | "native-computer") => void;
+  /** Subsection to scroll to on open (M4); the legacy section ids already imply one. */
+  initialAnchor?: SubsectionId | null;
+  /** The exact mission (and task) the Owner-confirmation panel was opened for (M4). */
+  ownerContext?: OwnerReviewContext | null;
+  /** Hand-offs to the pages that own the work. The caller closes this dialog. */
+  onOpenAnalytics?: () => void;
+  onOpenMissions?: () => void;
+  onOpenWorktrees?: () => void;
+  /** Leave Settings for a project page or a task. The caller closes this dialog. */
+  onOpenProjectPage?: (path: string, page: ProjectSurfacePage) => void;
+  onOpenTask?: (taskId: string) => void;
+  /** Switch to Owner confirmation for one plan. Opening it confirms nothing. */
+  onOpenMissionSettings?: (target: { section: "autonomy"; anchor: "autonomy_policy" | "owner_trust"; ownerContext?: OwnerReviewContext }) => void;
 }
 
 /**
@@ -180,34 +225,34 @@ function resolveTemplate(t: HarnessTemplate, dataDir: string): HarnessTemplate {
  */
 const HARNESS_HOME_COPY: Record<AgentKind, { label: string; slug: string; help: string }> = {
   "claude-code": {
-    label: "CLAUDE_CONFIG_DIR override (absolute path; optional)",
+    get label() { return tr("common.claude_config_dir_override_absolute_path_optional"); },
     slug: "claude-2",
-    help: "Sets CLAUDE_CONFIG_DIR on spawn — claude stores config, sessions, and login under this path, so a separate path gives this harness its own account. Authenticate by running: CLAUDE_CONFIG_DIR=<path> claude /login.",
+    get help() { return tr("common.sets_claude_config_dir_on_spawn_claude_stores"); },
   },
   codex: {
-    label: "HOME override (absolute path; optional)",
+    get label() { return tr("common.home_override_absolute_path_optional"); },
     slug: "codex-2",
-    help: "Sets HOME and CODEX_HOME on spawn — codex stores its login under $CODEX_HOME, so a separate path gives this harness its own account.",
+    get help() { return tr("common.sets_home_and_codex_home_on_spawn_codex"); },
   },
   cursor: {
-    label: "HOME override (absolute path; optional)",
+    get label() { return tr("common.home_override_absolute_path_optional"); },
     slug: "cursor-2",
-    help: "HOME override — Cursor has no config-dir env var; the harness home becomes $HOME for the spawned agent, so a separate path gives this harness its own account.",
+    get help() { return tr("common.home_override_cursor_has_no_config_dir_env"); },
   },
   gemini: {
-    label: "GEMINI_CLI_HOME override (absolute path; optional)",
+    get label() { return tr("common.gemini_cli_home_override_absolute_path_optional"); },
     slug: "gemini-2",
-    help: "Sets GEMINI_CLI_HOME on spawn — gemini stores its login, sessions, and settings under this path (a dedicated override, not the real HOME), so a separate path gives this harness its own account.",
+    get help() { return tr("common.sets_gemini_cli_home_on_spawn_gemini_stores"); },
   },
   antigravity: {
-    label: "HOME override (absolute path; optional)",
+    get label() { return tr("common.home_override_absolute_path_optional"); },
     slug: "antigravity-2",
-    help: "HOME override — Antigravity (agy) stores its config, auth, and logs under $HOME/.gemini, so a separate path gives this harness its own account.",
+    get help() { return tr("common.home_override_antigravity_agy_stores_its_config_auth"); },
   },
   fx: {
-    label: "HOME override (absolute path; optional)",
+    get label() { return tr("common.home_override_absolute_path_optional"); },
     slug: "fx-2",
-    help: "HOME override — fx has no dedicated config-dir env var; the harness home becomes $HOME for the spawned agent, so fx's state (~/.fx) lands under this path, giving this harness its own account.",
+    get help() { return tr("common.home_override_fx_has_no_dedicated_config_dir"); },
   },
 };
 
@@ -266,7 +311,7 @@ async function describeHarnessInUse(err: unknown): Promise<string | null> {
     const noun = names.length === 1 ? "agent" : "agents";
     segments.push(`${names.length} ${noun}: ${names.join(", ")}`);
   }
-  return `In use by ${segments.join(" and ")}`;
+  return tr("common.in_use_by", { p0: String(segments.join(" and ")) });
 }
 
 /** The view the modal opens on: a deep-linked agent's edit subpage, else the
@@ -274,14 +319,32 @@ async function describeHarnessInUse(err: unknown): Promise<string | null> {
 function entryView(
   initialSection: SettingsSectionId | undefined,
   initialAgentProfileId: string | null | undefined,
+  initialAnchor?: SubsectionId | null,
 ): SettingsView {
   if (initialAgentProfileId) return openAgentEditor(initialAgentProfileId);
-  if (initialSection) return openSection(initialSection);
+  if (initialSection) return openSection(initialSection, initialAnchor);
   return initialView();
 }
 
-export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUserMessagesChange, fxAutoResume, onFxAutoResumeChange, onChange, homeDir, dataDir, initialSection, initialAgentProfileId, onOpenPipelines }: Props) {
-  const [version, setVersion] = useState<string>("");
+const FALLBACK_APP_INFO: AppBuildInfo = {
+  version: "?",
+  buildNumber: null,
+  macBundleVersion: null,
+  sourceRevision: null,
+  sourceTreeSHA256: null,
+  sourceDirty: null,
+  channel: null,
+  identifier: null,
+  localBuild: false,
+  builtAt: null,
+  migrationCeiling: null,
+  updatesEnabled: false,
+};
+
+export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUserMessagesChange, fxAutoResume, onFxAutoResumeChange, onChange, homeDir, dataDir, initialSection, initialAgentProfileId, onOpenPipelines, onOpenPortfolio, onOpenTool, initialAnchor, ownerContext = null, onOpenWorktrees, onOpenProjectPage, onOpenTask, onOpenMissionSettings }: Props) {
+  const { locale: uiLocale } = useUILocale();
+  const [appInfo, setAppInfo] = useState<AppBuildInfo>({ ...FALLBACK_APP_INFO, version: "" });
+  const version = appInfo.version;
   const [payload, setPayload] = useState<HarnessesPayload>({ harnesses: [], statuses: [] });
   const [defaultHarness, setDefaultHarness] = useState<string>("claude-code");
   const [tmuxSource, setTmuxSource] = useState<"system" | "bundled">("system");
@@ -290,7 +353,7 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
   // helper — see src/bun/disclaim.ts. Only the literal stored value "false"
   // turns it off; unset/anything-else reads as on, matching disclaimEnabled().
   const [disclaimSpawnedAgents, setDisclaimSpawnedAgents] = useState(true);
-  const [view, setView] = useState<SettingsView>(() => entryView(initialSection, initialAgentProfileId));
+  const [view, setView] = useState<SettingsView>(() => entryView(initialSection, initialAgentProfileId, initialAnchor));
   // The view (and a per-open counter) must be correct on the very FIRST commit
   // after the modal opens: the dialog stays mounted while closed, and an
   // effect-driven reset would let that commit render the previous subpage —
@@ -299,16 +362,17 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
   // is adjusted during render, on the props' change, React's "derive state
   // from props" pattern. `openCount` rides in the agent editor's `key` so a
   // reopen onto the SAME profile id still mounts a fresh form.
-  const [entry, setEntry] = useState({ open, initialSection, initialAgentProfileId });
+  const [entry, setEntry] = useState({ open, initialSection, initialAgentProfileId, initialAnchor });
   const [openCount, setOpenCount] = useState(0);
   if (
     entry.open !== open ||
     entry.initialSection !== initialSection ||
-    entry.initialAgentProfileId !== initialAgentProfileId
+    entry.initialAgentProfileId !== initialAgentProfileId ||
+    entry.initialAnchor !== initialAnchor
   ) {
-    setEntry({ open, initialSection, initialAgentProfileId });
+    setEntry({ open, initialSection, initialAgentProfileId, initialAnchor });
     if (open) {
-      setView(entryView(initialSection, initialAgentProfileId));
+      setView(entryView(initialSection, initialAgentProfileId, initialAnchor));
       if (!entry.open) setOpenCount((n) => n + 1);
     }
   }
@@ -321,6 +385,10 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
   // unsaved edits — fed by each form's `onDirtyChange`, which reports `false`
   // again when the form unmounts. Read by `leaveSubpage`.
   const subpageDirtyRef = useRef(false);
+  // The autonomy policy form lives in a kept-mounted section, so switching sections
+  // never loses it; closing the dialog does, so that path asks first (see `leaveSubpage`).
+  const autonomyDirtyRef = useRef(false);
+  const onAutonomyDirtyChange = useCallback((dirty: boolean) => { autonomyDirtyRef.current = dirty; }, []);
   const leavingRef = useRef(false);
   // Bumped every time a harness editor view is opened. A save captures the
   // value at submit time, so its late resolution can tell whether the editor
@@ -341,14 +409,14 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
 
   const refresh = async () => {
     const [info, data, prefs, tmux] = await Promise.all([
-      api.info().catch(() => ({ version: "?" })),
+      api.info().catch(() => FALLBACK_APP_INFO),
       api.listHarnesses().catch(() => ({ harnesses: [], statuses: [] })),
       api.listPreferences().catch((): Record<string, string> => ({})),
       api
         .getTmuxSource()
         .catch(() => ({ source: "system" as const, bundledAvailable: false, bundledPath: "", resolvedBin: "" })),
     ]);
-    setVersion(info.version);
+    setAppInfo(info);
     setPayload(data);
     // The default-harness picker only lists *enabled* harnesses. If the
     // stored pref points at a now-disabled one, reconcile both local state
@@ -390,12 +458,13 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
     // half-filled editor never greets the user on the next open.
     subpageDirtyRef.current = false;
     setFormError(null);
+    autonomyDirtyRef.current = false;
   }, [open, initialSection, initialAgentProfileId]);
 
   const statusByHarness = useMemo(() => {
     const map = new Map(payload.statuses.map((s) => [s.harnessId, s]));
     return map;
-  }, [payload.statuses]);
+  }, [payload.statuses, uiLocale]);
 
   // A bundle import (Agents / Pipelines sections) can enable a harness as
   // part of its transaction — reload the Harnesses list here and the app's
@@ -429,12 +498,12 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
   };
 
   const onDeleteHarness = async (h: Harness) => {
-    const ok = await confirm({
-      title: `Delete "${h.label}"?`,
-      description: "The alias will be removed. Tasks already using it will fail to start until reassigned.",
-      confirmLabel: "Delete",
+    const ok = await confirm(() => ({
+      title: tr("common.delete_988654", { p0: String(h.label) }),
+      description: tr("common.the_alias_will_be_removed_tasks_already_using"),
+      confirmLabel: tr("common.delete"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     try {
       await api.deleteHarness(h.id);
@@ -445,7 +514,7 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
       // so a failed delete would otherwise be invisible. Surface it as a toast.
       const message = e instanceof Error ? e.message : String(e);
       const description = await describeHarnessInUse(e) ?? message;
-      toast.error(`Couldn't delete "${h.label}"`, {
+      toast.error(tr("common.couldn_t_delete", { p0: String(h.label) }), {
         description,
         duration: Infinity,
       });
@@ -457,7 +526,7 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
       await api.openHarnessTerminal(h.id);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      toast.error(`Couldn't open a terminal for "${h.label}"`, {
+      toast.error(tr("common.couldn_t_open_a_terminal_for", { p0: String(h.label) }), {
         description: message,
         duration: Infinity,
       });
@@ -490,16 +559,16 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
         // silently claiming "0 running" would be a lie if the probe fails.
       }
       const description = runningCount === null
-        ? "Couldn't check whether any tasks are currently using this harness. Anything in flight will keep running until it finishes. It will be hidden from the New Task picker, but historical tasks keep their reference. Disable anyway?"
+        ? tr("common.couldn_t_check_whether_any_tasks_are_currently")
         : runningCount > 0
-          ? `${runningCount} task${runningCount === 1 ? "" : "s"} currently running will keep using this harness until they finish. It will be hidden from the New Task picker, but historical tasks keep their reference.`
-          : "It will be hidden from the New Task picker. Historical tasks keep their reference, and you can re-enable it anytime.";
-      const ok = await confirm({
-        title: `Disable "${h.label}"?`,
+          ? tr("common.task_currently_running_will_keep_using_this_harness", { p0: String(runningCount), p1: String(runningCount === 1 ? "" : "s") })
+          : tr("common.it_will_be_hidden_from_the_new_task");
+      const ok = await confirm(() => ({
+        title: tr("common.disable_fc1907", { p0: String(h.label) }),
         description,
-        confirmLabel: "Disable",
+        confirmLabel: tr("common.disable"),
         variant: "destructive",
-      });
+      }));
       if (!ok) {
         clearPending(h.id);
         return;
@@ -513,7 +582,7 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
     } catch (e) {
       clearPending(h.id);
       const message = e instanceof Error ? e.message : String(e);
-      toast.error(`Couldn't ${next ? "enable" : "disable"} "${h.label}"`, {
+      toast.error(tr("common.couldn_t", { p0: String(next ? "enable" : "disable"), p1: String(h.label) }), {
         description: message,
         duration: Infinity,
       });
@@ -521,6 +590,51 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
   };
 
   const currentSection = activeSection(view);
+  // Fixed shell (FO-PM01-UXFIX01): only this region scrolls. It starts at the top whenever the
+  // section changes, or scrolls to the requested panel (a search hit or a legacy deep link).
+  const contentRef = useRef<HTMLDivElement>(null);
+  const viewAnchor = view.kind === "section" ? view.anchor ?? null : null;
+  const contentKey = view.kind === "section" ? `section:${view.section}` : view.kind;
+  const pendingControlRef = useRef<string | null>(null);
+  const [jumpNonce, setJumpNonce] = useState(0);
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    if (!viewAnchor) { root.scrollTo({ top: 0 }); return; }
+    const target = root.querySelector<HTMLElement>(`[data-settings-sub="${viewAnchor}"]`);
+    if (!target) return;
+    scrollWithin(root, target, "start");
+    const selector = pendingControlRef.current;
+    pendingControlRef.current = null;
+    // Controls inside lazily loaded panels can appear a frame later; try a few times, then settle on the panel.
+    let tries = 0;
+    let frame = 0;
+    const focusControl = () => {
+      const control = selector ? target.querySelector<HTMLElement>(selector) : null;
+      if (control) { control.focus({ preventScroll: true }); scrollWithin(root, control, "nearest"); return; }
+      if (selector && tries++ < 8) { frame = requestAnimationFrame(focusControl); return; }
+      target.focus({ preventScroll: true });
+    };
+    focusControl();
+    return () => cancelAnimationFrame(frame);
+  }, [contentKey, viewAnchor, jumpNonce]);
+
+  // Panels that keep drafts stay mounted (hidden) once visited; others mount only while shown.
+  const visitedRef = useRef<{ open: number; sections: Set<PrimarySectionId> }>({ open: -1, sections: new Set() });
+  if (visitedRef.current.open !== openCount) visitedRef.current = { open: openCount, sections: new Set() };
+  if (view.kind === "section") visitedRef.current.sections.add(view.section);
+  const sectionShown = (id: PrimarySectionId) => view.kind === "section" && view.section === id;
+  const sectionMounted = (id: PrimarySectionId) =>
+    sectionShown(id) || (KEEP_MOUNTED_SECTIONS.includes(id) && visitedRef.current.sections.has(id));
+
+  /** Search hit: open the section and panel, then focus the control. Guarded like any section change. */
+  const jumpToSetting = (entry: SettingsIndexEntry) => {
+    void leaveSubpage(() => {
+      pendingControlRef.current = entry.control ?? null;
+      setView(openSection(sectionOfSubsection(entry.anchor), entry.anchor));
+      setJumpNonce((n) => n + 1);
+    });
+  };
 
   const showEditor = (harnessId: string | null, template: HarnessTemplate) => {
     editorTokenRef.current += 1;
@@ -550,28 +664,37 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
    * must read `viewRef.current`, not the render's `view` — the view can change
    * while the confirm is open.
    */
-  const leaveSubpage = async (proceed: () => void) => {
+  const leaveSubpage = async (proceed: () => void, opts?: { closing?: boolean }) => {
     const current = viewRef.current;
-    if (isFormSubpage(current) && subpageDirtyRef.current) {
+    const formDirty = isFormSubpage(current) && subpageDirtyRef.current;
+    const policyDirty = !!opts?.closing && autonomyDirtyRef.current;
+    if (formDirty || policyDirty) {
       if (leavingRef.current) return;
       leavingRef.current = true;
       let ok = false;
       try {
-        ok = await confirm({
-          title: "Discard unsaved changes?",
-          description:
-            current.kind === "agent-editor"
-              ? "Your edits to this agent will be lost."
-              : "Your edits to this harness will be lost.",
-          confirmLabel: "Discard",
+        ok = await confirm(() => ({
+          title: formDirty ? tr("common.discard_unsaved_changes") : tr("settings.autonomy.discard_title"),
+          description: !formDirty
+            ? tr("settings.autonomy.discard_desc")
+            : current.kind === "agent-editor"
+              ? tr("common.your_edits_to_this_agent_will_be_lost")
+              : tr("common.your_edits_to_this_harness_will_be_lost"),
+          confirmLabel: tr("common.discard"),
           variant: "destructive",
-        });
+        }));
       } finally {
         leavingRef.current = false;
       }
       if (!ok) return;
     }
     proceed();
+  };
+
+  /** Leave Settings for another page: guarded like closing, then reset and hand off. */
+  const handOff = (go: (() => void) | undefined) => {
+    if (!go) return;
+    void leaveSubpage(() => { resetView(); go(); }, { closing: true });
   };
 
   /** Pop the current subpage to its section, or close the modal from a
@@ -585,11 +708,210 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
     closeModal();
   };
 
+  /** Opens another subsection of Settings (a link, not a save). */
+  const openAnchor = (anchor: SubsectionId) => () => void leaveSubpage(() => {
+    setView(openSection(sectionOfSubsection(anchor), anchor));
+    setJumpNonce((n) => n + 1);
+  });
+
+  const renderSection = (id: PrimarySectionId) => {
+    switch (id) {
+      case "general":
+        return (
+          <GeneralSection
+            defaultHarness={defaultHarness}
+            payload={payload}
+            onPickDefault={onPickDefault}
+            stickyUserMessages={stickyUserMessages}
+            onStickyUserMessagesChange={onStickyUserMessagesChange}
+            onClose={closeModal}
+          />
+        );
+      case "providers":
+        return (
+          <>
+            <SettingsSubsection id="harnesses" title={tr("common.harnesses")}>
+              <HarnessesSection
+                payload={payload}
+                statusByHarness={statusByHarness}
+                homeDir={homeDir}
+                canAdd={!!dataDir}
+                onAdd={() => setView(openTemplates())}
+                onEdit={(h) =>
+                  showEditor(h.id, {
+                    id: "__edit",
+                    label: h.label,
+                    description: "",
+                    kind: h.kind,
+                    suggestedHarnessId: h.id,
+                    home: h.home,
+                    bin: h.bin,
+                    env: h.env,
+                  })
+                }
+                onDelete={onDeleteHarness}
+                onToggleEnabled={onToggleEnabled}
+                onOpenTerminal={onOpenTerminal}
+                pendingToggle={pendingToggle}
+              />
+            </SettingsSubsection>
+            <SettingsSubsection id="accounts" title={tr("common.accounts_resources_d23794")} titleHidden>
+              <AccountsDashboard harnesses={payload.harnesses} onOpenPortfolio={onOpenPortfolio} onResourcesChanged={async () => { await refresh(); onChange?.(); }} />
+              <div className="rounded-md border border-border/60 p-3" data-testid="settings-link-analytics">
+                <p className="text-sm font-medium">{tr("settings.link.analytics")}</p>
+                <p className="text-xs text-muted-foreground">{tr("settings.link.analytics_hint")}</p>
+              </div>
+            </SettingsSubsection>
+            <SettingsSubsection id="ai_router" title={tr("routing_v2.title")} titleHidden>
+              <AiRouterDashboard onOpenAccount={openAnchor("accounts")} />
+            </SettingsSubsection>
+          </>
+        );
+      case "plans":
+        return (
+          <SettingsSubsection id="execution_plans" title={tr("settings.sec.plans")} titleHidden>
+            <MissionControlPage
+              embedded
+              onOpenProject={onOpenProjectPage ? (path, page) => handOff(() => onOpenProjectPage(path, page)) : undefined}
+              onOpenTask={onOpenTask ? (id) => handOff(() => onOpenTask(id)) : undefined}
+              onOpenSettings={onOpenMissionSettings}
+            />
+          </SettingsSubsection>
+        );
+      case "autonomy":
+        return (
+          <>
+            <SettingsSubsection id="autonomy_layers" title={tr("settings.sub.autonomy_layers")}>
+              <AutonomyLayers onOpenRouter={openAnchor("ai_router")} onOpenMissions={() => { setView(openSection("plans")); setJumpNonce((n) => n + 1); }} />
+            </SettingsSubsection>
+            <SettingsSubsection id="autonomy_policy" title={tr("autonomy.panel")}>
+              <AutonomyPolicyPanel onDirtyChange={onAutonomyDirtyChange} />
+            </SettingsSubsection>
+            <SettingsSubsection id="project_permissions" title={tr("settings.sub.project_permissions")}>
+              <ProjectPermissionsPanel />
+            </SettingsSubsection>
+            <SettingsSubsection id="owner_trust" title={tr("ownerTrust.title")} titleHidden>
+              <OwnerTrustPanel context={ownerContext} />
+            </SettingsSubsection>
+          </>
+        );
+      case "tools":
+        return (
+          <>
+            <SettingsSubsection id="tools" title={tr("settings.sub.tools")} hint={tr("settings.tools_hint")}>
+              <div data-testid="settings-tools" className="space-y-3">
+                {([
+                  { id: "browser", testId: "workspace-browser", title: tr("settings.tools_browser"), hint: tr("settings.tools_browser_hint") },
+                  { id: "native-computer", testId: "workspace-native-computer", title: tr("settings.tools_native"), hint: tr("settings.tools_native_hint") },
+                ] as const).map((tool) => (
+                  <div key={tool.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+                    <div className="min-w-0 flex-1 basis-48">
+                      <p className="text-sm font-medium">{tool.title}</p>
+                      <p className="text-xs text-muted-foreground">{tool.hint}</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" disabled={!onOpenTool} onClick={() => handOff(onOpenTool ? () => onOpenTool(tool.id) : undefined)} data-testid={tool.testId} aria-label={`${tr("settings.tools_open")}: ${tool.title}`}>
+                      {tr("settings.tools_open")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </SettingsSubsection>
+            {/* Kept mounted with the section so an unsaved host/label/token draft survives switching sections. */}
+            <SettingsSubsection id="git" title={tr("common.git_integration")}>
+              <div className="space-y-4 text-sm">
+                <GitHubTokensSection />
+              </div>
+            </SettingsSubsection>
+            <SettingsSubsection id="tool_links" title={tr("settings.sub.tool_links")}>
+              <div className="space-y-3">
+                {([
+                  { testId: "settings-open-worktrees", title: tr("settings.link.worktrees"), hint: tr("settings.link.worktrees_hint"), go: onOpenWorktrees },
+                  { testId: "settings-open-pipelines-page", title: tr("settings.link.pipelines"), hint: tr("settings.link.pipelines_hint"), go: () => onOpenPipelines(null, false) },
+                ]).map((link) => (
+                  <div key={link.testId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+                    <div className="min-w-0 flex-1 basis-48">
+                      <p className="text-sm font-medium">{link.title}</p>
+                      <p className="text-xs text-muted-foreground">{link.hint}</p>
+                    </div>
+                    <Button type="button" size="sm" variant="outline" disabled={!link.go} onClick={() => handOff(link.go)} data-testid={link.testId} aria-label={`${tr("settings.link.open")}: ${link.title}`}>
+                      {tr("settings.link.open")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </SettingsSubsection>
+          </>
+        );
+      case "library":
+        return (
+          <>
+            <SettingsSubsection id="prompts" title={tr("common.saved_prompts")}>
+              <SavedPromptsSection />
+            </SettingsSubsection>
+            <SettingsSubsection id="agents" title={tr("common.agents")} hint={tr("settings.link.import_export_hint")}>
+              {/* Unmounted while the editor subpage is open, as before M4; the Library section itself stays mounted. */}
+              {view.kind === "section" && (
+                <AgentProfilesSection
+                  harnesses={payload.harnesses}
+                  onAdd={() => setView(openAgentEditor(null))}
+                  onEdit={(p) => setView(openAgentEditor(p.id))}
+                  onDuplicate={(p) => setView(openAgentEditor(null, p.id))}
+                  onImported={onBundleImported}
+                />
+              )}
+            </SettingsSubsection>
+            <SettingsSubsection id="pipelines" title={tr("common.pipelines")}>
+              <PipelinesSection
+                onOpenPipelines={(pid, editing) => {
+                  // The parent closes the modal for this hand-off — reset the view too, like every other close.
+                  handOff(() => onOpenPipelines(pid, editing));
+                }}
+                onImported={onBundleImported}
+              />
+            </SettingsSubsection>
+          </>
+        );
+      case "advanced":
+        return (
+          <>
+            <SettingsSubsection id="backup" title={tr("backup.title")} titleHidden>
+              <BackupRecoverySection />
+            </SettingsSubsection>
+            <SettingsSubsection id="runtime" title={tr("settings.sub.runtime")} hint={tr("settings.runtime.hint")}>
+              <RuntimeSettings
+                fxAutoResume={fxAutoResume}
+                onFxAutoResumeChange={onFxAutoResumeChange}
+                tmuxSource={tmuxSource}
+                bundledTmuxAvailable={bundledTmuxAvailable}
+                onPickTmuxSource={onPickTmuxSource}
+                disclaimSpawnedAgents={disclaimSpawnedAgents}
+                onDisclaimSpawnedAgentsChange={onDisclaimSpawnedAgentsChange}
+              />
+            </SettingsSubsection>
+            <SettingsSubsection id="data" title={tr("settings.sub.data")} hint={tr("settings.data.hint")}>
+              <ArchivedHistorySection />
+            </SettingsSubsection>
+            <SettingsSubsection id="self_improvement" title={tr("selfImprove.title")} titleHidden>
+              <SelfImprovementPanel />
+            </SettingsSubsection>
+            <SettingsSubsection id="diagnostics" title={tr("settings.sub.diagnostics")} hint={tr("settings.diag.hint")}>
+              <DiagnosticsSettings info={appInfo} />
+            </SettingsSubsection>
+          </>
+        );
+      default: {
+        const _exhaustive: never = id;
+        void _exhaustive;
+        return null;
+      }
+    }
+  };
+
   return (
     <Dialog
       open={open}
-      onClose={() => void leaveSubpage(popOrClose)}
-      className="flex max-h-[85vh] w-full max-w-4xl flex-col p-0"
+      onClose={() => void leaveSubpage(popOrClose, { closing: resolveEscape(viewRef.current) === "close" })}
+      className="flex h-[min(42rem,calc(100dvh-2rem))] max-h-none w-full max-w-4xl flex-col overflow-hidden p-0"
       labelledBy="settings-dialog-title"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border/60 p-4 pb-3">
@@ -599,16 +921,16 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
               variant="ghost"
               size="icon"
               onClick={() => void leaveSubpage(() => setView(backFromSubview(viewRef.current)))}
-              aria-label="Back"
+              aria-label={tr("common.back")}
             >
               <ChevronLeft className="size-4" />
             </Button>
           )}
           <h2 id="settings-dialog-title" className="text-base font-semibold">
-            {view.kind === "section" && "Settings"}
-            {view.kind === "templates" && "Add harness"}
-            {view.kind === "editor" && (view.harnessId ? "Edit harness" : "Add harness")}
-            {view.kind === "agent-editor" && (view.profileId ? "Edit agent" : view.duplicateFromId ? "Duplicate agent" : "Add agent")}
+            {view.kind === "section" && tr("common.settings")}
+            {view.kind === "templates" && tr("settings.add_harness")}
+            {view.kind === "editor" && (view.harnessId ? tr("common.edit_harness") : tr("settings.add_harness"))}
+            {view.kind === "agent-editor" && (view.profileId ? tr("common.edit_agent") : view.duplicateFromId ? tr("common.duplicate_agent") : tr("settings.add_agent"))}
           </h2>
         </div>
         <div className="flex items-center gap-2">
@@ -616,153 +938,55 @@ export function SettingsDialog({ open, onClose, stickyUserMessages, onStickyUser
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => void leaveSubpage(closeModal)}
-            aria-label="Close"
+            onClick={() => void leaveSubpage(closeModal, { closing: true })}
+            aria-label={tr("common.close")}
           >
             <X className="size-4" />
           </Button>
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="shrink-0 border-b border-border/60 px-4 py-2">
+        <SettingsSearch onSelect={jumpToSetting} />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <nav
-          aria-label="Settings sections"
-          className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border/60 p-2"
+          aria-label={tr("settings.sec.nav")}
+          className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-border/60 p-2 sm:w-52 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r"
         >
-          {SETTINGS_SECTIONS.map((s) => {
-            const active = currentSection === s.id;
+          {SETTINGS_SECTIONS.map((sec) => {
+            const active = currentSection === sec.id;
             return (
               <Button
-                key={s.id}
+                key={sec.id}
                 size="sm"
                 variant={active ? "secondary" : "ghost"}
-                className="w-full justify-start"
+                className="w-auto shrink-0 justify-start sm:w-full sm:whitespace-normal sm:text-left"
                 aria-current={active ? "page" : undefined}
-                onClick={() => void leaveSubpage(() => setView(openSection(s.id)))}
+                onClick={() => void leaveSubpage(() => setView(openSection(sec.id)))}
+                data-testid={`settings-nav-${sec.id}`}
               >
-                {s.label}
+                {sec.label}
               </Button>
             );
           })}
         </nav>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-0">
-          {view.kind === "section" &&
-            (() => {
-              switch (view.section) {
-                case "general":
-                  return (
-                    <GeneralSection
-                      defaultHarness={defaultHarness}
-                      payload={payload}
-                      onPickDefault={onPickDefault}
-                      stickyUserMessages={stickyUserMessages}
-                      onStickyUserMessagesChange={onStickyUserMessagesChange}
-                      fxAutoResume={fxAutoResume}
-                      onFxAutoResumeChange={onFxAutoResumeChange}
-                      tmuxSource={tmuxSource}
-                      bundledTmuxAvailable={bundledTmuxAvailable}
-                      onPickTmuxSource={onPickTmuxSource}
-                      disclaimSpawnedAgents={disclaimSpawnedAgents}
-                      onDisclaimSpawnedAgentsChange={onDisclaimSpawnedAgentsChange}
-                      onClose={closeModal}
-                    />
-                  );
-                case "harnesses":
-                  return (
-                    <HarnessesSection
-                      payload={payload}
-                      statusByHarness={statusByHarness}
-                      homeDir={homeDir}
-                      canAdd={!!dataDir}
-                      onAdd={() => setView(openTemplates())}
-                      onEdit={(h) =>
-                        showEditor(h.id, {
-                          id: "__edit",
-                          label: h.label,
-                          description: "",
-                          kind: h.kind,
-                          suggestedHarnessId: h.id,
-                          home: h.home,
-                          bin: h.bin,
-                          env: h.env,
-                        })
-                      }
-                      onDelete={onDeleteHarness}
-                      onToggleEnabled={onToggleEnabled}
-                      onOpenTerminal={onOpenTerminal}
-                      pendingToggle={pendingToggle}
-                    />
-                  );
-                case "agents":
-                  return (
-                    <AgentProfilesSection
-                      harnesses={payload.harnesses}
-                      onAdd={() => setView(openAgentEditor(null))}
-                      onEdit={(p) => setView(openAgentEditor(p.id))}
-                      onDuplicate={(p) => setView(openAgentEditor(null, p.id))}
-                      onImported={onBundleImported}
-                    />
-                  );
-                case "pipelines":
-                  // Rendered by the always-mounted div below instead.
-                  return null;
-                case "git":
-                  // Rendered by the always-mounted div below instead.
-                  return null;
-                case "prompts":
-                  // Rendered by the always-mounted div below instead.
-                  return null;
-                default: {
-                  const _exhaustive: never = view.section;
-                  void _exhaustive;
-                  return null;
-                }
-              }
-            })()}
-
-          {/* Kept mounted regardless of the active section (unlike the
-              switch above) so an in-flight delete's `busyId`/`actionError`
-              survive a section switch (the list itself is module-cached and
-              doesn't need it). No wrapper spacing classes here since
-              PipelinesSection's own root already applies
-              "space-y-4 pt-3 text-sm". */}
-          <div className={cn(!(view.kind === "section" && view.section === "pipelines") && "hidden")}>
-            <PipelinesSection
-              onOpenPipelines={(id, editing) => {
-                // The parent closes the modal for this hand-off — reset the
-                // view here too, like every other close.
-                resetView();
-                onOpenPipelines(id, editing);
-              }}
-              onImported={onBundleImported}
-            />
-          </div>
-
-          {/* Kept mounted regardless of the active section (unlike the
-              switch above) so an unsaved host/label/token draft in
-              GitHubTokensSection survives switching sections — matches the
-              pre-sidebar flat-layout lifetime, where this pane never
-              unmounted while the dialog was open. */}
-          <div
-            className={cn(
-              "space-y-4 pt-3 text-sm",
-              !(view.kind === "section" && view.section === "git") && "hidden",
-            )}
-          >
-            <GitHubTokensSection />
-          </div>
-
-          {/* Same treatment as GitHubTokensSection above — kept mounted
-              regardless of the active section so an in-progress
-              name/content draft in SavedPromptsSection survives switching
-              sections instead of being destroyed on unmount. No wrapper
-              spacing classes here (unlike the GitHubTokensSection div
-              above) since SavedPromptsSection's own root already applies
-              "space-y-4 pt-3 text-sm". */}
-          <div className={cn(!(view.kind === "section" && view.section === "prompts") && "hidden")}>
-            <SavedPromptsSection />
-          </div>
+        <div ref={contentRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 pt-0 [scrollbar-gutter:stable]" data-testid="settings-content">
+          {SETTINGS_SECTIONS.map((sec) => {
+            if (!sectionMounted(sec.id)) return null;
+            const shown = sectionShown(sec.id);
+            return (
+              <div key={sec.id} className={cn("space-y-4 pt-3 text-sm", !shown && "hidden")} data-testid={`settings-section-${sec.id}`}>
+                <header className="space-y-0.5">
+                  <h3 className="ds-page-title">{sec.label}</h3>
+                  <p className="ds-meta">{tr(`settings.sec.${sec.id}.desc` as TranslationKey)}</p>
+                </header>
+                {renderSection(sec.id)}
+              </div>
+            );
+          })}
 
           {view.kind === "templates" && (
             <TemplatePicker
@@ -891,6 +1115,7 @@ function compactRefusal(e: unknown): string | null {
  * banner for the duration, since this modal already explains the pause.
  */
 function ArchivedHistorySection() {
+  useUILocale();
   const confirm = useConfirm();
   const [days, setDays] = useState<number | null>(() => parseArchivedHistoryRetentionDays(undefined));
   const [loaded, setLoaded] = useState(false);
@@ -955,17 +1180,13 @@ function ArchivedHistorySection() {
     const fresh = (await loadStats()) ?? stats;
     if (!mountedRef.current) return;
     const estimateSec = Math.max(1, Math.round(fresh?.compactEstimateSec ?? 0));
-    const ok = await confirm({
-      title: "Compact the database?",
+    const ok = await confirm(() => ({
+      title: tr("common.compact_the_database"),
       description: (
-        <>
-          Rewrites the database file to give back unused space
-          {fresh ? ` (about ${formatBytes(fresh.reclaimableBytes)} reclaimable)` : ""}. This takes about {estimateSec} s,
-          and ForgeOrbit won't respond while it runs. Compacting is refused while any task is running.
-        </>
+        <><I18nText id="settings.rewrites_the_database_file_to_give_back_unused" />{" "}{fresh ? tr("common.about_reclaimable", { p0: String(formatBytes(fresh.reclaimableBytes)) }) : ""}<I18nText id="settings.this_takes_about" />{" "}{estimateSec}{" "}<I18nText id="settings.s_and_forgeorbit_won_t_respond_while_it" />{" "}</>
       ),
-      confirmLabel: "Compact",
-    });
+      confirmLabel: tr("common.compact"),
+    }));
     if (!ok || !mountedRef.current) return;
     setCompacting({ estimateSec });
     try {
@@ -985,9 +1206,7 @@ function ArchivedHistorySection() {
 
   return (
     <section className="space-y-1" data-testid="settings-archived-history">
-      <label htmlFor="archived-history-retention" className="text-xs text-muted-foreground">
-        Archived task history
-      </label>
+      <label htmlFor="archived-history-retention" className="text-xs text-muted-foreground"><I18nText id="settings.archived_task_history" />{" "}</label>
       <Select
         id="archived-history-retention"
         data-testid="settings-archived-history-retention"
@@ -997,18 +1216,14 @@ function ArchivedHistorySection() {
       >
         {retentionSelectOptions(days).map((d) => (
           <option key={d === null ? "off" : d} value={d === null ? "off" : String(d)}>
-            {d === null ? "Off — keep everything" : `Trim after ${retentionOptionLabel(d)}`}
+            {d === null ? tr("common.off_keep_everything") : tr("common.trim_after", { p0: String(retentionOptionLabel(d)) })}
           </option>
         ))}
       </Select>
-      <p className="text-[11px] text-muted-foreground">
-        Large tool outputs (over 4 KB) in tasks archived longer than this are trimmed to their first 4 KB. This is
-        one-way: "Rebuild from session JSONL" can only restore them while Claude's own transcript still exists.
-        Runs automatically after launch and daily.
-      </p>
-      {prefError && <p className="text-[11px] text-danger" data-testid="settings-archived-history-error">{prefError}</p>}
+      <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.large_tool_outputs_over_4_kb_in_tasks" />{" "}</p>
+      {prefError && <p className="text-[length:var(--text-caption)] text-danger" data-testid="settings-archived-history-error">{prefError}</p>}
       {stats && (
-        <p className="text-[11px] text-muted-foreground" data-testid="settings-db-stats">
+        <p className="text-[length:var(--text-caption)] text-muted-foreground" data-testid="settings-db-stats">
           {formatDbStatsLine(stats)}
         </p>
       )}
@@ -1019,20 +1234,17 @@ function ArchivedHistorySection() {
           data-testid="settings-db-compact"
           disabled={compacting !== null}
           onClick={() => { void onCompact(); }}
-        >
-          Compact database
-        </Button>
-        <span className="text-[11px] text-muted-foreground">Reclaims unused space; pauses ForgeOrbit briefly.</span>
+        ><I18nText id="settings.compact_database" />{" "}</Button>
+        <span className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.reclaims_unused_space_pauses_forgeorbit_briefly" /></span>
       </div>
       {compactResult && (
-        <p className="text-[11px] text-success" data-testid="settings-db-compact-result">
-          Compacted: {formatBytes(compactResult.beforeBytes)} → {formatBytes(compactResult.afterBytes)}
+        <p className="text-[length:var(--text-caption)] text-success" data-testid="settings-db-compact-result"><I18nText id="settings.compacted" />{" "}{formatBytes(compactResult.beforeBytes)} → {formatBytes(compactResult.afterBytes)}
         </p>
       )}
       {compactRefused && (
-        <p className="text-[11px] text-warning" data-testid="settings-db-compact-refused">{compactRefused}</p>
+        <p className="text-[length:var(--text-caption)] text-warning" data-testid="settings-db-compact-refused">{compactRefused}</p>
       )}
-      {compactError && <p className="text-[11px] text-danger" data-testid="settings-db-compact-error">{compactError}</p>}
+      {compactError && <p className="text-[length:var(--text-caption)] text-danger" data-testid="settings-db-compact-error">{compactError}</p>}
       {/* Portaled to <body>: the blocking modal must sit above the Settings
           dialog regardless of that panel's stacking/overflow, like the
           confirm and bundle dialogs. `onClose` is a no-op — the core is
@@ -1042,12 +1254,8 @@ function ArchivedHistorySection() {
           <div className="flex items-start gap-3" data-testid="settings-db-compacting" role="status">
             <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden />
             <div className="space-y-1">
-              <h2 id="db-compacting-title" className="text-sm font-medium">
-                Compacting… ~{compacting?.estimateSec ?? 0} s
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                ForgeOrbit won't respond until this finishes. Please don't quit.
-              </p>
+              <h2 id="db-compacting-title" className="text-sm font-medium"><I18nText id="settings.compacting" />{compacting?.estimateSec ?? 0}{" "}<I18nText id="common.s" />{" "}</h2>
+              <p className="text-xs text-muted-foreground"><I18nText id="settings.forgeorbit_won_t_respond_until_this_finishes_please" />{" "}</p>
             </div>
           </div>
         </Dialog>,
@@ -1063,13 +1271,6 @@ function GeneralSection({
   onPickDefault,
   stickyUserMessages,
   onStickyUserMessagesChange,
-  fxAutoResume,
-  onFxAutoResumeChange,
-  tmuxSource,
-  bundledTmuxAvailable,
-  onPickTmuxSource,
-  disclaimSpawnedAgents,
-  onDisclaimSpawnedAgentsChange,
   onClose,
 }: {
   payload: HarnessesPayload;
@@ -1077,108 +1278,87 @@ function GeneralSection({
   onPickDefault: (id: string) => void;
   stickyUserMessages: boolean;
   onStickyUserMessagesChange: (sticky: boolean) => void;
-  fxAutoResume: { enabled: boolean; delaySec: number };
-  onFxAutoResumeChange: (next: { enabled: boolean; delaySec: number }) => void;
-  tmuxSource: "system" | "bundled";
-  bundledTmuxAvailable: boolean;
-  onPickTmuxSource: (source: "system" | "bundled") => void;
-  disclaimSpawnedAgents: boolean;
-  onDisclaimSpawnedAgentsChange: (enabled: boolean) => void;
   /** Closes the Settings dialog — used by "Show getting started guide" so the
    *  onboarding checklist underneath is visible after replaying it. */
   onClose: () => void;
 }) {
+  useUILocale();
   // Disabled harnesses are excluded from the default-harness picker so a
   // soft-deleted harness can't silently become the default for new tasks.
+  const { locale, setLocale } = useLocale();
   const enabledHarnesses = payload.harnesses.filter((h) => h.enabled);
   const { preference: themePreference, setPreference: setThemePreference } = useTheme();
+  const newTaskPinned = useNewTaskPinned();
+  const [density, setDensityState] = useState<Density>(() => readDensity());
+  const chooseDensity = (next: Density) => { setDensityState(next); writeDensity(next); applyDensity(next); };
   const { percent: fontSizePercent, increase: increaseFontSize, decrease: decreaseFontSize, reset: resetFontSize } = useFontSize();
   const canDecreaseFontSize = fontSizePercent > FONT_SIZE_MIN;
   const canIncreaseFontSize = fontSizePercent < FONT_SIZE_MAX;
   const canResetFontSize = fontSizePercent !== FONT_SIZE_DEFAULT;
   const [replayingOnboarding, setReplayingOnboarding] = useState(false);
-  // Local text mirror of `fxAutoResume.delaySec` so the field can hold an
-  // in-progress keystroke (e.g. a momentarily-empty box while retyping)
-  // without that draft round-tripping through the parent/preferences store
-  // on every keystroke. Committed (clamped) on blur or Enter; resynced
-  // whenever the prop changes from outside (e.g. another Settings instance,
-  // or a revert on write failure).
-  const [fxDelayInput, setFxDelayInput] = useState(String(fxAutoResume.delaySec));
-  useEffect(() => {
-    setFxDelayInput(String(fxAutoResume.delaySec));
-  }, [fxAutoResume.delaySec]);
-  const commitFxDelay = () => {
-    const clamped = parseFxAutoResumeDelayInput(fxDelayInput);
-    setFxDelayInput(String(clamped));
-    if (clamped !== fxAutoResume.delaySec) {
-      onFxAutoResumeChange({ ...fxAutoResume, delaySec: clamped });
-    }
-  };
   return (
     <div className="space-y-4 pt-3 text-sm">
-      <section className="space-y-1">
-        <label className="text-xs text-muted-foreground">Default harness for new tasks</label>
-        <Select value={defaultHarness} onChange={(e) => onPickDefault(e.target.value)}>
-          {enabledHarnesses.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.label}{" "}
-              {h.label.toLowerCase() !== h.kind ? `(${h.kind})` : ""}
-            </option>
-          ))}
+      <SettingsSubsection id="appearance" title={tr("settings.sub.appearance")}>
+        <div className="space-y-4">
+      <section className="space-y-1" data-testid="language-setting">
+        <label htmlFor="interface-language" className="text-xs text-muted-foreground">{translate("settings.language")}</label>
+        <Select id="interface-language" value={locale} onChange={e => void setLocale(e.target.value as "en" | "ru")}>
+          <option value="ru" lang="ru">Русский</option>
+          <option value="en" lang="en">English</option>
         </Select>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground">{translate("settings.languageHint")}</p>
       </section>
 
       <section className="space-y-1">
-        <label className="text-xs text-muted-foreground">tmux for Claude Code</label>
-        <Select
-          value={tmuxSource}
-          onChange={(e) => onPickTmuxSource(e.target.value as "system" | "bundled")}
-        >
-          <option value="system">System tmux (from PATH)</option>
-          <option value="bundled" disabled={!bundledTmuxAvailable}>
-            {bundledTmuxAvailable
-              ? "Bundled tmux (shipped with ForgeOrbit)"
-              : "Bundled tmux — not available in this build"}
-          </option>
-        </Select>
-        <p className="text-[11px] text-muted-foreground">
-          Claude Code runs through a tmux session per task. Switch to the bundled
-          binary if you don't want to install tmux system-wide.
-        </p>
-      </section>
-
-      <section className="space-y-1">
-        <label className="text-xs text-muted-foreground">Theme</label>
-        <div className="grid grid-cols-3 gap-1">
+        <label className="block text-xs text-muted-foreground"><I18nText id="settings.theme" /></label>
+        <div id="settings-theme-group" role="group" aria-label={tr("settings.theme")} className="ds-tabs" data-testid="theme-picker">
           {THEME_PREFERENCES.map((t) => {
             const Icon = THEME_PREFERENCE_ICON[t.id];
             return (
-              <Button
+              <button
                 key={t.id}
-                size="sm"
-                variant={themePreference === t.id ? "default" : "outline"}
+                type="button"
+                aria-pressed={themePreference === t.id}
                 onClick={() => setThemePreference(t.id)}
-                className="justify-start"
+                className={cn("ds-tab", themePreference === t.id && "glass-selected")}
+                data-testid={`theme-${t.id}`}
               >
-                <Icon className="mr-1.5 size-3.5" />
-                {t.label}
-              </Button>
+                <Icon className="size-3.5" />
+                {staticLabel(t.label)}
+              </button>
             );
           })}
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Auto follows your system's appearance and switches live if it changes.
-        </p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.auto_follows_your_system_s_appearance_and_switches" />{" "}</p>
       </section>
 
       <section className="space-y-1">
-        <label className="text-xs text-muted-foreground">Font size</label>
-        <div role="group" aria-label="Font size" className="flex items-center gap-1.5">
+        <label className="block text-xs text-muted-foreground"><I18nText id="settings.density" /></label>
+        <div id="settings-density-group" role="group" aria-label={tr("settings.density")} className="ds-tabs" data-testid="density-picker">
+          {DENSITIES.map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={density === d}
+              onClick={() => chooseDensity(d)}
+              className={cn("ds-tab", density === d && "glass-selected")}
+              data-testid={`density-${d}`}
+            >
+              {d === "compact" ? tr("settings.density_compact") : d === "comfortable" ? tr("settings.density_comfortable") : tr("settings.density_default")}
+            </button>
+          ))}
+        </div>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.density_hint" />{" "}</p>
+      </section>
+
+      <section className="space-y-1">
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.font_size" /></label>
+        <div id="settings-font-size-group" role="group" aria-label={tr("settings.font_size")} className="flex items-center gap-1.5">
           <Button
             size="sm"
             variant="outline"
             className="w-8 px-0 aria-disabled:cursor-default aria-disabled:opacity-50"
-            aria-label="Decrease font size"
+            aria-label={tr("settings.decrease_font_size")}
             aria-disabled={!canDecreaseFontSize}
             onClick={() => {
               if (!canDecreaseFontSize) return;
@@ -1194,7 +1374,7 @@ function GeneralSection({
             size="sm"
             variant="outline"
             className="w-8 px-0 aria-disabled:cursor-default aria-disabled:opacity-50"
-            aria-label="Increase font size"
+            aria-label={tr("settings.increase_font_size")}
             aria-disabled={!canIncreaseFontSize}
             onClick={() => {
               if (!canIncreaseFontSize) return;
@@ -1207,76 +1387,173 @@ function GeneralSection({
             size="sm"
             variant="ghost"
             className="aria-disabled:cursor-default aria-disabled:opacity-50"
-            aria-label="Reset font size"
+            aria-label={tr("settings.reset_font_size")}
             aria-disabled={!canResetFontSize}
             onClick={() => {
               if (!canResetFontSize) return;
               resetFontSize({ silent: true });
             }}
-          >
-            Reset
-          </Button>
+          ><I18nText id="common.reset" />{" "}</Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">{FONT_SIZE_HINT}</p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground">{fontSizeHint()}</p>
+      </section>
+
+        </div>
+      </SettingsSubsection>
+
+      <SettingsSubsection id="preferences" title={tr("settings.sub.preferences")}>
+        <div className="space-y-4">
+      <section className="space-y-1">
+        <label htmlFor="default-task-harness" className="text-xs text-muted-foreground"><I18nText id="settings.default_harness_for_new_tasks" /></label>
+        <Select id="default-task-harness" value={defaultHarness} onChange={(e) => onPickDefault(e.target.value)}>
+          {enabledHarnesses.map((h) => (
+            <option key={h.id} value={h.id}>
+              {h.label}{" "}
+              {h.label.toLowerCase() !== h.kind ? `(${h.kind})` : ""}
+            </option>
+          ))}
+        </Select>
+      </section>
+
+      <section className="flex items-start justify-between gap-3" data-testid="new-task-pin-setting">
+        <div className="min-w-0 space-y-1">
+          <label htmlFor="new-task-pinned" className="text-xs text-muted-foreground"><I18nText id="settings.new_task_pinned" /></label>
+          <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.new_task_pinned_hint" /></p>
+        </div>
+        <Switch id="new-task-pinned" checked={newTaskPinned} onCheckedChange={(checked) => writeNewTaskPinned(checked)} aria-label={tr("settings.new_task_pinned")} />
       </section>
 
       <section className="space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="sticky-user-messages" className="text-xs text-muted-foreground">
-            Sticky user messages
-          </label>
+          <label htmlFor="sticky-user-messages" className="text-xs text-muted-foreground"><I18nText id="settings.sticky_user_messages" />{" "}</label>
           <Switch
             id="sticky-user-messages"
             checked={stickyUserMessages}
             onCheckedChange={onStickyUserMessagesChange}
-            aria-label="Sticky user messages"
+            aria-label={tr("settings.sticky_user_messages")}
           />
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Keep your latest sent message visible while its response scrolls. Turn this off for a standard chat list.
-        </p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.keep_your_latest_sent_message_visible_while_its" />{" "}</p>
+      </section>
+
+      <section className="space-y-1">
+        <label className="text-xs text-muted-foreground"><I18nText id="common.getting_started" /></label>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="settings-replay-onboarding"
+            disabled={replayingOnboarding}
+            onClick={async () => {
+              if (replayingOnboarding) return;
+              setReplayingOnboarding(true);
+              // Await the write before closing — App re-reads preferences on
+              // close, so a fire-and-forget PUT can lose the race against
+              // that GET and silently discard the replay.
+              await api.setPreference(ONBOARDING_DISMISSED_PREF, "false").catch(() => {
+                // Best-effort, matching the theme/defaultHarness write idiom
+                // above — the checklist will simply not reappear if this
+                // silently fails, which is a minor papercut, not a hard
+                // error worth surfacing.
+              });
+              setReplayingOnboarding(false);
+              onClose();
+            }}
+          ><I18nText id="settings.show_getting_started_guide" />{" "}</Button>
+        </div>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.bring_back_the_onboarding_checklist" />{" "}</p>
+      </section>
+
+      <section className="space-y-0.5 border-t border-border/50 pt-3">
+        <p className="text-xs font-medium text-foreground"><I18nText id="settings.forgeorbit_your_agents_one_orbit" /></p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.open_source_mit_based_on_agetor" />{" "}</p>
+      </section>
+        </div>
+      </SettingsSubsection>
+    </div>
+  );
+}
+
+function RuntimeSettings({
+  fxAutoResume,
+  onFxAutoResumeChange,
+  tmuxSource,
+  bundledTmuxAvailable,
+  onPickTmuxSource,
+  disclaimSpawnedAgents,
+  onDisclaimSpawnedAgentsChange,
+}: {
+  fxAutoResume: { enabled: boolean; delaySec: number };
+  onFxAutoResumeChange: (next: { enabled: boolean; delaySec: number }) => void;
+  tmuxSource: "system" | "bundled";
+  bundledTmuxAvailable: boolean;
+  onPickTmuxSource: (source: "system" | "bundled") => void;
+  disclaimSpawnedAgents: boolean;
+  onDisclaimSpawnedAgentsChange: (enabled: boolean) => void;
+}) {
+  useUILocale();
+  // Local text mirror of `fxAutoResume.delaySec` so the field can hold an
+  // in-progress keystroke without round-tripping through the preferences store
+  // on every keystroke. Committed (clamped) on blur or Enter; resynced when the
+  // prop changes from outside.
+  const [fxDelayInput, setFxDelayInput] = useState(String(fxAutoResume.delaySec));
+  useEffect(() => {
+    setFxDelayInput(String(fxAutoResume.delaySec));
+  }, [fxAutoResume.delaySec]);
+  const commitFxDelay = () => {
+    const clamped = parseFxAutoResumeDelayInput(fxDelayInput);
+    setFxDelayInput(String(clamped));
+    if (clamped !== fxAutoResume.delaySec) {
+      onFxAutoResumeChange({ ...fxAutoResume, delaySec: clamped });
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <section className="space-y-1">
+        <label htmlFor="tmux-source" className="text-xs text-muted-foreground"><I18nText id="settings.tmux_for_claude_code" /></label>
+        <Select
+          id="tmux-source"
+          value={tmuxSource}
+          onChange={(e) => onPickTmuxSource(e.target.value as "system" | "bundled")}
+        >
+          <option value="system"><I18nText id="settings.system_tmux_from_path" /></option>
+          <option value="bundled" disabled={!bundledTmuxAvailable}>
+            {bundledTmuxAvailable
+              ? tr("common.bundled_tmux_shipped_with_forgeorbit")
+              : tr("common.bundled_tmux_not_available_in_this_build")}
+          </option>
+        </Select>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.claude_code_runs_through_a_tmux_session_per" />{" "}</p>
       </section>
 
       <section className="space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="disclaim-spawned-agents" className="text-xs text-muted-foreground">
-            Isolate agent permissions from ForgeOrbit (macOS)
-          </label>
+          <label htmlFor="disclaim-spawned-agents" className="text-xs text-muted-foreground"><I18nText id="settings.isolate_agent_permissions_from_forgeorbit_macos" />{" "}</label>
           <Switch
             id="disclaim-spawned-agents"
             checked={disclaimSpawnedAgents}
             // keep in sync with DISCLAIM_PREF_KEY in src/bun/disclaim.ts
             onCheckedChange={onDisclaimSpawnedAgentsChange}
-            aria-label="Isolate agent permissions from ForgeOrbit (macOS)"
+            aria-label={tr("settings.isolate_agent_permissions_from_forgeorbit_macos")}
           />
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Spawned agents ask for macOS permissions under their own name instead of ForgeOrbit's, so the "access data
-          from other apps" prompt stops naming ForgeOrbit and sticks after you Allow it once. Turn off to revert to the
-          previous behavior.
-        </p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.spawned_agents_ask_for_macos_permissions_under_their" />{" "}</p>
       </section>
 
       <section className="space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor="fx-auto-resume" className="text-xs text-muted-foreground">
-            Auto-resume fx after a rate limit
-          </label>
+          <label htmlFor="fx-auto-resume" className="text-xs text-muted-foreground"><I18nText id="settings.auto_resume_fx_after_a_rate_limit" />{" "}</label>
           <Switch
             id="fx-auto-resume"
             data-testid="settings-fx-auto-resume"
             checked={fxAutoResume.enabled}
             onCheckedChange={(enabled) => onFxAutoResumeChange({ ...fxAutoResume, enabled })}
-            aria-label="Auto-resume fx after a rate limit"
+            aria-label={tr("settings.auto_resume_fx_after_a_rate_limit")}
           />
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          When fx pauses after repeated Gateway 429s, ForgeOrbit resumes the response automatically, up to {FX_AUTO_RESUME_MAX} times per pause.
-        </p>
+        <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.when_fx_pauses_after_repeated_gateway_429s_forgeorbit" />{" "}{FX_AUTO_RESUME_MAX}{" "}<I18nText id="settings.times_per_pause" />{" "}</p>
         <div className="flex items-center justify-between gap-4 pt-1">
-          <label htmlFor="fx-auto-resume-delay" className="text-xs text-muted-foreground">
-            Auto-resume delay (seconds)
-          </label>
+          <label htmlFor="fx-auto-resume-delay" className="text-xs text-muted-foreground"><I18nText id="settings.auto_resume_delay_seconds" />{" "}</label>
           <Input
             id="fx-auto-resume-delay"
             data-testid="settings-fx-auto-resume-delay"
@@ -1299,46 +1576,61 @@ function GeneralSection({
         </div>
       </section>
 
-      <ArchivedHistorySection />
+    </div>
+  );
+}
 
-      <section className="space-y-1">
-        <label className="text-xs text-muted-foreground">Getting started</label>
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="settings-replay-onboarding"
-            disabled={replayingOnboarding}
-            onClick={async () => {
-              if (replayingOnboarding) return;
-              setReplayingOnboarding(true);
-              // Await the write before closing — App re-reads preferences on
-              // close, so a fire-and-forget PUT can lose the race against
-              // that GET and silently discard the replay.
-              await api.setPreference(ONBOARDING_DISMISSED_PREF, "false").catch(() => {
-                // Best-effort, matching the theme/defaultHarness write idiom
-                // above — the checklist will simply not reappear if this
-                // silently fails, which is a minor papercut, not a hard
-                // error worth surfacing.
-              });
-              setReplayingOnboarding(false);
-              onClose();
-            }}
-          >
-            Show getting started guide
-          </Button>
+function formatDiagBuild(info: AppBuildInfo): string {
+  if (info.buildNumber == null) return "—";
+  return info.macBundleVersion ? `${info.buildNumber} (${info.macBundleVersion})` : String(info.buildNumber);
+}
+
+function formatDiagChannel(info: AppBuildInfo): string {
+  if (!info.channel) return "—";
+  return info.localBuild
+    ? tr("settings.diag.channel_local", { channel: info.channel })
+    : info.channel;
+}
+
+export function DiagnosticsSettings({ info }: { info: AppBuildInfo }) {
+  useUILocale();
+  const showTechnicalDetails = useShowTechnicalDetails();
+  return (
+    <div className="space-y-4">
+      <section className="flex items-start justify-between gap-3" data-testid="technical-details-setting">
+        <div className="min-w-0 space-y-1">
+          <label htmlFor="show-technical-details" className="text-xs text-muted-foreground"><I18nText id="settings.tech_details" /></label>
+          <p className="text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.tech_details_hint" /></p>
         </div>
-        <p className="text-[11px] text-muted-foreground">
-          Bring back the onboarding checklist.
-        </p>
+        <Switch id="show-technical-details" checked={showTechnicalDetails} onCheckedChange={(checked) => setShowTechnicalDetails(checked)} aria-label={tr("settings.tech_details")} />
       </section>
 
-      <section className="space-y-0.5 border-t border-border/50 pt-3">
-        <p className="text-xs font-medium text-foreground">ForgeOrbit — Your agents. One orbit.</p>
-        <p className="text-[11px] text-muted-foreground">
-          Developed by Lunarian Forge · Open Source (MIT) · Based on Agetor
+      <div className="space-y-1.5">
+        <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-version">
+          <span>{tr("settings.diag.version")}</span>
+          <span className="font-mono">{info.version || "—"}</span>
         </p>
-      </section>
+        <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-build">
+          <span>{tr("settings.diag.build")}</span>
+          <span className="font-mono">{formatDiagBuild(info)}</span>
+        </p>
+        <p className="flex items-start justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-revision">
+          <span className="shrink-0">{tr("settings.diag.revision")}</span>
+          <span className="font-mono select-all break-all text-right">{info.sourceRevision || "—"}</span>
+        </p>
+        <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-migration-ceiling">
+          <span>{tr("settings.diag.migration_ceiling")}</span>
+          <span className="font-mono">{info.migrationCeiling || "—"}</span>
+        </p>
+        <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-channel">
+          <span>{tr("settings.diag.channel")}</span>
+          <span className="font-mono">{formatDiagChannel(info)}</span>
+        </p>
+        <p className="flex items-center justify-between gap-3 text-xs text-muted-foreground" data-testid="settings-diag-updates">
+          <span>{tr("settings.diag.updates")}</span>
+          <span className="font-mono">{info.updatesEnabled ? tr("settings.diag.updates_enabled") : tr("settings.diag.updates_disabled")}</span>
+        </p>
+      </div>
     </div>
   );
 }
@@ -1374,26 +1666,77 @@ function HarnessesSection({
    *  resolves. Missing keys mean "use the server's `h.enabled`". */
   pendingToggle: Record<string, boolean>;
 }) {
+  useUILocale();
   // Which harness's account-usage panel is expanded (at most one at a time).
   // Local to this section: the table fetches on expand, and the scan behind
   // it stats every transcript file — never fetched with the list.
   const [usageOpenFor, setUsageOpenFor] = useState<string | null>(null);
   return (
     <div className="space-y-4 pt-3 text-sm">
+      <ProviderRuntimeMatrix reports={payload.runtimeReadiness ?? []} />
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-muted-foreground">Harnesses</label>
+          <label className="text-xs text-muted-foreground"><I18nText id="common.harnesses" /></label>
           <Button
             variant="outline"
             size="sm"
             onClick={onAdd}
             disabled={!canAdd}
-            title={canAdd ? undefined : "Loading defaults…"}
+            title={canAdd ? undefined : tr("common.loading_defaults")}
           >
-            <Plus className="mr-1 size-3.5" /> Add harness
-          </Button>
+            <Plus className="mr-1 size-3.5" />{" "}<I18nText id="settings.add_harness" />{" "}</Button>
         </div>
         <div className="space-y-1.5">
+          {payload.providerDiagnostics?.map((diagnostic) => (
+            <div key={diagnostic.id} data-testid={`provider-diagnostic-${diagnostic.id}`} className="space-y-1.5 rounded-md border border-border/60 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{diagnostic.label}</span>
+                {diagnostic.version && <span className="text-xs text-muted-foreground">{diagnostic.version}</span>}
+                <span className="rounded bg-warning/15 px-1.5 py-0.5 text-xs text-warning">{tr("providers.execution_blocked")}</span>
+              </div>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-muted-foreground">{tr("providers.installed")}</dt>
+                <dd>{diagnostic.installed ? (diagnostic.version ?? tr("providers.yes")) : tr("providers.no")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.authentication")}</dt>
+                <dd>{tr(`providers.auth.${diagnostic.authentication}` as TranslationKey)}</dd>
+                <dt className="text-muted-foreground">{tr("providers.models")}</dt>
+                <dd>{tr(`providers.models.${diagnostic.modelDiscovery}` as TranslationKey)}</dd>
+                <dt className="text-muted-foreground">{tr("providers.runtime")}</dt>
+                <dd>{tr("providers.runtime.no")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.kernel")}</dt>
+                <dd>{tr(`providers.kernel.${diagnostic.kernelContainment}` as TranslationKey)}</dd>
+                <dt className="text-muted-foreground">{tr("providers.executable")}</dt>
+                <dd>{tr("providers.no")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.inference")}</dt>
+                <dd>{tr("providers.not_verified")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.sandbox")}</dt>
+                <dd>{tr(`providers.sandbox.${diagnostic.sandboxCompatibility}` as TranslationKey)}</dd>
+                <dt className="text-muted-foreground">{tr("providers.account")}</dt>
+                <dd>{tr(`providers.account.${diagnostic.accountBinding}` as TranslationKey)}</dd>
+                <dt className="text-muted-foreground">{tr("providers.quota")}</dt>
+                <dd>{tr("providers.auth.unknown")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.modes")}</dt>
+                <dd>{tr("providers.modes.blocked")}</dd>
+                <dt className="text-muted-foreground">{tr("providers.last")}</dt>
+                <dd>{tr(`providers.last.${diagnostic.lastOutcome}` as TranslationKey)}</dd>
+              </dl>
+              <p className="text-xs">{tr(diagnostic.id === "cursor" ? "providers.cursor.detail" : "providers.deepseek.detail")}</p>
+            </div>
+          ))}
+          {payload.installations?.map((installation) => (
+            <div key={installation.id} data-testid="deepseek-installation" className="space-y-2 rounded-md border border-border/60 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{installation.label}</span>
+                {installation.version && <span className="text-xs text-muted-foreground">{installation.version}</span>}
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs">{tr(`deepseek.${installation.status}`)}</span>
+              </div>
+              {installation.path && <p className="break-all text-xs text-muted-foreground">{installation.path}</p>}
+              <p>{tr("deepseek.blocker")}</p>
+              {installation.executionPolicy?.status === "blocked" && <p className="text-xs" data-testid="deepseek-policy-blocker">{tr("deepseek.filesystem_blocker")}</p>}
+              <p className="text-xs text-muted-foreground">{tr("deepseek.unknown")}</p>
+              <p className="text-xs text-muted-foreground">{tr("deepseek.discovery")}</p>
+            </div>
+          ))}
           {payload.harnesses.map((h) => {
             const status = statusByHarness.get(h.id);
             const available = status?.available ?? false;
@@ -1411,27 +1754,19 @@ function HarnessesSection({
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium">{h.label}</span>
                     {h.isBuiltin && (
-                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                        built-in
-                      </span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[length:var(--text-caption)] uppercase text-muted-foreground"><I18nText id="settings.built_in" />{" "}</span>
                     )}
                     {!h.enabled && (
-                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
-                        disabled
-                      </span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[length:var(--text-caption)] uppercase text-muted-foreground"><I18nText id="common.disabled" />{" "}</span>
                     )}
                     {isExperimentalKind(h.kind) && (
-                      <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
-                        experimental
-                      </span>
+                      <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-warning"><I18nText id="settings.experimental" />{" "}</span>
                     )}
                     {status?.loggedIn === false && (
                       <span
-                        className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning"
-                        title={status.authHelp ?? "Not logged in"}
-                      >
-                        not logged in
-                      </span>
+                        className="rounded bg-warning/15 px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-warning"
+                        title={status.authHelp ?? tr("common.not_logged_in")}
+                      ><I18nText id="settings.not_logged_in" />{" "}</span>
                     )}
                     <span
                       className={cn(
@@ -1441,13 +1776,16 @@ function HarnessesSection({
                       title={status?.reason ?? status?.path ?? ""}
                     />
                   </div>
-                  <div className="truncate text-[11px] text-muted-foreground">
+                  <div
+                    className="truncate text-[length:var(--text-caption)] text-muted-foreground"
+                    title={h.home ? `HOME=${abbreviateHome(h.home, homeDir)}` : undefined}
+                  >
                     {h.id} · {h.kind}
-                    {h.home && <> · HOME={abbreviateHome(h.home, homeDir)}</>}
                     {status?.version && <> · {status.version}</>}
+                    {h.home && <> · HOME={shortenPath(h.home, homeDir, 2)}</>}
                   </div>
                   {status?.loggedIn === false && status.authHelp && (
-                    <div className="truncate text-[11px] text-warning" title={status.authHelp}>
+                    <div className="truncate text-[length:var(--text-caption)] text-warning" title={status.authHelp}>
                       {status.authHelp}
                     </div>
                   )}
@@ -1455,7 +1793,7 @@ function HarnessesSection({
                 <Switch
                   checked={pendingToggle[h.id] ?? h.enabled}
                   onCheckedChange={() => onToggleEnabled(h)}
-                  aria-label={h.enabled ? `Disable ${h.label}` : `Enable ${h.label}`}
+                  aria-label={h.enabled ? tr("common.disable_bd1da7", { p0: String(h.label) }) : tr("common.enable", { p0: String(h.label) })}
                 />
                 {/* claude-code only: no other kind has a local usage source
                     wired yet, and the route 400s for them. */}
@@ -1464,9 +1802,9 @@ function HarnessesSection({
                     size="icon"
                     variant="ghost"
                     onClick={() => setUsageOpenFor((cur) => (cur === h.id ? null : h.id))}
-                    aria-label={`${usageOpenFor === h.id ? "Hide" : "Show"} token usage for ${h.label}`}
+                    aria-label={tr("common.token_usage_for", { p0: String(usageOpenFor === h.id ? tr("common.hide") : tr("common.show")), p1: String(h.label) })}
                     aria-expanded={usageOpenFor === h.id}
-                    title="Token usage — this account's local 30-day rollup"
+                    title={tr("settings.token_usage_this_account_s_local_30_day")}
                   >
                     <BarChart3 className="size-4" />
                   </Button>
@@ -1475,21 +1813,19 @@ function HarnessesSection({
                   size="icon"
                   variant="ghost"
                   onClick={() => onOpenTerminal(h)}
-                  aria-label={`Open ${h.label} in Terminal`}
-                  title="Open in Terminal — load this harness's env to log in or inspect it"
+                  aria-label={tr("common.open_in_terminal", { p0: String(h.label) })}
+                  title={tr("settings.open_in_terminal_load_this_harness_s_env")}
                 >
                   <Terminal className="size-4" />
                 </Button>
                 {!h.isBuiltin && (
                   <>
-                    <Button size="sm" variant="ghost" onClick={() => onEdit(h)}>
-                      Edit
-                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => onEdit(h)}><I18nText id="common.edit" />{" "}</Button>
                     <Button
                       size="icon"
                       variant="ghost"
                       onClick={() => onDelete(h)}
-                      aria-label={`Delete ${h.label}`}
+                      aria-label={tr("common.delete_0ae262", { p0: String(h.label) })}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -1513,6 +1849,7 @@ function HarnessesSection({
  * CLI sessions outside agetor (the budget shown is the account's).
  */
 function AccountUsageTable({ harnessId }: { harnessId: string }) {
+  useUILocale();
   const [days, setDays] = useState<AccountUsageDay[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -1526,29 +1863,27 @@ function AccountUsageTable({ harnessId }: { harnessId: string }) {
   }, [harnessId]);
 
   if (error) {
-    return <p className="px-1 text-[11px] text-danger">{error}</p>;
+    return <p className="px-1 text-[length:var(--text-caption)] text-danger">{error}</p>;
   }
   if (days === null) {
-    return <p className="px-1 text-[11px] text-muted-foreground">Loading usage…</p>;
+    return <p className="px-1 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.loading_usage" /></p>;
   }
   if (days.length === 0) {
     return (
-      <p className="px-1 text-[11px] text-muted-foreground">
-        No local usage history for this account (last 30 days).
-      </p>
+      <p className="px-1 text-[length:var(--text-caption)] text-muted-foreground"><I18nText id="settings.no_local_usage_history_for_this_account_last" />{" "}</p>
     );
   }
   return (
     <div className="max-h-48 overflow-auto rounded-md border border-border/40 bg-muted/20">
-      <table className="w-full text-[11px]">
+      <table className="w-full text-[length:var(--text-caption)]">
         <thead className="sticky top-0 bg-muted/80 text-muted-foreground">
           <tr>
-            <th className="px-2 py-1 text-left font-medium">Day</th>
-            <th className="px-2 py-1 text-left font-medium">Model</th>
-            <th className="px-2 py-1 text-right font-medium">In</th>
-            <th className="px-2 py-1 text-right font-medium">Out</th>
-            <th className="px-2 py-1 text-right font-medium">Cache w/r</th>
-            <th className="px-2 py-1 text-right font-medium">Msgs</th>
+            <th className="px-2 py-1 text-left font-medium"><I18nText id="common.day" /></th>
+            <th className="px-2 py-1 text-left font-medium"><I18nText id="common.model" /></th>
+            <th className="px-2 py-1 text-right font-medium"><I18nText id="settings.in" /></th>
+            <th className="px-2 py-1 text-right font-medium"><I18nText id="settings.out" /></th>
+            <th className="px-2 py-1 text-right font-medium"><I18nText id="settings.cache_w_r" /></th>
+            <th className="px-2 py-1 text-right font-medium"><I18nText id="settings.msgs" /></th>
           </tr>
         </thead>
         <tbody>
@@ -1576,7 +1911,7 @@ function AccountUsageTable({ harnessId }: { harnessId: string }) {
 function discoveredToTemplate(a: DiscoveredAccount): HarnessTemplate {
   return {
     id: `__discovered:${a.configDir}`,
-    label: `Claude (${a.email})`,
+    label: tr("common.claude", { p0: String(a.email) }),
     description: "",
     kind: "claude-code",
     suggestedHarnessId: a.suggestedHarnessId,
@@ -1587,6 +1922,7 @@ function discoveredToTemplate(a: DiscoveredAccount): HarnessTemplate {
 }
 
 function TemplatePicker({ onPick }: { onPick: (t: HarnessTemplate) => void }) {
+  useUILocale();
   // Existing logged-in Claude config dirs no harness points at yet. Loaded
   // on open; a failed probe degrades to the static templates only.
   const [discovered, setDiscovered] = useState<DiscoveredAccount[]>([]);
@@ -1599,14 +1935,10 @@ function TemplatePicker({ onPick }: { onPick: (t: HarnessTemplate) => void }) {
   }, []);
   return (
     <div className="space-y-2 pt-3">
-      <p className="text-xs text-muted-foreground">
-        Pick a starting point. You can edit every field before saving.
-      </p>
+      <p className="text-xs text-muted-foreground"><I18nText id="settings.pick_a_starting_point_you_can_edit_every" />{" "}</p>
       {discovered.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Detected accounts
-          </p>
+          <p className="text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-muted-foreground"><I18nText id="settings.detected_accounts" />{" "}</p>
           {discovered.map((a) => (
             <button
               key={a.configDir}
@@ -1619,14 +1951,12 @@ function TemplatePicker({ onPick }: { onPick: (t: HarnessTemplate) => void }) {
             >
               <AgentIcon kind="claude-code" className="mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">
-                  Existing Claude account · {a.email}
+                <div className="text-sm font-medium"><I18nText id="settings.existing_claude_account" />{" "}{a.email}
                 </div>
-                <div className="truncate text-[11px] text-muted-foreground">
+                <div className="truncate text-[length:var(--text-caption)] text-muted-foreground">
                   {a.configDir}
                   {a.billingType && <> · {a.billingType}</>}
-                  {" "}· already logged in, no setup needed
-                </div>
+                  {" "}<I18nText id="settings.already_logged_in_no_setup_needed" />{" "}</div>
               </div>
             </button>
           ))}
@@ -1646,14 +1976,12 @@ function TemplatePicker({ onPick }: { onPick: (t: HarnessTemplate) => void }) {
               )}
             >
               {experimental && (
-                <span className="mt-0.5 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warning">
-                  Experimental
-                </span>
+                <span className="mt-0.5 rounded bg-warning/15 px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-warning"><I18nText id="settings.experimental_3dc9f5" />{" "}</span>
               )}
               <AgentIcon kind={t.kind} className="mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{t.label}</div>
-                <div className="text-[11px] text-muted-foreground">{t.description}</div>
+                <div className="text-sm font-medium">{staticLabel(t.label)}</div>
+                <div className="text-[length:var(--text-caption)] text-muted-foreground">{t.description}</div>
               </div>
             </button>
           );
@@ -1688,6 +2016,7 @@ function Editor({
   onCancel: () => void;
   onSubmit: (input: HarnessInput) => void;
 }) {
+  const { locale: uiLocale } = useUILocale();
   // When creating from a template, pre-bump the suggested id past any
   // already-taken slug (claude-2 → claude-3 …) so two clicks of "Additional
   // Claude Code" don't both default to the same id. If `home` ends with the
@@ -1705,7 +2034,7 @@ function Editor({
     const home = resolveTemplateInitialHome(template, uniqId);
     return { id: uniqId, home: home ? abbreviateHome(home, homeDir) : "" };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [uiLocale]);
   const [id, setId] = useState(initialState.id);
   const [label, setLabel] = useState(template.label);
   const [kind, setKind] = useState<AgentKind>(template.kind);
@@ -1737,7 +2066,7 @@ function Editor({
 
   // Parse once per render so we can warn about ignored lines below the
   // textarea. Cheap — the env block is tiny.
-  const parsedEnv = useMemo(() => parseEnv(envText), [envText]);
+  const parsedEnv = useMemo(() => parseEnv(envText), [envText, uiLocale]);
 
   const submit = () => {
     setLocalError(null);
@@ -1779,7 +2108,7 @@ function Editor({
     <div className="space-y-3 pt-3 text-sm">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Id (slug)</label>
+          <label className="text-xs text-muted-foreground"><I18nText id="settings.id_slug" /></label>
           <Input
             {...IDENTIFIER_INPUT_PROPS}
             value={id}
@@ -1789,17 +2118,17 @@ function Editor({
           />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">Label</label>
+          <label className="text-xs text-muted-foreground"><I18nText id="settings.label" /></label>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             disabled={busy}
-            placeholder="Claude (work)"
+            placeholder={tr("settings.claude_work_634785")}
           />
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Harness type</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.harness_type" /></label>
         <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">
           {(["claude-code", "codex", "cursor", "gemini", "antigravity", "fx"] as AgentKind[]).map((k) => {
             const experimental = isExperimentalKind(k);
@@ -1815,9 +2144,7 @@ function Editor({
                 <AgentIcon kind={k} className="mr-1.5 size-3.5" />
                 {k}
                 {experimental && (
-                  <span className="ml-1.5 rounded bg-warning/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-warning">
-                    Exp
-                  </span>
+                  <span className="ml-1.5 rounded bg-warning/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-warning"><I18nText id="settings.exp" />{" "}</span>
                 )}
               </Button>
             );
@@ -1836,16 +2163,15 @@ function Editor({
           placeholder={
             dataDir
               ? abbreviateHome(`${dataDir}/harnesses/${HARNESS_HOME_COPY[kind].slug}`, homeDir)
-              : "~/.agetor/harnesses/claude-2"
+              : undefined
           }
         />
-        <p className="text-[11px] leading-snug text-muted-foreground">
+        <p className="text-[length:var(--text-caption)] leading-snug text-muted-foreground">
           {HARNESS_HOME_COPY[kind].help}
-          {" "}Leave empty to share the default account.
-        </p>
+          {" "}<I18nText id="settings.leave_empty_to_share_the_default_account" />{" "}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Bin override (absolute path; optional)</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.bin_override_absolute_path_optional" /></label>
         <Input
           {...IDENTIFIER_INPUT_PROPS}
           value={bin}
@@ -1855,7 +2181,7 @@ function Editor({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Env vars (one KEY=value per line)</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.env_vars_one_key_value_per_line" /></label>
         <Textarea
           value={envText}
           onChange={(e) => setEnvText(e.target.value)}
@@ -1864,24 +2190,22 @@ function Editor({
           className="font-mono text-xs"
         />
         {parsedEnv.ignored > 0 && (
-          <p className="text-[11px] leading-snug text-warning">
-            {parsedEnv.ignored} line{parsedEnv.ignored === 1 ? "" : "s"} ignored — each entry needs <code className="font-mono">KEY=value</code>.
+          <p className="text-[length:var(--text-caption)] leading-snug text-warning">
+            {parsedEnv.ignored}{" "}<I18nText id="common.line" />{parsedEnv.ignored === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="settings.ignored_each_entry_needs" />{" "}<code className="font-mono">KEY=value</code>.
           </p>
         )}
       </div>
 
       {(localError || error) && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {localError || error}
         </div>
       )}
 
       <div className="flex justify-end gap-2 border-t border-border/60 pt-3">
-        <Button variant="outline" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
+        <Button variant="outline" onClick={onCancel} disabled={busy}><I18nText id="common.cancel" />{" "}</Button>
         <Button onClick={submit} disabled={busy}>
-          {isEdit ? "Save" : "Add harness"}
+          {isEdit ? tr("common.save") : tr("settings.add_harness")}
         </Button>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { toast } from "sonner";
@@ -17,7 +19,7 @@ import {
   validateBranchConfig,
   validateBranchName,
   type TaskType,
-} from "../../../shared/types.ts";
+} from "@/i18n/options";
 
 interface Props {
   open: boolean;
@@ -43,6 +45,7 @@ const EXAMPLE_TITLE = "Add login page";
  * from the config icon button inside the New Task form's branch-name field.
  */
 export function BranchNamingDialog({ open, onClose, projectPath, projectName, activeTaskType, onSaved }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const [config, setConfig] = useState<BranchNamingConfig>(DEFAULT_BRANCH_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,11 +70,11 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
       rules: { ...c.rules, [typeId]: { prefix } },
     }));
 
-  const validation = useMemo(() => validateBranchConfig(config), [config]);
+  const validation = useMemo(() => validateBranchConfig(config), [config, uiLocale]);
 
   const exampleProjectName = useMemo(
     () => projectName || projectPath.split("/").filter(Boolean).pop() || "project",
-    [projectName, projectPath],
+    [projectName, projectPath, uiLocale],
   );
 
   const save = async () => {
@@ -79,7 +82,7 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
     setSaving(true);
     try {
       await api.setProjectBranchConfig(projectPath, config);
-      toast.success("Branch naming saved");
+      toast.success(tr("common.branch_naming_saved"));
       onSaved(config);
       onClose();
     } catch (e) {
@@ -101,23 +104,18 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
     >
       <div className="flex items-center justify-between border-b border-border/60 pb-3">
         <div className="min-w-0">
-          <h2 id="branch-naming-title" className="text-base font-semibold">
-            Branch naming
-          </h2>
+          <h2 id="branch-naming-title" className="text-base font-semibold"><I18nText id="settings.branch_naming" />{" "}</h2>
           <p className="truncate text-xs text-muted-foreground" title={projectPath}>
-            {projectName || projectPath || "No project selected"}
+            {projectName || projectPath || tr("common.no_project_selected")}
           </p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
           <X className="size-4" />
         </Button>
       </div>
 
       <div className="space-y-4 pt-4 text-sm">
-        <p className="text-xs text-muted-foreground">
-          When a task runs isolated, agetor creates a git branch named from these
-          rules. The prefix is chosen by the task&apos;s type.
-        </p>
+        <p className="text-xs text-muted-foreground"><I18nText id="settings.when_a_task_runs_isolated_agetor_creates_a" />{" "}</p>
 
         <section className="space-y-2.5">
           {TASK_TYPES.map((t, i) => {
@@ -152,8 +150,7 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
                     placeholder="feature/"
                     className="h-8 font-mono text-xs"
                   />
-                  <p className="text-[10px] text-muted-foreground">
-                    pattern{" "}
+                  <p className="text-[10px] text-muted-foreground"><I18nText id="common.pattern" />{" "}
                     <span className="font-mono text-foreground/70">
                       {pattern}
                     </span>
@@ -163,8 +160,7 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
                       "text-[10px]",
                       legal ? "text-muted-foreground" : "text-destructive",
                     )}
-                  >
-                    e.g. <span className="font-mono">{example}</span>
+                  ><I18nText id="settings.e_g" />{" "}<span className="font-mono">{example}</span>
                   </p>
                 </div>
               </div>
@@ -174,10 +170,8 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
 
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
-            <span className="text-xs">Include card name in the branch</span>
-            <span className="block text-[10px] text-muted-foreground">
-              Off &rarr; branch body is a short unique id instead of the title slug.
-            </span>
+            <span className="text-xs"><I18nText id="settings.include_card_name_in_the_branch" /></span>
+            <span className="block text-[10px] text-muted-foreground"><I18nText id="settings.off_branch_body_is_a_short_unique_id" />{" "}</span>
           </span>
           <Switch
             checked={config.includeSlug}
@@ -185,8 +179,7 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
           />
         </label>
 
-        <p className="text-[10px] text-muted-foreground">
-          Tags are replaced when the task is created:{" "}
+        <p className="text-[10px] text-muted-foreground"><I18nText id="settings.tags_are_replaced_when_the_task_is_created" />{" "}
           {BRANCH_TEMPLATE_TAGS.map(({ tag, description }, i) => (
             <span key={tag}>
               <span className="font-mono">{tag}</span> {description}
@@ -200,9 +193,9 @@ export function BranchNamingDialog({ open, onClose, projectPath, projectName, ac
         )}
 
         <div className="flex items-center justify-end gap-2 border-t border-border/60 pt-3">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={onClose}><I18nText id="common.cancel" /></Button>
           <Button size="sm" onClick={() => void save()} disabled={loading || saving || !validation.ok}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? tr("common.saving_23e392") : tr("common.save")}
           </Button>
         </div>
       </div>

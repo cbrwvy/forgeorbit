@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 import { useCallback, useRef, useState } from "react";
 import type React from "react";
 import { toast } from "sonner";
@@ -82,7 +83,7 @@ export function useBundleFileDrop(
         // nothing happened rather than loading text into a locked preview.
         if (disabledRef.current) {
           toast.error("Can't import that file now", {
-            description: "Wait for the import to finish, then drop the file again.",
+            get description() { return tr("settings.wait_for_the_import_to_finish_then_7f2dfb"); },
           });
           return;
         }

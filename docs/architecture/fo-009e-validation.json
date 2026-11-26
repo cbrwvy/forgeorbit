@@ -1,0 +1,251 @@
+{
+  "task": "FO-009E",
+  "date": "2026-10-25",
+  "branch": "task/fo-009e-router-ui",
+  "baseHead": "b7b5447596babd4ebab9aea5139318555a49ebf0",
+  "unitIntegration": {
+    "command": "bun scripts/test-model-router-ui.ts",
+    "passed": 293,
+    "failed": 0,
+    "newTests": 41,
+    "suiteCount": 15,
+    "isolation": "sequential per-file processes; isolated SQLite/HOME; fake drivers/stub CLI; offline usage",
+    "results": [
+      {
+        "suite": "src/mainview/lib/model-router-preview.test.ts",
+        "passed": 41,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_model-router-preview.test.ts.log"
+      },
+      {
+        "suite": "src/shared/model-router/route.test.ts",
+        "passed": 33,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_shared_model-router_route.test.ts.log"
+      },
+      {
+        "suite": "src/bun/model-router.test.ts",
+        "passed": 4,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_model-router.test.ts.log"
+      },
+      {
+        "suite": "src/bun/model-router-endpoint.test.ts",
+        "passed": 8,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_model-router-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/shared/portfolio/portfolio.test.ts",
+        "passed": 40,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_shared_portfolio_portfolio.test.ts.log"
+      },
+      {
+        "suite": "src/bun/portfolio-adapter.test.ts",
+        "passed": 28,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_portfolio-adapter.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/portfolio.test.ts",
+        "passed": 6,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_portfolio.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/workspace.test.ts",
+        "passed": 25,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_workspace.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/task-assignments.test.ts",
+        "passed": 1,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_task-assignments.test.ts.log"
+      },
+      {
+        "suite": "src/bun/assignment-http.test.ts",
+        "passed": 3,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_assignment-http.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/accounts.test.ts",
+        "passed": 18,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_accounts.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/account-api.test.ts",
+        "passed": 8,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_mainview_lib_account-api.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-core.test.ts",
+        "passed": 32,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_account-core.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-endpoint.test.ts",
+        "passed": 7,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_bun_account-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/shared/estimation/estimate.test.ts",
+        "passed": 39,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009e-validation-riHN20/src_shared_estimation_estimate.test.ts.log"
+      }
+    ]
+  },
+  "playwright": {
+    "ci": "1",
+    "browser": "Chromium",
+    "workers": 1,
+    "uniqueAcceptedPassed": 22,
+    "unresolvedFailures": 0,
+    "accepted": [
+      {
+        "spec": "e2e/model-router-preview.spec.ts",
+        "passed": 4,
+        "output": "/tmp/fo009e-playwright-router-final",
+        "note": "Final source; includes computed reduced-transparency fallback and per-card overflow assertions."
+      },
+      {
+        "spec": "e2e/accounts-dashboard.spec.ts",
+        "passed": 13,
+        "output": "/tmp/fo009e-playwright-permitted"
+      },
+      {
+        "spec": "e2e/portfolio-dashboard.spec.ts",
+        "passed": 4,
+        "output": "/tmp/fo009e-playwright-permitted"
+      },
+      {
+        "spec": "e2e/employee-assignments.spec.ts",
+        "passed": 1,
+        "output": "/tmp/fo009e-playwright-permitted"
+      }
+    ],
+    "runsNote": "Accepted results combine the final 4-scenario Router rerun with the 18 passing regression scenarios from the combined run. Two Router test-locator failures were fixed and superseded by the final rerun. Initial sandbox Chromium launch failed at MachPort bootstrap before tests; permitted runs succeeded.",
+    "viewports": [
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "fixtures": "isolated headless backends; fake drivers; stub binary probes only; no real AI CLI or provider APIs"
+  },
+  "checks": {
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "pass"
+    },
+    "viteBuild": {
+      "command": "bun node_modules/vite/bin/vite.js build",
+      "result": "pass",
+      "warnings": [
+        "Existing native-config __dirname compatibility warning",
+        "Existing chunks above 500 kB"
+      ]
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "result": "pass"
+    }
+  },
+  "security": {
+    "newPreviewDatabaseWrites": false,
+    "executionAdded": false,
+    "accountSwitchingAdded": false,
+    "providerRefreshAdded": false,
+    "backgroundPollingAdded": false,
+    "realAICommandsUsed": false,
+    "realProviderCallsUsed": false,
+    "fullSuiteRun": false,
+    "schemaChanges": false
+  },
+  "limitations": [
+    "Production router currently has no verified login/model/effort acquisition sources; verified browser cards are fixtures.",
+    "Numeric concurrency occupancy/caps and non-quota evidence expiry are not projected by FO-009D; UI preserves Unknown or at-snapshot status.",
+    "Native/Electrobun packaging and live provider/execution acceptance were not tested."
+  ],
+  "files": [
+    {
+      "path": "src/mainview/components/kanban/RunPanel.tsx",
+      "sha256": "cfe1832b85475b3892bbd86495134567de7ffa297d3dfab3efa6eddf3e95e38a"
+    },
+    {
+      "path": "src/mainview/components/workspace/portfolio/PortfolioDashboard.tsx",
+      "sha256": "a6d279ce4a8663a54ebcbf6a9d15a95139c3d4e5f4e6893ecdad1461dd294b8c"
+    },
+    {
+      "path": "src/mainview/lib/api.ts",
+      "sha256": "3d7c9daa581aeb243a90d0f01c82e062b4caaf449673645afc3e2805b528a8a2"
+    },
+    {
+      "path": "src/mainview/components/router/ResourceRecommendation.tsx",
+      "sha256": "9bcc4125ae36053541fc90a896bfafb47da7491535261b1cd541bc6d8e34bbcd"
+    },
+    {
+      "path": "src/mainview/components/router/CandidateCards.tsx",
+      "sha256": "041227d6343682203b0d58432cde62b572213f98d5266c3083145fcd3c8a9270"
+    },
+    {
+      "path": "src/mainview/components/router/PortfolioRouterPreview.tsx",
+      "sha256": "fc9ff912963ade333356aa4ad5ebb65d6e58c421c4384681eeb99da80718ef21"
+    },
+    {
+      "path": "src/mainview/components/router/useEvidenceClock.ts",
+      "sha256": "a1dcb2bdf44af8ad4ba92bba61b95b773064459ec749ca343f560ec4e4010c1a"
+    },
+    {
+      "path": "src/mainview/lib/model-router-api.ts",
+      "sha256": "aa91cba7b23b2749e95c025bfacf561510974f4869bc68a76b268d183cdd1b8d"
+    },
+    {
+      "path": "src/mainview/lib/model-router-preview.ts",
+      "sha256": "9f5492b52eb88d5be09618fbe723a3c43e0d5b0bb81f72cae7a17957fb98e4bf"
+    },
+    {
+      "path": "src/mainview/lib/model-router-preview.test.ts",
+      "sha256": "939659a08e947418fe8353dd71ae168258048b063862f3423ce14bedc5cc6612"
+    },
+    {
+      "path": "e2e/model-router-preview.spec.ts",
+      "sha256": "7855bae272fdbcb00a9296790310711ef167dbee0116842855245e7e174c1e00"
+    },
+    {
+      "path": "scripts/test-model-router-ui.ts",
+      "sha256": "480e025340e3d89f1871970f08e5513611b31c2ece07e46cde9d5063ecbd053d"
+    },
+    {
+      "path": "docs/architecture/fo-009e-model-router-ui.md",
+      "sha256": "eee00cdb7319ad9abb337ba6e66a88b35b2ff82d819a9525df8d839750c1e8a0"
+    }
+  ]
+}

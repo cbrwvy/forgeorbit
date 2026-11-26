@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 import type { GitHubPullMergeability } from "../../shared/types.ts";
 
 export type MergeTone = "ok" | "warn" | "bad" | "muted";
@@ -21,7 +22,7 @@ export function mergeabilityView(m: GitHubPullMergeability): MergeabilityView {
     // pre-mergeability-feature baseline (no verdict meant merge stayed
     // enabled) rather than regressing Bitbucket to a permanently dead button.
     return {
-      label: "Mergeability hasn't been verified — merging will be attempted as-is",
+      get label() { return tr("settings.mergeability_hasn_t_been_verified_merging_will_efe247"); },
       tone: "muted",
       canMerge: true,
       showUpdateBranch: m.mergeableState === "behind",
@@ -30,17 +31,17 @@ export function mergeabilityView(m: GitHubPullMergeability): MergeabilityView {
   switch (m.mergeableState) {
     case "clean":
     case "has_hooks":
-      return { label: "Ready to merge", tone: "ok", canMerge: m.mergeable, showUpdateBranch: false };
+      return { get label() { return tr("settings.ready_to_merge_28f738"); }, tone: "ok", canMerge: m.mergeable, showUpdateBranch: false };
     case "unstable":
-      return { label: "Mergeable — some checks are pending or failing", tone: "warn", canMerge: m.mergeable, showUpdateBranch: false };
+      return { get label() { return tr("settings.mergeable_some_checks_are_pending_or_failing_6d5a67"); }, tone: "warn", canMerge: m.mergeable, showUpdateBranch: false };
     case "behind":
-      return { label: "Out of date with the base branch", tone: "warn", canMerge: m.mergeable, showUpdateBranch: true };
+      return { get label() { return tr("settings.out_of_date_with_the_base_branch_066527"); }, tone: "warn", canMerge: m.mergeable, showUpdateBranch: true };
     case "dirty":
-      return { label: "Conflicts must be resolved before merging", tone: "bad", canMerge: false, showUpdateBranch: false };
+      return { get label() { return tr("settings.conflicts_must_be_resolved_before_merging_e71d55"); }, tone: "bad", canMerge: false, showUpdateBranch: false };
     case "blocked":
-      return { label: "Blocked by required reviews or checks", tone: "bad", canMerge: false, showUpdateBranch: false };
+      return { get label() { return tr("settings.blocked_by_required_reviews_or_checks_256f24"); }, tone: "bad", canMerge: false, showUpdateBranch: false };
     case "draft":
-      return { label: "Draft — mark ready for review to merge", tone: "muted", canMerge: false, showUpdateBranch: false };
+      return { get label() { return tr("settings.draft_mark_ready_for_review_to_merge_b2c139"); }, tone: "muted", canMerge: false, showUpdateBranch: false };
     default:
       return { label: `Mergeability: ${m.mergeableState}`, tone: "muted", canMerge: m.mergeable, showUpdateBranch: false };
   }

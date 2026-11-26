@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
@@ -53,6 +54,7 @@ export interface ContextMenuProps {
  * Escape meant for this menu leak through and close the run panel instead.
  */
 export function ContextMenu({ open, x, y, items, onClose, label = "Context menu", testId }: ContextMenuProps) {
+  const { locale: uiLocale } = useUILocale();
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -63,7 +65,7 @@ export function ContextMenu({ open, x, y, items, onClose, label = "Context menu"
   // disabled items are never focus targets.
   const enabled = useMemo(
     () => items.map((it) => (it.type === "separator" ? false : !it.disabled)),
-    [items],
+    [items, uiLocale],
   );
 
   // Reset positioning + roving focus each time the menu (re)opens, so a
@@ -257,7 +259,7 @@ export function ContextMenu({ open, x, y, items, onClose, label = "Context menu"
       // not let WebKit's menu open on top of ours.
       onContextMenu={(e) => e.preventDefault()}
       style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: "hidden" }}
-      className="fixed z-50 max-h-[calc(100vh-16px)] min-w-44 overflow-y-auto rounded-md border border-border bg-card p-1 text-sm text-card-foreground shadow-xl"
+      className="glass-floating fixed z-50 max-h-[calc(100vh-16px)] min-w-44 overflow-y-auto rounded-xl border p-1 text-sm text-card-foreground shadow-xl"
     >
       {items.map((item, index) => {
         if (item.type === "separator") {
@@ -277,7 +279,7 @@ export function ContextMenu({ open, x, y, items, onClose, label = "Context menu"
             onClick={() => selectItem(item)}
             onMouseEnter={item.disabled ? undefined : () => setActiveIndex(index)}
             className={cn(
-              "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none transition-colors",
+              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors",
               "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
               isActive && "bg-accent text-accent-foreground",
               item.danger && "text-destructive hover:text-destructive focus-visible:text-destructive",

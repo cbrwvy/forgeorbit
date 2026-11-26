@@ -1,5 +1,5 @@
 // Wipe the dev data dir (~/.agetor-dev) — the one `bun run dev` /
-// `bun run dev:hmr` write to. The packaged .app uses ~/.agetor and is
+// `bun run dev:hmr` write to. The packaged .app uses the ForgeOrbit default and is
 // untouched. Hard-coded path with a suffix check so this can never
 // accidentally nuke the production dir even if $HOME is exotic.
 //

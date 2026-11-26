@@ -8,6 +8,8 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { verifyVendorSigning } from "./verify-vendor-signing.ts";
+import { verifyProvenance, verifyWrapper, verifyShipping } from "./release-metadata.ts";
+import { runtimeApp } from "./inspect-built-app.ts";
 
 const APP_NAME = "ForgeOrbit";
 
@@ -52,10 +54,13 @@ for (const dmgName of dmgs) {
   const archMatch = dmgName.match(/-(arm64|x64)\.dmg$/);
   if (!archMatch) fail(`cannot parse arch from ${dmgName}`);
   const arch = archMatch[1];
-  const buildSubdir = buildEntries.find((d) => d.endsWith(`-macos-${arch}`));
+  const buildSubdir = buildEntries.find((d) => d === `stable-macos-${arch}`);
   if (!buildSubdir) fail(`no build/<env>-macos-${arch} directory for ${dmgName}`);
   const app = join(buildDir, buildSubdir, `${APP_NAME}.app`);
   if (!existsSync(app)) fail(`expected ${app} but it's missing`);
+  const receipt = verifyProvenance(runtimeApp(app, process.cwd()), join(buildDir, buildSubdir));
+  verifyWrapper(app, receipt.metadata, receipt.sdk.hash);
+  verifyShipping("artifacts", join(buildDir, buildSubdir));
 
   console.log(`  ${dmgName}`);
 

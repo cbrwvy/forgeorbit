@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 /**
  * The board card's "waiting on you" look and wording, shared by every
  * surface that has to read the same as the card: the kanban `TaskCard`
@@ -17,9 +18,9 @@
  * approval heuristic), so promising a Q&A flow would be wrong.
  */
 export function awaitingLabel(pendingCount: number): string {
-  if (pendingCount > 1) return `Answer (${pendingCount})`;
-  if (pendingCount === 1) return "Answer";
-  return "Review";
+  if (pendingCount > 1) return tr("common.answer_ae8fc7", { p0: String(pendingCount) });
+  if (pendingCount === 1) return tr("common.answer");
+  return tr("common.review");
 }
 
 /** The static amber ring around a card/node that is waiting on the user.

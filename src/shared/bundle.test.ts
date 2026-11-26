@@ -1108,6 +1108,8 @@ describe("numberedFileName", () => {
     expect(numberedFileName("x.agetor.json", 2)).toBe("x (2).agetor.json");
     expect(numberedFileName("x.json", 3)).toBe("x (3).json");
     expect(numberedFileName("x", 4)).toBe("x (4)");
+    // The analytics export writes through the same helper: the number goes before .csv, not after it.
+    expect(numberedFileName("forgeorbit-runs.csv", 2)).toBe("forgeorbit-runs (2).csv");
   });
 });
 

@@ -1,4 +1,9 @@
-export type ColumnId = "backlog" | "ready" | "running" | "blocked" | "review" | "done";
+import { RUN_USAGE_STATUS_PREFIX } from "./usage-analytics.ts";
+import type { ProviderRefusalSummary } from "./provider-refusal.ts";
+import type { EffectiveProjectLifecycleState, ProjectLifecycleSnapshot } from "./project-lifecycle.ts";
+import type { AccessMode } from "./execution/access-mode.ts";
+
+export type ColumnId = "backlog" | "inbox" | "ready" | "running" | "blocked" | "review" | "done";
 
 /**
  * The exact `HarnessStatus.reason` string the server emits when claude-code
@@ -226,6 +231,7 @@ export function isInternalStatusSentinel(data: string): boolean {
   return (
     data.startsWith(PERMISSION_MODE_STATUS_PREFIX) ||
     data.startsWith(FX_USAGE_STATUS_PREFIX) ||
+    data.startsWith(RUN_USAGE_STATUS_PREFIX) ||
     data.startsWith(FX_PROVIDER_STATUS_PREFIX) ||
     data.startsWith(FX_SESSION_TITLE_STATUS_PREFIX) ||
     data.startsWith(FX_RECOVERY_STATUS_PREFIX)
@@ -248,6 +254,7 @@ export const GIT_HOST_TOKENS_SECTION = "Git host tokens";
 
 export const COLUMNS: { id: ColumnId; label: string }[] = [
   { id: "backlog", label: "Backlog" },
+  { id: "inbox", label: "Inbox" },
   { id: "ready", label: "Ready" },
   { id: "running", label: "Running" },
   { id: "blocked", label: "Blocked" },
@@ -945,9 +952,9 @@ export interface HarnessTemplate {
 
 export const HARNESS_TEMPLATES: HarnessTemplate[] = [
   // `{dataDir}` is a placeholder substituted in the Settings dialog before
-  // the editor opens — resolves to ~/.agetor for the packaged .app or
-  // ~/.agetor-dev under `bun run dev`, so the suggested HOME tracks whichever
-  // tree agetor is actually using. The value stored on the harness row is
+  // the editor opens, so the suggested HOME tracks the server's selected
+  // ForgeOrbit profile, including explicit legacy/development overrides.
+  // The value stored on the harness row is
   // the resolved absolute path.
   {
     id: "claude-code-additional",
@@ -1007,6 +1014,7 @@ export const HARNESS_TEMPLATES: HarnessTemplate[] = [
 ];
 
 export type Isolation = "worktree" | "none";
+export { ACCESS_MODES, normalizeAccessMode, type AccessMode } from "./execution/access-mode.ts";
 
 /**
  * High-level classification of a task. Cosmetic only — drives the icon and
@@ -1365,7 +1373,85 @@ export function branchCommitType(
   return conventionalCommitType(taskType);
 }
 
+export type QcVerdict = "PASS" | "CHANGES_REQUESTED" | "BLOCKED";
+
+/** The Owner's one-time authorization of a single additional review round after the limit (Direction 8). */
+export interface QcExtension {
+  authorizedAt: number;
+  authorizedBy: "owner";
+  /** Rounds used when it was authorized (the base limit). */
+  baseRound: number;
+  /** The verdict the task was blocked on when it was authorized. */
+  baseVerdict: QcVerdict | null;
+  /** The additional review that consumed it; null until one is prepared. */
+  reviewId: string | null;
+  /** How that review ended: its verdict, or "none" when it produced no verdict (cancelled, failed to run). */
+  outcome?: QcVerdict | "none" | null;
+}
+
+export interface TaskQcState {
+  activeReviewId: string | null;
+  awaitingOwnerApproval: boolean;
+  latestVerdict: QcVerdict | null;
+  reworkCount: number;
+  roundCount: number;
+  /** The base limit, plus one while an Owner extension exists. */
+  maxRounds: number;
+  extension?: QcExtension | null;
+}
+
+export interface TaskQcReview {
+  id: string;
+  taskId: string;
+  projectPath: string;
+  round: number;
+  status: "pending" | "running" | "complete" | "cancelled";
+  verdict: QcVerdict | null;
+  summary: string | null;
+  findings: Array<{ severity: "blocker" | "suggestion" | "nit" | "info"; text: string }>;
+  feedback: string | null;
+  reviewerEmployeeId: string | null;
+  reviewerRoleSlug: string | null;
+  reviewerHarness: string;
+  reviewerModel: string;
+  reviewerProfileId: string | null;
+  implementationRunId: string | null;
+  reviewRunId: string | null;
+  /** Recorded by ForgeOrbit when launching a QC review (`complete`, `missing-test`, or `missing-source`). */
+  evidenceState?: import("./task-quality-control.ts").QcReviewEvidenceState | null;
+  requestedAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
+  /** Read-only: which implementation attempt (1 = the task's first run) this round reviewed. */
+  implementationAttempt?: number | null;
+  /** Read-only: true when no later implementation run exists, so the verdict is about the latest output. */
+  coversLatestOutput?: boolean;
+  /** Read-only: the provider usage-limit refusal the Reviewer's own run observed, when one was recognized. */
+  providerRefusal?: ProviderRefusalSummary | null;
+  /** Read-only: what a Stop or a time limit did to the Reviewer's own run, when one applied. */
+  reviewRunTermination?: import("./run-termination.ts").RunTermination | null;
+}
+
 export interface Task {
+  /**
+   * Kanban urgency, 1 (Minimal) .. 5 (Critical), default 3. Orders the board only; it is NOT the scheduling
+   * priority (`task_priorities`) and nothing that decides what may run reads it. Optional so fixtures stay valid.
+   */
+  urgency?: import("./board-order.ts").Urgency;
+  /** Position inside the task's (project, column, urgency) group, ascending. Server-managed; see `board-order.ts`. */
+  boardRank?: number;
+  /** Earliest UTC instant (ISO-8601, e.g. `2026-11-27T08:00:00.000Z`) at which automatic execution may start this task. `null` = available immediately. */
+  availableFromUtc?: string | null;
+  /** Recurring task template reference when this task is an occurrence generated from a recurring template. */
+  recurringTemplateId?: string | null;
+  /** Durable recurring occurrence row id linking this task to its recurring template history. */
+  recurringOccurrenceId?: string | null;
+  /** Nominal scheduled UTC timestamp for this recurring occurrence (distinct from actual start time and template next due). */
+  recurringNominalUtc?: string | null;
+  /** Joined summary of the owning recurring template for card indicators and task details. */
+  recurring?: import("./recurring-tasks.ts").TaskRecurringInfo | null;
+  objectiveMissionId?: string;
+  computerWorkflowRevision?: string;
   id: string;
   title: string;
   prompt: string;
@@ -1380,6 +1466,8 @@ export interface Task {
   workdir: string;
   /** "worktree" runs the agent in a per-task git worktree off `workdir`. "none" runs directly in `workdir`. */
   isolation: Isolation;
+  /** Product access mode: "workspace" (default), "isolated" (disposable staging + OS sandbox), or "full-computer" (separate external CU grants). */
+  accessMode?: AccessMode;
   /**
    * Cosmetic classification — drives the icon + left-border color on the
    * kanban card. No effect on orchestration. Persisted rows always carry a
@@ -1662,6 +1750,11 @@ export interface Task {
    */
   fxRecovery?: TaskFxRecovery | null;
   /**
+   * Supervised quality-control summary (FO-QC01). Written only by
+   * `tasks.setQcState`; not patchable via generic task PATCH.
+   */
+  qcState?: TaskQcState | null;
+  /**
    * The branch name agetor last observed checked out in the task's worktree.
    * `null` = never observed, or a detached HEAD at the last observation.
    * `task.branch` stays the task's identity branch; this is where the
@@ -1720,6 +1813,14 @@ export interface Task {
    *  request by the server (never persisted, never patchable). Absent on payloads
    *  that don't join the subagents table. */
   runningSubagents?: number;
+  /** The registered project this task belongs to (FO-008D,
+   *  `project-ownership.ts`): its folder, a subfolder, or a proven worktree.
+   *  Null when no project owns it or ownership is ambiguous. Derived per
+   *  request by the task routes; absent on payloads that don't add it, where
+   *  clients fall back to `workdir`. Never stored, never patchable. */
+  ownerProjectPath?: string | null;
+  /** How `ownerProjectPath` was decided, or why there is none. */
+  projectOwnership?: "exact" | "subfolder" | "worktree" | "ambiguous" | "symlink-escape" | "unattributed";
   /**
    * Transient (in-memory on the server, decorated onto API responses — never
    * persisted): `Date.now()` when the turn-stall watchdog flagged this
@@ -3523,6 +3624,7 @@ export const AGENT_OPTIONS: Record<AgentKind, AgentOptions> = {
       { id: "acceptEdits", label: "Accept edits", hint: "Auto-accept file edits, ask for the rest." },
       { id: "plan", label: "Plan only", hint: "Plan without making changes." },
       { id: "ask", label: "Ask before changes", hint: "Standard interactive permissions." },
+      { id: "bounded-print", label: "Bounded print", hint: "One Claude process: 6 turns, estimated $0.25 stopping threshold; file tools only, QC read-only. No shell, MCP, subagents, retry or continuation. Provider file restrictions are not an OS sandbox." },
     ],
     // The full list lives in `EFFORT_OPTIONS`. We surface every id this agent
     // can ever produce so legacy rows (e.g. effort="xhigh" set under codex,
@@ -3546,7 +3648,8 @@ export const AGENT_OPTIONS: Record<AgentKind, AgentOptions> = {
       { id: "gpt-5", label: "GPT-5", hint: "Requires an API-key account; rejected on ChatGPT plans." },
     ],
     modes: [
-      { id: "auto", label: "Auto (workspace-write)", hint: "Edit files without approval prompts." },
+      { id: "auto", label: "Auto (sandboxed)", hint: "Workspace-write sandbox; never silently enables full access. External Git writes require a new Owner decision. Network is disabled for sandboxed commands." },
+      { id: "full-access", label: "Full access (no sandbox)", hint: "High privilege: full user filesystem and network access, no approval prompts. Requires explicit Owner choice." },
       { id: "ask", label: "Read-only", hint: "Inspect only — codex can't modify files (read-only sandbox)." },
     ],
     efforts: EFFORT_OPTIONS,
@@ -3768,7 +3871,7 @@ export const AGENT_OPTIONS: Record<AgentKind, AgentOptions> = {
     modes: [
       { id: "auto", label: "Auto", hint: "Hands-off — auto-approves all tool permissions (--dangerously-skip-permissions)." },
       { id: "plan", label: "Plan only", hint: "Plan without making changes (--mode plan)." },
-      { id: "ask", label: "Accept edits", hint: "Auto-accept file edits, ask before executing commands (--mode accept-edits)." },
+      { id: "ask", label: "Auto-accept file edits", hint: "Automatically accepts file edits in the workspace (--mode accept-edits). ForgeOrbit does not ask you to confirm each file change." },
     ],
     efforts: EFFORT_OPTIONS,
   },
@@ -3858,6 +3961,18 @@ export interface Run {
    * unchanged; DB rows predating migration 023 read back as null.
    */
   origin?: "continuation" | null;
+  /** Active project rules frozen when this run started. Null for legacy rows. */
+  projectRulesSnapshot?: ProjectRulesSnapshot | null;
+  /** FO-011E inherited knowledge frozen when this run started. Null for legacy rows. */
+  knowledgeSnapshot?: import("./knowledge/effective.ts").KnowledgeSnapshot | null;
+  /** FO-BRAIN04 specialist Brain context frozen when this run started. Null for legacy rows. */
+  brainContextSnapshot?: import("./brain/specialist.ts").SpecialistBrainProvenance | null;
+  /** FO-QC01 quality review run link; null for ordinary runs. */
+  qcReviewId?: string | null;
+  /** Read-only: the provider usage-limit refusal this run observed, when one was recognized. */
+  providerRefusal?: ProviderRefusalSummary | null;
+  /** Read-only: what a Stop or a time limit did to this run's process, when one applied. */
+  termination?: import("./run-termination.ts").RunTermination | null;
 }
 
 /** One changed file in a task's git diff (worktree vs its pinned base). */
@@ -4227,6 +4342,8 @@ export interface GitHubWorkflowRun {
   htmlUrl: string;
   createdAt: string;
   workflowId: number;
+  /** Commit the run built, when GitHub reported a 40-character head SHA. */
+  headSha: string | null;
 }
 
 export interface GitHubWorkflowRunsResult {
@@ -5049,6 +5166,149 @@ export type AppEvent =
       percent: number | null;
       line: string;
       ts: number;
+    }
+  | {
+      type: "environment_status";
+      projectPath: string;
+      profileId: string;
+      phase: "stopped" | "starting" | "running" | "degraded" | "stopping" | "error" | "unknown";
+      ownership: "none" | "session" | "prior-forgeorbit" | "external" | "unverified";
+      error: string | null;
+      errorCode: string | null;
+      health: { id: string; ok: boolean; required: boolean; detail: string }[];
+      ts: number;
+    }
+  | {
+      type: "environment_log";
+      projectPath: string;
+      profileId: string;
+      stream: "stdout" | "stderr" | "system";
+      text: string;
+      at: number;
+      ts: number;
+    }
+  | {
+      /**
+       * A portfolio-manager delegation (FO-008D) changed status: sent to a
+       * project manager, answered, failed, rejected, proposed, or settled
+       * by recovery. Ids and status only — never the request, the answer or
+       * any credential; the Portfolio Manager tab re-reads
+       * `GET /portfolio-manager`, which stays the one source of truth.
+       */
+      type: "portfolio_delegation";
+      delegationId: string;
+      projectPath: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /** FO-HEAD02: cross-project initiative status changed (ids only). */
+      type: "head_pm_initiative";
+      initiativeId: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /** FO-HEAD03: chat initiative proposal status changed. */
+      type: "head_pm_initiative_proposal";
+      proposalId: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /** FO-ROUTING03: allocation plan status changed (staffing only, not execution). */
+      type: "allocation_plan";
+      planId: string;
+      scopeRef: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /**
+       * A project permission request changed (asked, decided, started, finished).
+       * Ids and status only: the Owner attention list re-reads the core, so a
+       * missed event is caught up by the next read.
+       */
+      type: "project_permission";
+      projectPath: string;
+      requestId: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /**
+       * A hands-off run ("Work independently") changed stage or status, or a project policy was saved.
+       * Ids and status only: every surface re-reads the core, so a missed event is caught up by the next read.
+       */
+      type: "handsoff";
+      projectPath: string;
+      taskId: string | null;
+      runId: string | null;
+      status: string;
+      ts: number;
+    }
+  | {
+      /** Recurring task template or occurrence state changed (FO-KANBAN-RECURRING01). */
+      type: "recurring";
+      projectPath: string;
+      templateId: string | null;
+      action: string;
+      ts: number;
+    }
+  | {
+      /**
+       * An execution batch (FO-005C) was saved: a status change, a launch,
+       * a hold, an edit. Ids only — the Manager tab re-reads the batch from
+       * `GET /project-manager/batches/:id`, which stays the one source of
+       * truth, so a missed event is caught up by the next read.
+       * `projectPath` lets a tab ignore other projects' batches.
+       */
+      type: "execution_batch";
+      projectPath: string;
+      batchId: string;
+      status: string;
+      ts: number;
+    }
+  | {
+      /**
+       * Structured dependencies (FO-005C, `task_dependencies`) of tasks in
+       * `projectPath` were written. Ids only — a listener re-reads the links
+       * from the core, so a missed event is caught up by the next read.
+       * Links removed by a task delete cascade send no event; the deleted
+       * task drops out of the task list instead.
+       */
+      type: "task_dependencies";
+      projectPath: string;
+      taskIds: string[];
+      ts: number;
+    }
+  | {
+      /**
+       * FO-015A.1 Company Activity Journal event.
+       * Broadcast over `GET /app/events` after the SQLite transaction commits.
+       * Carries event metadata only; full history/payload can be retrieved via GET /activity.
+       */
+      type: "activity_event";
+      eventId: string;
+      eventType: string;
+      projectPath: string | null;
+      actorType: string;
+      actorId: string | null;
+      targetType: string;
+      targetId: string;
+      sequenceId: number;
+      ts: number;
+    }
+  | {
+      /**
+       * FO-PROJECT-LIFECYCLE01: A registered project's AI execution lifecycle
+       * changed (`running` | `draining` | `paused` | `recovering` | `invalid`).
+       */
+      type: "project_lifecycle";
+      projectPath: string;
+      state: EffectiveProjectLifecycleState;
+      activeExecutions: number;
+      ts: number;
     };
 
 /**
@@ -5147,6 +5407,27 @@ export function commitPushPrompt(task: Pick<Task, "branch" | "taskType">): strin
  * every time. Explicit entries come from the native folder dialog
  * (POST /projects/pick).
  */
+
+/** One owner-authored rule row for a registered project workspace. */
+export interface ProjectRule {
+  id: string;
+  projectPath: string;
+  name: string;
+  body: string;
+  enabled: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Active rules frozen onto a run at launch time. */
+export interface ProjectRulesSnapshot {
+  projectPath: string;
+  version: string;
+  capturedAt: number;
+  rules: Array<{ id: string; name: string; body: string }>;
+}
+
 export interface Project {
   path: string;
   name: string;
@@ -5156,6 +5437,23 @@ export interface Project {
    * consumers fall back to {@link DEFAULT_BRANCH_CONFIG}.
    */
   branchConfig: BranchNamingConfig | null;
+  /**
+   * Project-scoped Developer working-copy permission (opt-in, default false).
+   * When enabled, subsequent Developer launches run in an isolated task working
+   * copy where eligible files can be edited and local checks can run without
+   * pre-listing output paths or approving each command. Original project stays
+   * unchanged until changes are reviewed and published.
+   */
+  workspaceDevelopment?: boolean;
+  /**
+   * Project-wide AI execution lifecycle snapshot (`FO-PROJECT-LIFECYCLE01`).
+   * Populated by `GET /projects` and `GET /projects/lifecycle`.
+   */
+  lifecycle?: ProjectLifecycleSnapshot;
+  /** Whether the project folder currently exists on disk (`FO-PORTABLE-UI01`). */
+  existsOnDisk?: boolean;
+  /** Whether Owner intervention is required to relink a missing folder (`FO-PORTABLE-UI01`). */
+  requiresUserIntervention?: boolean;
 }
 
 /**
@@ -5487,3 +5785,6 @@ export function clampFontSizePercent(raw: unknown): number {
   const rounded = Math.round(n);
   return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, rounded));
 }
+
+export * from "./activity/types.ts";
+

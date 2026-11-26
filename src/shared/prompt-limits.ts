@@ -6,19 +6,16 @@
 // be caught with a clear message instead of surfacing as a failed run.
 import type { AgentKind } from "./types.ts";
 
-/**
- * Same tmux-imsg-cap constraint documented in `src/bun/agents.ts` next to the
- * (re-exported) constant of the same name: gemini's one-shot tmux launch has
- * no deferred-paste fallback for an oversized prompt, so anything above this
- * budget must be caught before spawn rather than mis-delivered.
- */
-export const GEMINI_PROMPT_ARGV_MAX_BYTES = 4096;
+/** Below the audited Gemini CLI 8 MiB stdin truncation threshold. */
+export const GEMINI_PROMPT_MAX_BYTES = 4 * 1024 * 1024;
+/** Backward-compatible name for the complete payload cap; transport is now stdin. */
+export const GEMINI_PROMPT_ARGV_MAX_BYTES = GEMINI_PROMPT_MAX_BYTES;
 
-/** Per-kind prompt-argv byte budgets. A kind absent from this map is
+/** Per-kind complete prompt byte budgets. A kind absent from this map is
  *  uncapped (claude has a deferred-paste fallback; codex/cursor/fx deliver
  *  the prompt off argv entirely). */
 export const PROMPT_ARGV_MAX_BYTES: Partial<Record<AgentKind, number>> = {
-  gemini: GEMINI_PROMPT_ARGV_MAX_BYTES,
+  gemini: GEMINI_PROMPT_MAX_BYTES,
 };
 
 /**

@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Clipboard, Download, FolderOpen, PackageOpen, RotateCw, X } from "lucide-react";
@@ -25,12 +27,12 @@ function exportStatusText(
   summary: BundleExportResponse | null,
   actionFailed: boolean,
 ): string {
-  if (busy === "downloads") return "Saving to Downloads…";
-  if (busy === "folder") return "Choosing a folder…";
-  if (busy === "copy") return "Copying…";
-  if (error) return `Export failed: ${error}`;
+  if (busy === "downloads") return tr("common.saving_to_downloads");
+  if (busy === "folder") return tr("common.choosing_a_folder");
+  if (busy === "copy") return tr("common.copying");
+  if (error) return tr("common.export_failed", { p0: String(error) });
   if (actionFailed) return "";
-  return summary ? `Ready to export ${countsSummary(summary.counts)}` : "Preparing export…";
+  return summary ? tr("common.ready_to_export", { p0: String(countsSummary(summary.counts)) }) : tr("bundle.preparing_export");
 }
 
 /**
@@ -55,6 +57,7 @@ export function ExportBundleDialog({
   selection: BundleSelection | null;
   onClose: () => void;
 }) {
+  useUILocale();
   const [summary, setSummary] = useState<BundleExportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Action | null>(null);
@@ -106,12 +109,12 @@ export function ExportBundleDialog({
       const res = await api.saveBundle(selection, target);
       if ("cancelled" in res) return;
       // The file is written either way, so the toast is still true.
-      toast.success(`Exported ${countsSummary(res.counts)}`, {
-        description: res.revealed ? `Saved ${res.filename} — revealed in Finder` : `Saved to ${res.path}`,
+      toast.success(tr("common.exported", { p0: String(countsSummary(res.counts)) }), {
+        description: res.revealed ? tr("common.saved_revealed_in_finder", { p0: String(res.filename) }) : tr("common.saved_to", { p0: String(res.path) }),
       });
       if (seq === requestRef.current) onClose();
     } catch (e) {
-      const where = target === "downloads" ? "Downloads" : "the folder you chose";
+      const where = target === "downloads" ? tr("common.downloads") : tr("common.the_folder_you_chose");
       // No HTTP answer at all. With the core not answering its health check
       // either, the request most likely never ran. Otherwise the connection
       // dropped (or the webview gave up on a request held open by the
@@ -119,15 +122,15 @@ export function ExportBundleDialog({
       // file, so saving again could leave a duplicate.
       const description =
         e instanceof ApiError && e.status === 501
-          ? "Choosing a folder isn't available here — use Save to Downloads or Copy JSON."
+          ? tr("common.choosing_a_folder_isn_t_available_here_use")
           : e instanceof ApiError
             ? message(e)
             : e instanceof ApiUnreachableError
-              ? `${requestFailureText(e)}, so the export most likely didn't run; if a file shows up in ${where} anyway, check it before saving again.`
+              ? tr("common.so_the_export_most_likely_didn_t_run", { p0: String(requestFailureText(e)), p1: String(where) })
               : target === "folder"
-                ? `${requestFailureText(e)} — if the folder panel is still open, close it; the file may still have been saved to ${where}, so check there before saving again.`
-                : `${requestFailureText(e)} — the file may still have been saved to ${where}; check there before saving again.`;
-      toast.error("Couldn't export", { description, duration: Infinity });
+                ? tr("common.if_the_folder_panel_is_still_open_close", { p0: String(requestFailureText(e)), p1: String(where) })
+                : tr("common.the_file_may_still_have_been_saved_to", { p0: String(requestFailureText(e)), p1: String(where) });
+      toast.error(tr("common.couldn_t_export"), { description, duration: Infinity });
       if (seq === requestRef.current) setActionFailed(true);
     } finally {
       if (seq === requestRef.current) setBusy(null);
@@ -141,10 +144,10 @@ export function ExportBundleDialog({
     setActionFailed(false);
     try {
       await navigator.clipboard.writeText(summary.text);
-      toast.success(`Copied ${countsSummary(summary.counts)} as JSON`);
+      toast.success(tr("common.copied_as_json", { p0: String(countsSummary(summary.counts)) }));
       if (seq === requestRef.current) onClose();
     } catch (e) {
-      toast.error("Couldn't copy to the clipboard", { description: message(e), duration: Infinity });
+      toast.error(tr("common.couldn_t_copy_to_the_clipboard"), { description: message(e), duration: Infinity });
       if (seq === requestRef.current) setActionFailed(true);
     } finally {
       if (seq === requestRef.current) setBusy(null);
@@ -175,13 +178,8 @@ export function ExportBundleDialog({
           <header className="flex items-start justify-between gap-3 border-b border-border/60 p-3">
             <div className="min-w-0">
               <h2 id={TITLE_ID} className="flex items-center gap-2 text-sm font-semibold">
-                <PackageOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                Export
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                A portable JSON file. Each Agent keeps its harness and the built-in harness it wraps, so it
-                still imports on a machine without that account.
-              </p>
+                <PackageOpen className="size-4 shrink-0 text-muted-foreground" aria-hidden /><I18nText id="common.export" />{" "}</h2>
+              <p className="mt-1 text-xs text-muted-foreground"><I18nText id="bundle.a_portable_json_file_each_agent_keeps_its" />{" "}</p>
             </div>
             <Button
               variant="ghost"
@@ -189,7 +187,7 @@ export function ExportBundleDialog({
               data-testid="bundle-export-close"
               onClick={requestClose}
               disabled={busy !== null}
-              aria-label="Close"
+              aria-label={tr("common.close")}
             >
               <X className="size-4" />
             </Button>
@@ -200,7 +198,7 @@ export function ExportBundleDialog({
               ref={summaryRef}
               tabIndex={-1}
               role="region"
-              aria-label="Export summary"
+              aria-label={tr("bundle.export_summary")}
               data-testid="bundle-export-summary"
               className="rounded-md border border-border/60 px-3 py-2 outline-none"
             >
@@ -220,9 +218,7 @@ export function ExportBundleDialog({
                         summaryRef.current?.focus();
                       }}
                     >
-                      <RotateCw className="mr-1 size-3.5" aria-hidden />
-                      Retry
-                    </Button>
+                      <RotateCw className="mr-1 size-3.5" aria-hidden /><I18nText id="common.retry" />{" "}</Button>
                   )}
                 </div>
               ) : summary ? (
@@ -233,7 +229,7 @@ export function ExportBundleDialog({
                   </div>
                 </>
               ) : (
-                <span className="text-muted-foreground">Preparing export…</span>
+                <span className="text-muted-foreground"><I18nText id="bundle.preparing_export" /></span>
               )}
             </div>
             {summary?.warnings.map((w, i) => (
@@ -258,7 +254,7 @@ export function ExportBundleDialog({
               }}
             >
               <FolderOpen className="mr-1 size-3.5" aria-hidden />
-              {busy === "folder" ? "Choosing…" : "Choose folder…"}
+              {busy === "folder" ? tr("common.choosing") : tr("common.choose_folder")}
             </Button>
             <Button
               size="sm"
@@ -269,9 +265,7 @@ export function ExportBundleDialog({
                 if (!disabled) void copy();
               }}
             >
-              <Clipboard className="mr-1 size-3.5" aria-hidden />
-              Copy JSON
-            </Button>
+              <Clipboard className="mr-1 size-3.5" aria-hidden /><I18nText id="bundle.copy_json" />{" "}</Button>
             <Button
               size="sm"
               data-testid="bundle-export-downloads"
@@ -281,7 +275,7 @@ export function ExportBundleDialog({
               }}
             >
               <Download className="mr-1 size-3.5" aria-hidden />
-              {busy === "downloads" ? "Saving…" : "Save to Downloads"}
+              {busy === "downloads" ? tr("common.saving_23e392") : tr("common.save_to_downloads")}
             </Button>
           </div>
         </div>

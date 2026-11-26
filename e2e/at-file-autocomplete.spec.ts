@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard as gotoApp } from "./helpers";
 import { startGitHubStub, type GitHubStub, type StubRoute } from "./github-stub";
 
 /**
@@ -167,11 +167,9 @@ function issueRoutes(): StubRoute[] {
 
 // ---- Locator helpers ------------------------------------------------------
 
-/** The New Task sidebar — always the first `<aside>` in DOM order (RunPanel,
- *  when mounted, comes after it). Mirrors `e2e/quote.spec.ts` /
- *  `e2e/task-context-menu.spec.ts`'s identical convention. */
+/** The named New Task sidebar; the project sidebar is also an aside. */
 function newTaskForm(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 /** The run panel's slide-over `<aside>` — the later one in DOM order once a
@@ -275,7 +273,7 @@ async function expectMarkUnderToken(textarea: Locator, mark: Locator, prefix: st
 }
 
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 // ---- Task API helpers -------------------------------------------------
@@ -640,7 +638,8 @@ test.describe("@ file references", () => {
     // Focus never left the textarea → no focus-refetch → the popover must
     // not know the file yet.
     await page.keyboard.type("@fres");
-    await expect(atPopover(panel)).toBeHidden();
+    await expect(atRow(panel, "fresh-file.ts")).toBeHidden();
+    await expect(panel.getByTestId("at-file-empty")).toBeVisible();
 
     // A column transition (here via the API; in real life the run settling)
     // is the refresh trigger: the still-open query re-ranks against the

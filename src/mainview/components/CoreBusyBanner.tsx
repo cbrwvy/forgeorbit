@@ -1,3 +1,4 @@
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { Loader2 } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { getCoreBusy, subscribeCoreBusy } from "@/lib/core-busy";
@@ -12,6 +13,7 @@ import { getCoreBusy, subscribeCoreBusy } from "@/lib/core-busy";
  * webview's own connection cap on a healthy core.
  */
 export function CoreBusyBanner() {
+  useUILocale();
   const busy = useSyncExternalStore(subscribeCoreBusy, getCoreBusy, getCoreBusy);
   if (!busy) return null;
   return (
@@ -21,9 +23,7 @@ export function CoreBusyBanner() {
       className="flex items-center gap-3 border-b border-warning/30 bg-warning/10 px-4 py-2 text-xs text-foreground"
     >
       <Loader2 className="size-3.5 shrink-0 animate-spin text-warning motion-reduce:animate-none" aria-hidden />
-      <span className="min-w-0 flex-1 font-medium text-foreground">
-        ForgeOrbit is busy — waiting for the core…
-      </span>
+      <span className="min-w-0 flex-1 font-medium text-foreground"><I18nText id="projects.forgeorbit_is_busy_waiting_for_the_core" />{" "}</span>
     </div>
   );
 }

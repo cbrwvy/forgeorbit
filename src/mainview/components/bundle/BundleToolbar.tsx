@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef } from "react";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ export function BundleToolbar({
   onExportSelected: () => void;
   onExportAll: () => void;
 }) {
+  useUILocale();
   const checkboxRef = useRef<HTMLInputElement>(null);
   const some = selectedCount > 0 && !allSelected;
   useEffect(() => {
@@ -45,14 +48,13 @@ export function BundleToolbar({
           onChange={onToggleAll}
           // The visible text leads the name (WCAG 2.5.3, label in name);
           // "select all" says what the box does once something is picked.
-          aria-label={selectedCount > 0 ? `${selectedCount} selected, select all` : "Select all"}
+          aria-label={selectedCount > 0 ? tr("common.selected_select_all", { p0: String(selectedCount) }) : tr("common.select_all")}
         />
-        {selectedCount > 0 ? `${selectedCount} selected` : "Select"}
+        {selectedCount > 0 ? tr("common.selected", { p0: String(selectedCount) }) : tr("common.select_2a7802")}
       </label>
       <div className="ml-auto flex items-center gap-1">
         <Button variant="ghost" size="sm" data-testid="bundle-import-open" onClick={onImport} className="gap-1">
-          <Upload className="size-3.5" aria-hidden /> Import
-        </Button>
+          <Upload className="size-3.5" aria-hidden />{" "}<I18nText id="bundle.import" />{" "}</Button>
         <Button
           variant="ghost"
           size="sm"
@@ -62,7 +64,7 @@ export function BundleToolbar({
           className="gap-1"
         >
           <Download className="size-3.5" aria-hidden />
-          {selectedCount > 0 ? `Export selected (${selectedCount})` : "Export selected"}
+          {selectedCount > 0 ? tr("common.export_selected", { p0: String(selectedCount) }) : tr("common.export_selected_ac9099")}
         </Button>
         <Button
           variant="ghost"
@@ -70,10 +72,9 @@ export function BundleToolbar({
           data-testid="bundle-export-all"
           onClick={onExportAll}
           className="gap-1"
-          title="Export every Agent and every Pipeline"
+          title={tr("bundle.export_every_agent_and_every_pipeline")}
         >
-          <Download className="size-3.5" aria-hidden /> Export all
-        </Button>
+          <Download className="size-3.5" aria-hidden />{" "}<I18nText id="bundle.export_all" />{" "}</Button>
       </div>
     </div>
   );

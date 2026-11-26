@@ -2395,6 +2395,7 @@ function maybeEmitPromptUsage(state: FxSessionState, usage: unknown): void {
 async function runFxTurn(
   state: FxSessionState,
   opts: {
+    authorize?: () => boolean;
     cwd: string;
     promptText: string;
     resumeSessionId?: string;
@@ -2625,6 +2626,7 @@ async function runFxTurn(
 
   let promptResult: { stopReason?: string; usage?: unknown } | undefined;
   try {
+    if (opts.authorize && !opts.authorize()) { failTurn(state, "Owner authorization changed before adapter submission."); return; }
     promptResult = (await sendRpc(state, "session/prompt", promptParams)) as typeof promptResult;
   } catch (err) {
     if (state.resolved) return; // already settled via cancel/death
@@ -2786,6 +2788,7 @@ function describeHandshakeFailure(err: unknown, step: string, timeoutMs: number)
  * ────────────────────────────────────────────────────────────────────────── */
 
 export interface FxLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   runId: string;
   /** fx argv from `buildCommand` — `[fxBin, "acp", "--model", id,
@@ -2932,6 +2935,7 @@ export function spawnFxViaAcp(opts: FxLaunchOptions): SpawnedAgent {
   }).catch(() => { /* proc.exited doesn't reject in practice, but stay defensive */ });
 
   void runFxTurn(state, {
+    authorize: opts.authorize,
     cwd: opts.cwd,
     promptText: opts.promptText,
     resumeSessionId: opts.resumeSessionId,

@@ -1,3 +1,6 @@
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, AlertTriangle, Bot, Loader2, X } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
@@ -51,6 +54,7 @@ interface Props {
  * file).
  */
 export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const launch = useTaskLaunch(open);
 
   const [thread, setThread] = useState<GitHubIssueThreadResult | null>(null);
@@ -91,8 +95,8 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
   // Memoized so `useProjectFiles`'s effect doesn't refire on every
   // unrelated re-render.
   const fileScope = useMemo(
-    () => (open ? { dir: context?.path ?? "", ref: wt.isolate ? (wt.baseRef.trim() || "HEAD") : null } : null),
-    [open, context?.path, wt.isolate, wt.baseRef],
+    () => (open ? { dir: context?.path ?? "", ref: wt.isolate ? (wt.baseRef.trim() || tr("tasks.head")) : null } : null),
+    [open, context?.path, wt.isolate, wt.baseRef, uiLocale],
   );
 
   // Reset per-open transient state, then fetch the thread this dialog was
@@ -222,9 +226,7 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
         <header className="flex items-start justify-between gap-3 border-b border-border/60 p-3">
           <div className="min-w-0">
             <div id="create-task-from-issue-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
-              <Bot className="size-4 shrink-0 text-muted-foreground" />
-              Work on this with ForgeOrbit
-            </div>
+              <Bot className="size-4 shrink-0 text-muted-foreground" /><I18nText id="tasks.work_on_this_with_forgeorbit" />{" "}</div>
             {context && (
               <div className="mt-0.5 truncate text-xs text-muted-foreground">
                 #{context.number} — {context.title}
@@ -235,8 +237,8 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
             variant="ghost"
             size="icon"
             className="shrink-0"
-            title="Close"
-            aria-label="Close"
+            title={tr("common.close")}
+            aria-label={tr("common.close")}
             disabled={submitting}
             onClick={onClose}
           >
@@ -247,8 +249,7 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
         <div className="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
           {loading && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> Loading…
-            </div>
+              <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="common.loading" />{" "}</div>
           )}
 
           {!loading && error && (
@@ -259,31 +260,25 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
 
           {!loading && !error && !context && (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <AlertCircle className="size-4" /> The issue's state changed — close and reopen this dialog.
-            </div>
+              <AlertCircle className="size-4" />{" "}<I18nText id="tasks.the_issue_s_state_changed_close_and_reopen" />{" "}</div>
           )}
 
           {!loading && !error && !!context && !!thread && (
             <div className="space-y-3">
               <div className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
                 {wt.isolate
-                  ? "Creates a task on a fresh branch in its own worktree."
-                  : "Runs the agent directly in the project checkout — it commits onto your current branch, in your working tree."}{" "}
+                  ? tr("common.creates_a_task_on_a_fresh_branch_in")
+                  : tr("common.runs_the_agent_directly_in_the_project_checkout")}{" "}
                 {thread.commentsError ? (
-                  "The issue is embedded in the prompt (comments couldn't be fetched) and saved as a referenced snapshot file."
+                  tr("common.the_issue_is_embedded_in_the_prompt_comments")
                 ) : (
-                  <>
-                    The issue and its {thread.comments.length} comment
-                    {thread.comments.length === 1 ? "" : "s"}{" "}
-                    {thread.comments.length === 1 ? "is" : "are"} embedded in the prompt and saved as a
-                    referenced snapshot file.
-                  </>
+                  <><I18nText id="tasks.the_issue_and_its" />{" "}{thread.comments.length}{" "}<I18nText id="tasks.comment_c44bb2" />{" "}{thread.comments.length === 1 ? "" : englishPluralSuffix()}{" "}
+                    {thread.comments.length === 1 ? "is" : "are"}{" "}<I18nText id="tasks.embedded_in_the_prompt_and_saved_as_a" />{" "}</>
                 )}
-                {wt.isolate && " The agent commits locally; it never pushes."}
-                {thread.truncated && " Thread truncated at the fetch cap."}
+                {wt.isolate && tr("common.the_agent_commits_locally_it_never_pushes")}
+                {thread.truncated && tr("common.thread_truncated_at_the_fetch_cap")}
                 {thread.refetchCommand && (
-                  <div className="mt-1">
-                    Re-fetch: <code className="font-mono">{thread.refetchCommand}</code>
+                  <div className="mt-1"><I18nText id="tasks.re_fetch" />{" "}<code className="font-mono">{thread.refetchCommand}</code>
                   </div>
                 )}
               </div>
@@ -292,11 +287,9 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
                 <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
                   <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                   <div>
-                    <div>Comments weren't fetched — {thread.commentsError}</div>
+                    <div><I18nText id="tasks.comments_weren_t_fetched" />{" "}{thread.commentsError}</div>
                     {thread.refetchCommand && (
-                      <div className="mt-1">
-                        The agent can fetch them itself with the re-fetch command in the prompt.
-                      </div>
+                      <div className="mt-1"><I18nText id="tasks.the_agent_can_fetch_them_itself_with_the" />{" "}</div>
                     )}
                   </div>
                 </div>
@@ -318,11 +311,7 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
                 startingFolder={context.path}
                 rows={12}
                 footer={overage && (
-                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
-                    This prompt is {Math.ceil(overage.bytes / 1024)} KB — {selectedHarnessLabel}'s one-shot
-                    launch caps prompts at {Math.floor(overage.limit / 1024)} KB. Pick another harness or
-                    trim the prompt.
-                  </div>
+                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning"><I18nText id="tasks.this_prompt_is" />{" "}{Math.ceil(overage.bytes / 1024)}{" "}<I18nText id="tasks.kb" />{" "}{selectedHarnessLabel}<I18nText id="tasks.s_one_shot_launch_caps_prompts_at" />{" "}{Math.floor(overage.limit / 1024)}{" "}<I18nText id="tasks.kb_pick_another_harness_or_trim_the_prompt" />{" "}</div>
                 )}
               />
 
@@ -331,7 +320,7 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
               <TaskLaunchPickers launch={launch} />
 
               {submitError && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground">
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger">
                   {submitError}
                 </div>
               )}
@@ -340,16 +329,13 @@ export function CreateTaskFromIssueDialog({ open, onClose, context, onCreated }:
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-border/60 p-3">
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
+          <Button variant="outline" onClick={onClose} disabled={submitting}><I18nText id="common.cancel" />{" "}</Button>
           <Button data-testid="issue-task-submit" onClick={() => void submit()} disabled={!canSubmit}>
             {submitting ? (
               <>
-                <Loader2 className="mr-1 size-3.5 animate-spin" /> Creating…
-              </>
+                <Loader2 className="mr-1 size-3.5 animate-spin" />{" "}<I18nText id="common.creating" />{" "}</>
             ) : (
-              "Create & start"
+              tr("common.create_start")
             )}
           </Button>
         </div>

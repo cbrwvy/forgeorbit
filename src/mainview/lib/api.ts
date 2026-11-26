@@ -1,108 +1,166 @@
+import type { AnalyticsFilter, ForecastSelection, PricingTerms } from "../../shared/usage-analytics.ts";
+import type { HandsoffEvent, HandsoffRun } from "../../shared/handsoff.ts";
+export interface HandsoffTaskView { run: HandsoffRun | null; events: HandsoffEvent[] }
+export interface HandsoffPolicyView {
+  projectPath: string;
+  policy: import("../../shared/handsoff.ts").HandsoffPolicy;
+  revision: number;
+  activatedAt: number | null;
+  workingCopy: boolean;
+  available: { harnessId: string; harnessLabel: string; accountKey: string; accountLabel: string; role: "developer" | "reviewer" }[];
+  authorization: import("../../shared/handsoff-authorization.ts").HandsoffAuthorizationView;
+}
+import type { AppBuildInfo } from "../../shared/release-version.ts";
+export type { AppBuildInfo };
+import type { analytics, taskBreakdown, usageSelectors } from "../../bun/usage-analytics/analytics.ts";
+import type { analyticsRecords } from "../../bun/usage-analytics/records.ts";
+import type { estimateVersions, forecast } from "../../bun/usage-analytics/forecast.ts";
+import type { quotaHistory, ResourceKey, savePricing, usageResources } from "../../bun/usage-analytics/resources.ts";
+import type { ExecutorPreferences, RecommendationResponse } from "../../shared/execution/executor-routing.ts";
+import type { ProjectLifecycleActionResult, ProjectLifecycleSnapshot } from "../../shared/project-lifecycle.ts";
+import { apiErrorText } from "@/i18n/presentation";
+import type { ActivityQueryFilter, ActivityEventsResponse, ActivityEvent } from "../../shared/activity/types.ts";
+import type { BrowserObservation, BrowserSessionView } from "../../shared/browser/types.ts";
 import type {
-  AgentKind,
-  AgentProfile,
-  AgentStatus,
-  AppEvent,
-  BranchInfo,
-  BranchNamingConfig,
-  ColumnId,
-  DbCompactResult,
-  DbStats,
-  DiscoveredAccount,
-  GlobalEvent,
-  RetentionPassResult,
-  GitHubIssueThreadResult,
-  GitHubItemKind,
-  GitHubItemState,
-  GitHubCheckRun,
-  GitHubComment,
-  GitHubCommentsResult,
-  GitHubChecksResult,
-  GitHubCommitStatus,
-  GitHubCommitStatusResult,
-  GitHubAssigneesResult,
-  GitProvider,
-  GitHubDiscussion,
-  GitHubDiscussionCategory,
-  GitHubDiscussionComment,
-  GitHubDiscussionDetail,
-  GitHubDiscussionsResult,
-  GitHubLabelsResult,
-  GitHubRepoLabel,
-  GitHubMilestonesResult,
-  GitHubRepoMilestone,
-  GitHubLinkedIssue,
-  GitHubLinkedIssuesResult,
-  GitHubListItem,
-  GitHubListResult,
-  GitHubNotification,
-  GitHubNotificationsResult,
-  GitHubPullCommit,
-  GitHubPullCommitsResult,
-  GitHubPullDefaultsResult,
-  GitHubPullLineComment,
-  GitHubPullMergeability,
-  GitHubPullMergeMethod,
-  GitHubPullReviewCommentsResult,
-  GitHubPullReviewThreadsResult,
-  GitHubPullMergeResult,
-  GitHubPullReviewEvent,
-  GitHubProjectField,
-  GitHubProjectItem,
-  GitHubProjectItemsResult,
-  GitHubProjectV2,
-  GitHubProjectsV2Result,
-  GitHubReactionContent,
-  GitHubReactionsResult,
-  GitHubReactionSubject,
-  GitHubReactionSummary,
-  GitHubRelease,
-  GitHubReleasesResult,
-  GitHubRepoPermissions,
-  GitHubSubIssue,
-  GitHubSubIssuesResult,
-  GitHubTag,
-  GitHubTagsResult,
-  GitHubWorkflow,
-  GitHubWorkflowRun,
-  GitHubWorkflowRunsResult,
-  GitHubWorkflowsResult,
-  Handoff,
-  Harness,
-  HarnessQuota,
-  HarnessStatus,
-  HarnessUsage,
-  Isolation,
-  Pipeline,
-  PipelineInput,
-  Project,
-  Run,
-  RunEvent,
-  SavedPrompt,
-  Subagent,
-  Task,
-  TaskDiff,
-  TaskEventsReplayMeta,
-  TaskGitStatus,
-  TaskTeardownPreview,
-  TaskReference,
-  TaskType,
-  TerminalTab,
-  UpdateStatus,
-  WorktreeGitStatus,
-  WorktreeInfo,
-  WorktreeTeardownResult,
-} from "../../shared/types.ts";
-import { TASK_EVENTS_REPLAY_META_EVENT } from "../../shared/types.ts";
+  NativeAction,
+  NativeActionClaim,
+  NativeApplicationRecord,
+  NativeObservation,
+  NativePermissionStatus,
+  NativeProcessIdentity,
+  NativeSessionView,
+  NativeWindowRecord,
+} from "../../shared/native-computer/types.ts";
+import type { ProfessionalTurn, TurnHistory } from "../../shared/execution/turn.ts";
+import type { HeadPortfolioBinding } from "../../shared/head-portfolio-binding.ts";
+import type {
+  CatalogFilter,
+  CatalogManifestSummary,
+  DivisionMeta,
+  RoleTemplate,
+  RoleTemplateSummary,
+} from "../../shared/catalog/types.ts";
+import type {
+  AssignProfessionalRoleRequest,
+  EmployeeProfessionalProfile,
+  EmployeePromptRevision,
+  EmployeePromptRevisionSummary,
+  UpdateProfessionalPromptRequest,
+} from "../../shared/employees/profile-types.ts";
+import type {
+  ApproveHiringProposalRequest,
+  HiringProposal,
+  HiringProposalEvent,
+  HiringProposalSummary,
+  RejectHiringProposalRequest,
+  RunbookDetail,
+  RunbookSummary,
+  UpdateHiringProposalRequest,
+} from "../../shared/hiring/types.ts";
+import type { DocKind, ProjectDiscovery } from "../../shared/project-discovery.ts";
+import type { EnvironmentCommandResult, EnvironmentIndex } from "@/i18n/environment";
+import type { EstimationRecord, EstimationSettings } from "../../shared/estimation/settings.ts";
+import type { ClusterAggregate } from "../../shared/clusters/aggregate.ts";
+import type { Cluster, ClusterDetails, ClusterProject } from "../../shared/clusters/types.ts";
+import type { Employee, EmployeeDetails, OrganizationTree, ProjectTeam } from "../../shared/employees/types.ts";
+import type { AssignmentProposal, AssignmentProposalEvent, ProposalSummary } from "../../shared/assignments/proposals.ts";
+import type { AssignmentCandidate, AssignmentRouterHandoff, TaskAssignment, TaskAssignmentEvent } from "../../shared/assignments/types.ts";
+import type {
+  ClusterInfrastructureView,
+  InfrastructureResource,
+  ProjectEnvironmentDeclaration,
+} from "../../shared/infrastructure/model.ts";
+import type {
+  KnowledgeDocument,
+  KnowledgeOwnerRef,
+  KnowledgeRevisionInfo,
+  KnowledgeScope,
+  KnowledgeSearchHit,
+} from "../../shared/knowledge/document.ts";
+import type { BrainKind, BrainMemory, BrainMemorySummary, BrainIndexStatus, BrainScopeKind, BrainStatusValue } from "../../shared/brain/document.ts";
+import type {
+  BrainContextAccess,
+  BrainContextGrant,
+  BrainContextPreview,
+  BrainContextRequest,
+  BrainContextTarget,
+  BrainEligibleResult,
+  BrainTransmission,
+} from "../../shared/brain/context.ts";
+import type {
+  KnowledgeContextGrant,
+  KnowledgeContextPreview,
+  KnowledgeContextTarget,
+  KnowledgeEligibleResult,
+  KnowledgeSelectionInput,
+  KnowledgeTransmission,
+} from "../../shared/knowledge/context.ts";
+import type { PortfolioAnalysis, PortfolioSnapshotInput } from "../../shared/portfolio/index.ts";
+import type {
+  DelegationView,
+  PortfolioDecision,
+  PortfolioManagerMessage,
+  PortfolioManagerState,
+  PortfolioPlan,
+} from "../../shared/portfolio-manager.ts";
+import type { HeadPmCoordinationSnapshot } from "../../shared/head-pm-coordination.ts";
+import type { HeadPmInitiativeView } from "../../shared/head-pm-initiative.ts";
+import type { StructuredDependency } from "../../shared/estimation/project-adapter.ts";
+import type { EnvironmentLogs, LaunchProfile, UrlAvailability } from "../../shared/environment/types.ts";
+import type {
+  DraftsReply,
+  InterviewDrafts,
+  InterviewIsolation,
+  InterviewMessage,
+  InterviewRequest,
+  InterviewState,
+  QuestionReply,
+  SectionReply,
+} from "../../shared/project-interview.ts";
+import type {
+  ContextSource,
+  ManagerConfig,
+  ManagerDecision,
+  ManagerState,
+  ProposalItemEdit,
+  TaskProposal,
+} from "../../shared/project-manager.ts";
+import type { ExecutionConfig, ExecutionResult, ExecutionView } from "../../shared/project-execution.ts";
+import type { PlanView } from "../../shared/task-plan.ts";
+import type { QueueView } from "../../shared/task-queue.ts";
+import type { AutonomyPreview } from "../../shared/autonomy.ts";
+import type { BatchEventRow, BatchPolicy, BatchView, TaskPriority, TaskSchedulingView } from "../../shared/task-scheduling.ts";
+import { TASK_EVENTS_REPLAY_META_EVENT, type AccessMode, type AgentKind, type AgentProfile, type AgentStatus, type AppEvent, type BranchInfo, type BranchNamingConfig, type ColumnId, type DbCompactResult, type DbStats, type DiscoveredAccount, type GitHubAssigneesResult, type GitHubCheckRun, type GitHubChecksResult, type GitHubComment, type GitHubCommentsResult, type GitHubCommitStatus, type GitHubCommitStatusResult, type GitHubDiscussion, type GitHubDiscussionCategory, type GitHubDiscussionComment, type GitHubDiscussionDetail, type GitHubDiscussionsResult, type GitHubIssueThreadResult, type GitHubItemKind, type GitHubItemState, type GitHubLabelsResult, type GitHubLinkedIssue, type GitHubLinkedIssuesResult, type GitHubListItem, type GitHubListResult, type GitHubMilestonesResult, type GitHubNotification, type GitHubNotificationsResult, type GitHubProjectField, type GitHubProjectItem, type GitHubProjectItemsResult, type GitHubProjectV2, type GitHubProjectsV2Result, type GitHubPullCommit, type GitHubPullCommitsResult, type GitHubPullDefaultsResult, type GitHubPullLineComment, type GitHubPullMergeMethod, type GitHubPullMergeResult, type GitHubPullMergeability, type GitHubPullReviewCommentsResult, type GitHubPullReviewEvent, type GitHubPullReviewThreadsResult, type GitHubReactionContent, type GitHubReactionSubject, type GitHubReactionSummary, type GitHubReactionsResult, type GitHubRelease, type GitHubReleasesResult, type GitHubRepoLabel, type GitHubRepoMilestone, type GitHubRepoPermissions, type GitHubSubIssue, type GitHubSubIssuesResult, type GitHubTag, type GitHubTagsResult, type GitHubWorkflow, type GitHubWorkflowRun, type GitHubWorkflowRunsResult, type GitHubWorkflowsResult, type GitProvider, type GlobalEvent, type Handoff, type Harness, type HarnessQuota, type HarnessStatus, type HarnessUsage, type Isolation, type Pipeline, type PipelineInput, type Project, type RetentionPassResult, type Run, type RunEvent, type SavedPrompt, type Subagent, type Task, type TaskDiff, type TaskEventsReplayMeta, type TaskGitStatus, type TaskReference, type TaskTeardownPreview, type TaskType, type TerminalTab, type UpdateStatus, type WorktreeGitStatus, type WorktreeInfo, type WorktreeTeardownResult } from "../../shared/types.ts";
+
 import type {
   BundleExportResponse,
   BundlePickResponse,
   BundleSaveResponse,
   BundleSelection,
 } from "../../shared/bundle.ts";
+import type {
+  BackupHistoryResponse,
+  BackupOperationView,
+  BackupPickPurpose,
+  BackupProfileInfo,
+  BackupRestorePreview,
+  BackupSnapshotSummary,
+} from "../../shared/backup.ts";
+import type {
+  ProfileActivationCandidateResponse,
+  ProfileActivationPrepareResponse,
+  ProfileActivationRelinkResponse,
+  ProfileActivationRelaunchResponse,
+  ProfileActivationStatusResponse,
+} from "../../shared/profile-activation.ts";
 import type { BundleImportOptions, BundleImportPlan, BundleImportResponse } from "../../shared/bundle-import.ts";
 import { ApiTransitError, fetchWithRecovery } from "./net-retry.ts";
 import { configureCoreBusy, suspendCoreBusy, trackRequest } from "./core-busy.ts";
+import { createAccountApi } from "./account-api.ts";
+import { createModelRouterApi } from "./model-router-api.ts";
+import type { PreflightResult } from "../../shared/execution/preflight.ts";
+import type { EmployeeRunReviewResponse, PreflightBody } from "./employee-execution.ts";
+import type { EmployeeRunView } from "../../shared/execution/run.ts";
 
 export interface UpdateSnapshot {
   status: UpdateStatus;
@@ -173,7 +231,7 @@ export type {
   GitHubWorkflowRunsResult,
   GitHubWorkflowsResult,
 };
-export { commitPushPrompt } from "../../shared/types.ts";
+export { commitPushPrompt } from "@/i18n/options";
 
 /** Where a command/extension comes from. `plugin` entries are contributed by an
  *  enabled Claude Code plugin and are namespaced `<plugin>:<name>`; `builtin`
@@ -360,14 +418,61 @@ configureCoreBusy({ base: BASE });
  *  so callers can read structured fields (e.g. the `taskIds` list returned
  *  by `DELETE /harnesses/:id` when the harness is still in use) instead of
  *  re-parsing the message string. */
+function brainContextQuery(target: BrainContextTarget, access?: BrainContextAccess, q?: string): string {
+  const query = new URLSearchParams();
+  query.set("managerKind", target.kind);
+  if (target.kind === "project") query.set("projectPath", target.projectPath);
+  if (access) {
+    query.set("mode", access.mode);
+    if (access.mode === "projects" && access.inheritCompany) query.set("inherit", "company");
+    for (const path of access.projectPaths) query.append("scope", path);
+  }
+  if (q) query.set("q", q);
+  return query.toString();
+}
+
+function brainContextBody(
+  target: BrainContextTarget,
+  access: BrainContextAccess,
+  memories: BrainContextRequest["memories"],
+  extra?: { previewKey: string; confirm: true },
+): string {
+  return JSON.stringify({
+    managerKind: target.kind,
+    ...(target.kind === "project" ? { projectPath: target.projectPath } : {}),
+    mode: access.mode,
+    ...(access.mode === "projects" ? { projectPaths: access.projectPaths, inheritCompany: access.inheritCompany } : {}),
+    memories,
+    ...extra,
+  });
+}
+
+function contextTarget(target: KnowledgeContextTarget): { managerKind: string; projectPath?: string } {
+  return target.kind === "project" ? { managerKind: "project", projectPath: target.projectPath } : { managerKind: "portfolio" };
+}
+
+function contextQuery(target: KnowledgeContextTarget, owner?: KnowledgeOwnerRef): string {
+  const query = new URLSearchParams();
+  query.set("managerKind", target.kind);
+  if (target.kind === "project") query.set("projectPath", target.projectPath);
+  if (owner) {
+    query.set("ownerKind", owner.kind);
+    query.set("ownerId", owner.id);
+  }
+  return query.toString();
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
+  readonly diagnostic: string;
   constructor(message: string, status: number, body: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.diagnostic = message;
+    Object.defineProperty(this, "message", { configurable: true, get: () => apiErrorText(status, body, message) });
   }
 }
 
@@ -476,7 +581,13 @@ export interface SentMessageItem {
   agent: string;
 }
 
-export interface HarnessesPayload { harnesses: Harness[]; statuses: HarnessStatus[] }
+export interface HarnessesPayload {
+  harnesses: Harness[];
+  statuses: HarnessStatus[];
+  installations?: import("../../shared/harness-installation").HarnessInstallation[];
+  providerDiagnostics?: import("../../shared/provider-readiness").ProviderDiagnostic[];
+  runtimeReadiness?: import("../../shared/provider-runtime/readiness").RuntimeReadiness[];
+}
 /** One day × model row of an account's local token rollup. */
 export interface AccountUsageDay {
   day: string;
@@ -527,8 +638,327 @@ export interface DuplicateAgentProfileResult {
 }
 
 export const api = {
+  ownerTrustStatus: () => j<{
+    channel: string;
+    available: boolean;
+    executionReady: boolean;
+    code: string;
+    reason: string;
+    state?: string;
+    expectedProductionBundleId?: string;
+    blockingReason?: string;
+    secureEnclave?: string;
+    secureEnclaveEnrolled?: boolean;
+    enrollmentState?: string;
+    userAuthenticationAvailable?: boolean;
+    userAuthenticated?: boolean;
+    providerExecutionEligible?: boolean;
+    application: { bundleId: string | null; trustClass: string; adhoc: boolean; signed: boolean; teamId?: string | null; certSha256?: string | null };
+    helper?: { ok: boolean; code: string; identifier: string | null; path: string | null };
+    operation?: {
+      projectPath: string;
+      taskId: string;
+      taskTitle: string;
+      missionId: string;
+      missionTitle: string;
+      providerId: string;
+      modelId: string;
+      accountId: string;
+      employeeRole: string;
+      employeeJobTitle: string;
+      mode: string;
+      workspace: string;
+      filesystem: string;
+      terminalAllowed: boolean;
+      browserAllowed: boolean;
+      computerUseAllowed: boolean;
+      gitRead: boolean;
+      gitPublish: boolean;
+      deploymentAllowed: boolean;
+      scope: string;
+      expiresAt: number;
+      knownCost: string;
+      costCoverage: string;
+      externalProcess: boolean;
+      cancellationAvailable: boolean;
+    } | null;
+    externalProcessWillStart: boolean;
+  }>("/api/owner-trust/status"),
+  ownerTrustReview: (body: { locale?: "en" | "ru" }) =>
+    j<{ ok: boolean; code: string; reason: string; executionReady: boolean }>("/api/owner-trust/review", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  ownerTrustApprove: (body: { challengeId?: string; approved?: boolean }) =>
+    j<{ ok: boolean; code: string; reason: string; executionReady: boolean }>("/api/owner-trust/approve", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  usageQuotaHistory: (quotaId: string, before: number | null = null) => j<ReturnType<typeof quotaHistory>>(
+    `/api/usage-analytics/quota-history?quotaId=${encodeURIComponent(quotaId)}${before === null ? "" : "&before=" + before}`),
+  usageResources: () => j<ReturnType<typeof usageResources>>("/api/usage-analytics/resources"),
+  usageSelectors: () => j<ReturnType<typeof usageSelectors>>("/api/usage-analytics/selectors"),
+  usageAnalytics: (filter: AnalyticsFilter, view?: { timeZone?: string; grain?: string }) => {
+    const query = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => value === undefined ? [] : [[key, Array.isArray(value) ? value.join(",") : String(value)]]));
+    if (view?.timeZone) query.set("timeZone", view.timeZone);
+    if (view?.grain) query.set("grain", view.grain);
+    return j<ReturnType<typeof analytics>>(`/api/usage-analytics/analytics?${query}`);
+  },
+  usageRecords: (filter: AnalyticsFilter) => {
+    const query = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => value === undefined ? [] : [[key, Array.isArray(value) ? value.join(",") : String(value)]]));
+    return j<ReturnType<typeof analyticsRecords>>(`/api/usage-analytics/records?${query}`);
+  },
+  /** Ask the core to write the export for this scope into Downloads: a blob download does nothing in the packaged WKWebView. */
+  usageExportSave: (filter: AnalyticsFilter, view: { timeZone?: string; grain?: string; format: "csv" | "json"; report: "tasks" | "models" | "runs" }) => {
+    const query = new URLSearchParams(Object.entries(filter).flatMap(([key, value]) => value === undefined ? [] : [[key, Array.isArray(value) ? value.join(",") : String(value)]]));
+    if (view.timeZone) query.set("timeZone", view.timeZone);
+    if (view.grain) query.set("grain", view.grain);
+    query.set("format", view.format);
+    query.set("report", view.report);
+    return j<{ path: string; filename: string }>(`/api/usage-analytics/export/save?${query}`, { method: "POST" }, { retry: false });
+  },
+  usageAdjustment: (body: { taskId: string; runId?: string | null; amount: number; currency: string; note: string; supersedes?: number | null }) =>
+    j<import("../../bun/usage-analytics/adjustments.ts").CostAdjustment>(
+      "/api/usage-analytics/adjustments", { method: "POST", body: JSON.stringify(body) }, { retry: false },
+    ),
+  usageTask: (taskId: string) => j<NonNullable<ReturnType<typeof taskBreakdown>> & { revisions: ReturnType<typeof estimateVersions> }>(
+    `/api/usage-analytics/task?taskId=${encodeURIComponent(taskId)}`,
+  ),
+  usageFallbackProposal: (body: { taskId: string; optionKey: string }) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>(
+      "/api/usage-analytics/fallback-proposal", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  usageForecast: (selection: ForecastSelection) => j<ReturnType<typeof forecast>>(
+    "/api/usage-analytics/forecast", { method: "POST", body: JSON.stringify(selection) },
+  ),
+  usagePricing: (input: PricingTerms & ResourceKey) => j<ReturnType<typeof savePricing>>(
+    "/api/usage-analytics/pricing", { method: "POST", body: JSON.stringify(input) }, { retry: false },
+  ),
+
+  listActivity: (filter: ActivityQueryFilter = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) {
+      if (value !== undefined && value !== null && value !== "") query.set(key, Array.isArray(value) ? value.join(",") : String(value));
+    }
+    return j<ActivityEventsResponse>(`/activity?${query}`, { signal });
+  },
+  getActivity: (id: string, signal?: AbortSignal) => j<{ event: ActivityEvent }>(`/activity/${encodeURIComponent(id)}`, { signal }),
+  accountCore: createAccountApi(j),
+  modelRouter: createModelRouterApi(j),
+  // FO-010E1. Read-only calculation: no run, no task change, no process.
+  professionalTurns: (runId: string, signal?: AbortSignal) =>
+    j<TurnHistory>(`/employee-execution/runs/${encodeURIComponent(runId)}/turns`, { signal }),
+  professionalTurnReview: (runId: string, body: { prompt: string; idempotencyKey: string }) =>
+    j<{ turn: ProfessionalTurn; replayed: boolean }>(`/employee-execution/runs/${encodeURIComponent(runId)}/turn-reviews`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  professionalTurnSubmit: (id: string, body: { revision: number; idempotencyKey: string; confirm: true; acknowledgeUsage: true }) =>
+    j<{ turn: ProfessionalTurn; replayed: boolean }>(`/employee-execution/turns/${encodeURIComponent(id)}/submit`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  professionalTurnCancel: (id: string, revision: number) =>
+    j<{ turn: ProfessionalTurn }>(`/employee-execution/turns/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ revision }) }, { retry: false }),
+  employeeExecutionPreflight: (body: PreflightBody, signal?: AbortSignal) =>
+    j<{ preflight: PreflightResult }>("/employee-execution/preflight", { method: "POST", body: JSON.stringify(body), signal }, { retry: false }),
+  // FO-ORCH01. Read-only executor options and Owner routing preferences. Nothing here starts or applies a run.
+  employeeExecutionRecommendations: (body: PreflightBody & { role?: import("../../shared/model-router/account-eligibility.ts").ResourceRole; mode?: string }, signal?: AbortSignal) =>
+    j<RecommendationResponse>("/employee-execution/recommendations", { method: "POST", body: JSON.stringify(body), signal }, { retry: false }),
+  getExecutorPreferences: () => j<{ preferences: ExecutorPreferences }>("/employee-execution/executor-preferences"),
+  putExecutorPreferences: (preferences: ExecutorPreferences) =>
+    j<{ preferences: ExecutorPreferences }>("/employee-execution/executor-preferences", { method: "PUT", body: JSON.stringify(preferences) }, { retry: false }),
+  listAllocationPlans: (scopeRef: string) =>
+    j<{ plans: import("../../shared/allocation/types.ts").AllocationPlanView[] }>(`/allocation-plans?scopeRef=${encodeURIComponent(scopeRef)}`),
+  getAllocationPlan: (id: string) => j<import("../../shared/allocation/types.ts").AllocationPlanView>(`/allocation-plans/${encodeURIComponent(id)}`),
+  proposeProjectAllocationPlan: (body: { projectPath: string; taskIds: string[]; title?: string; reviewerHarnessId?: string; reviewerModel?: string; reviewerMode?: string }) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>("/allocation-plans/project", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  recalculateAllocationPlan: (id: string, reviewer?: { reviewerHarnessId?: string; reviewerModel?: string; reviewerMode?: string }) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>(`/allocation-plans/${encodeURIComponent(id)}/recalculate`, { method: "POST", body: JSON.stringify(reviewer ?? {}) }, { retry: false }),
+  approveAllocationPlan: (id: string, planDigest: string) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>(`/allocation-plans/${encodeURIComponent(id)}/approve`, { method: "POST", body: JSON.stringify({ planDigest }) }, { retry: false }),
+  applyAllocationPlan: (id: string, approvedDigest: string) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>(`/allocation-plans/${encodeURIComponent(id)}/apply`, { method: "POST", body: JSON.stringify({ approvedDigest }) }, { retry: false }),
+  patchAllocationPlanTaskResource: (id: string, taskId: string, optionId: string) =>
+    j<import("../../shared/allocation/types.ts").AllocationPlanView>(`/allocation-plans/${encodeURIComponent(id)}/task-resource`, { method: "PATCH", body: JSON.stringify({ taskId, optionId }) }, { retry: false }),
+  getAllocationPlanPolicy: () => j<{ policy: import("../../shared/allocation/types.ts").AllocationPlanPolicy }>("/allocation-plans/policy"),
+  putAllocationPlanPolicy: (policy: import("../../shared/allocation/types.ts").AllocationPlanPolicy) =>
+    j<{ policy: import("../../shared/allocation/types.ts").AllocationPlanPolicy }>("/allocation-plans/policy", { method: "PUT", body: JSON.stringify(policy) }, { retry: false }),
+  getRouterV2Config: (scopeId = "global") =>
+    j<{ policy: import("../../shared/router-v2/types.ts").ProjectRouterPolicyConfig }>(`/api/router-v2/config?scopeId=${encodeURIComponent(scopeId)}`),
+  saveRouterV2Config: (policy: import("../../shared/router-v2/types.ts").ProjectRouterPolicyConfig) =>
+    j<{ ok: boolean; policy: import("../../shared/router-v2/types.ts").ProjectRouterPolicyConfig }>("/api/router-v2/config", { method: "POST", body: JSON.stringify(policy) }, { retry: false }),
+  evaluateRouterV2Task: (body: { requirements: import("../../shared/router-v2/types.ts").TaskRequirementsInput; policyOverride?: Partial<import("../../shared/router-v2/types.ts").ProjectRouterPolicyConfig> }) =>
+    j<{ selected: import("../../shared/router-v2/types.ts").CandidateEvaluation | null; eligible: import("../../shared/router-v2/types.ts").CandidateEvaluation[]; ineligible: import("../../shared/router-v2/types.ts").CandidateEvaluation[]; all: import("../../shared/router-v2/types.ts").CandidateEvaluation[] }>("/api/router-v2/evaluate", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  proposeRouterV2Plan: (body: { projectTasks: { projectPath: string; taskIds: string[] }[]; policyOverride?: Partial<import("../../shared/router-v2/types.ts").ProjectRouterPolicyConfig> }) =>
+    j<{ plan: import("../../shared/router-v2/types.ts").MultiProjectAllocationPlan }>("/api/router-v2/plans/propose", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  applyRouterV2Plan: (body: { plan: import("../../shared/router-v2/types.ts").MultiProjectAllocationPlan; approvedDigest: string }) =>
+    j<{ success: boolean; appliedCount: number; errors: string[] }>("/api/router-v2/plans/apply", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  getRouterV2History: (limit = 50) =>
+    j<{ history: import("../../shared/router-v2/types.ts").RoutingDecisionRecord[] }>(`/api/router-v2/history?limit=${limit}`),
+  getInfraAutoSnapshot: () => j<import("../../shared/infra-auto/model.ts").InfraSnapshot>("/infra-auto/snapshot"),
+  setInfraAutoControl: (body: { paused?: boolean; cancelled?: boolean }) =>
+    j<{ paused: boolean; cancelled: boolean }>("/infra-auto/control", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  getOrchestrationMissions: (filter?: { status?: string; clusterId?: string }) => {
+    const params = new URLSearchParams();
+    if (filter?.status) params.set("status", filter.status);
+    if (filter?.clusterId) params.set("clusterId", filter.clusterId);
+    const qs = params.toString();
+    return j<{ missions: import("../../shared/orchestration/types.ts").MissionRecord[] }>(`/api/orchestration/missions${qs ? `?${qs}` : ""}`);
+  },
+  missionResourceOptions: (id: string, taskId: string, role: "developer" | "reviewer") =>
+    j<{ options: ReturnType<typeof import("../../bun/orchestration/mission-replan.ts").missionResourceOptions> }>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/resource-options?${new URLSearchParams({ taskId, role })}`),
+  missionResourceProposals: (id: string) =>
+    j<ReturnType<typeof import("../../bun/orchestration/mission-replan.ts").missionResourceProposals>>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/resource-proposals`),
+  prepareMissionResourceProposal: (id: string, input: import("../../bun/orchestration/mission-replan.ts").ReplanInput) =>
+    j<ReturnType<typeof import("../../bun/orchestration/mission-replan.ts").prepareMissionResourceProposal>>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/resource-proposals`, { method: "POST", body: JSON.stringify(input) }, { retry: false }),
+  settleMissionResourceProposal: (id: string, proposal: { id: string; digest: string }, decision: "approve" | "reject") =>
+    j<ReturnType<typeof import("../../bun/orchestration/mission-replan.ts").settleMissionResourceProposal>>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/resource-proposals`,
+      { method: "PATCH", body: JSON.stringify({ id: proposal.id, digest: proposal.digest, decision, confirm: true }) }, { retry: false }),
+  approveObjectiveMission: (id: string, digest: string) =>
+    j<{ mission: import("../../shared/orchestration/types.ts").MissionRecord }>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/approve-objective`,
+      { method: "POST", body: JSON.stringify({ digest, confirm: true }) }, { retry: false }),
+  confirmObjectiveLaunch: (id: string, taskId: string, operationId: string, locale: string) =>
+    j<{ ok: boolean }>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/confirm-launch`,
+      { method: "POST", headers: { "accept-language": locale }, body: JSON.stringify({ taskId, operationId, confirm: true }) }, { retry: false }),
+  retryMissionQuotaWait: (id: string, taskId: string, refusalId: string) =>
+    j<{ ok: boolean }>(
+      `/api/orchestration/missions/${encodeURIComponent(id)}/confirm-launch`,
+      { method: "POST", body: JSON.stringify({ taskId, refusalId, confirm: true }) }, { retry: false }),
+  getOrchestrationMission: (id: string) =>
+    j<{ mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}`),
+  prepareOrchestrationMission: (body: unknown) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>("/api/orchestration/missions/prepare", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  authorizeOrchestrationMission: (id: string, digest: string) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}/authorize`, { method: "POST", body: JSON.stringify({ digest }) }, { retry: false }),
+  startOrchestrationMission: (id: string) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}/start`, { method: "POST", body: "{}" }, { retry: false }),
+  pauseOrchestrationMission: (id: string, reason?: string) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}/pause`, { method: "POST", body: JSON.stringify({ reason }) }, { retry: false }),
+  resumeOrchestrationMission: (id: string) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}/resume`, { method: "POST", body: "{}" }, { retry: false }),
+  cancelOrchestrationMission: (id: string, reason?: string) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord }>(`/api/orchestration/missions/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ reason }) }, { retry: false }),
+  getOrchestrationReservations: (missionId?: string) =>
+    j<{ reservations: import("../../shared/orchestration/types.ts").MissionReservation[] }>(`/api/orchestration/reservations${missionId ? `?missionId=${encodeURIComponent(missionId)}` : ""}`),
+  getOrchestrationDependencies: (missionId: string) =>
+    j<{ dependencies: import("../../shared/orchestration/types.ts").MissionTaskDependency[] }>(`/api/orchestration/dependencies/${encodeURIComponent(missionId)}`),
+  autonomyStatus: () =>
+    j<{
+      emergency: { active: boolean; reason: string | null; outstanding: string[]; leftRunning?: number };
+      policies: Array<{ id: string; revision: number; status: string; mode: string; digest: string; body: import("../../shared/autonomy-policy.ts").AutonomyPolicyBody }>;
+      decisions: Array<{ id: string; policyId: string | null; revision: number | null; action: string; verdict: string; reason: string; taskId: string | null }>;
+      enforcement: { supervised: boolean; autonomousActive: boolean; fullAutonomyActive: boolean };
+      bindings?: Array<{ missionId: string; mode: string; outcome: string; activationId: string }>;
+      activations?: Array<{ id: string; status: string; expiresAt: number }>;
+    }>("/api/autonomy/status"),
+  practicalCycleStatus: (missionId?: string) =>
+    j<{
+      limits: { testConcurrency: number; timeoutMs: number; maxOutputBytes: number };
+      attempts: Array<{
+        id: string;
+        taskId: string;
+        status: string;
+        exitCode: number | null;
+        summary: string | null;
+        failureKind: string | null;
+        command: string;
+        sourceFingerprint: string;
+        evidenceDigest: string | null;
+        isolation: string;
+        isolationReason: string | null;
+        policyId: string;
+        policyRevision: number;
+        provider: string | null;
+        model: string | null;
+        accountId: string | null;
+        instructionSha: string | null;
+        executionMode: string | null;
+        implementationExecution: string | null;
+        reworkEpoch: number;
+        workspacePath: string;
+      }>;
+      briefs: Array<{ taskId: string; epoch: number; kind: string; brief: string }>;
+    }>(`/api/autonomy/practical-cycle${missionId ? `?missionId=${encodeURIComponent(missionId)}` : ""}`),
+  createAutonomyPolicy: (body: unknown) =>
+    j<{ ok: boolean; policy: { id: string; revision: number; status: string; digest: string; mode: string } }>("/api/autonomy/policies", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  prepareAutonomyMission: (body: unknown) =>
+    j<{ ok: boolean; mission: import("../../shared/orchestration/types.ts").MissionRecord; policyId: string; revision: number }>("/api/autonomy/missions/prepare", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  activateAutonomyPolicy: (id: string, revision?: number) =>
+    j<{ ok: boolean }>(`/api/autonomy/policies/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify({ revision }) }, { retry: false }),
+  pauseAutonomyPolicy: (id: string) =>
+    j<{ ok: boolean }>(`/api/autonomy/policies/${encodeURIComponent(id)}/pause`, { method: "POST", body: "{}" }, { retry: false }),
+  resumeAutonomyPolicy: (id: string) =>
+    j<{ ok: boolean }>(`/api/autonomy/policies/${encodeURIComponent(id)}/resume`, { method: "POST", body: "{}" }, { retry: false }),
+  revokeAutonomyPolicy: (id: string) =>
+    j<{ ok: boolean }>(`/api/autonomy/policies/${encodeURIComponent(id)}/revoke`, { method: "POST", body: "{}" }, { retry: false }),
+  emergencyStopAutonomy: (reason: string) =>
+    j<{ ok: boolean; outstanding: string[]; status?: { emergency: { leftRunning?: number } } }>("/api/autonomy/emergency-stop", { method: "POST", body: JSON.stringify({ reason }) }, { retry: false }),
+  clearEmergencyStop: () =>
+    j<{ ok: boolean }>("/api/autonomy/emergency-stop/clear", { method: "POST", body: "{}" }, { retry: false }),
+  selfImprovementStatus: () =>
+    j<{
+      control: { enabled: boolean; paused: boolean; stopped: boolean; consecutiveNoGain: number };
+      budget: { candidatesUsed: number; candidatesMax: number; activationAttempts: number; activationMax: number; quota: "unknown" };
+      candidates: Array<{
+        id: string;
+        status: string;
+        role: string;
+        projectPath: string | null;
+        risk: string;
+        decision: string | null;
+        currentContent: string;
+        proposedContent: string | null;
+        diffText: string | null;
+        hypothesis: string | null;
+        decisionReason: string | null;
+        evidence: unknown[];
+        metrics: {
+          baselineErrors?: number;
+          candidateErrors?: number;
+          attribution?: string;
+          quota?: string;
+          execution?: string;
+          inferenceCompleted?: boolean;
+          generation?: string;
+          evaluationKind?: string;
+          sampleSize?: { fixtures: number; training: number; heldOut: number };
+          baselineVersion?: number;
+          candidateVersion?: number;
+        } | null;
+      }>;
+      activeVersions: Array<{ artifactKey: string; version: number; role: string; scope: string; projectPath: string | null }>;
+      launches: Array<{ runId: string; taskId: string; projectPath: string; role: string; snapshotSha: string; versions: Array<{ artifactKey: string; version: number }> }>;
+      regressions: Array<{ id: string; role: string; decisionReason: string | null }>;
+      autonomy: { permitting: number; lowRisk: number };
+    }>("/api/self-improvement/status"),
+  setSelfImprovementControl: (body: { enabled?: boolean; paused?: boolean; stopped?: boolean }) =>
+    j<{ ok: boolean }>("/api/self-improvement/control", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  discoverSelfImprovements: () =>
+    j<{ ok: boolean; candidates: unknown[] }>("/api/self-improvement/discover", { method: "POST", body: "{}" }, { retry: false }),
+  prepareSelfImprovement: (id: string) =>
+    j<{ ok: boolean }>(`/api/self-improvement/candidates/${encodeURIComponent(id)}/prepare`, { method: "POST", body: "{}" }, { retry: false }),
+  evaluateSelfImprovement: (id: string, body: { provider?: string; model?: string; policyTest?: boolean }) =>
+    j<{ ok: boolean; candidate: { decision?: string | null; decisionReason?: string | null } }>(`/api/self-improvement/candidates/${encodeURIComponent(id)}/evaluate`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  selfImprovementAction: (id: string, action: "approve" | "reject" | "activate" | "rollback" | "retain") =>
+    j<{ ok: boolean }>(`/api/self-improvement/candidates/${encodeURIComponent(id)}/${action}`, { method: "POST", body: "{}" }, { retry: false }),
+  // FO-010E2. The review records one pending record and starts nothing; only
+  // the owner's explicit confirmation of that record starts the task.
+  employeeExecutionReview: (body: PreflightBody, signal?: AbortSignal) =>
+    j<EmployeeRunReviewResponse>("/employee-execution/reviews", { method: "POST", body: JSON.stringify(body), signal }, { retry: false }),
+  employeeExecutionStart: (id: string, body: { revision: number; confirm: true; acknowledgeUsage?: boolean; acknowledgeUnconfirmed?: boolean; acknowledgeFullAccess?: boolean }) =>
+    j<{ attempt: EmployeeRunView; replayed: boolean }>(`/employee-execution/attempts/${encodeURIComponent(id)}/start`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  employeeExecutionCancel: (id: string, revision: number) =>
+    j<{ attempt: EmployeeRunView }>(`/employee-execution/attempts/${encodeURIComponent(id)}/cancel`, { method: "POST", body: JSON.stringify({ revision }) }, { retry: false }),
+  employeeExecutionAttempt: (id: string, signal?: AbortSignal) =>
+    j<{ attempt: EmployeeRunView }>(`/employee-execution/attempts/${encodeURIComponent(id)}`, { signal }),
+  employeeExecutionReconcile: (id: string, signal?: AbortSignal) =>
+    j<{ attempt: EmployeeRunView; outcome: string; confirmedRun: { id: string; status: string } | null }>(`/employee-execution/attempts/${encodeURIComponent(id)}/reconcile`, { method: "POST", body: "{}", signal }, { retry: false }),
+  employeeExecutionAttempts: (filter: ({ taskId: string } | { employeeId: string }) & { limit?: number; before?: string }, signal?: AbortSignal) =>
+    j<{ attempts: EmployeeRunView[] }>(`/employee-execution/attempts?${new URLSearchParams(Object.entries(filter).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]))}`, { signal }),
+  employeeWorkSummary: (employeeId: string, signal?: AbortSignal) =>
+    j<{ summary: import("../../shared/execution/employee-summary.ts").EmployeeWorkSummary }>(`/employee-execution/summary?employeeId=${encodeURIComponent(employeeId)}`, { signal }),
   defaults: () => j<AppDefaults>("/defaults"),
-  info: () => j<{ version: string }>("/info"),
+  info: () => j<AppBuildInfo>("/info"),
   /** Toggle the window's macOS "zoom" state. Wired up to double-click on
    *  the app bar in App.tsx because Electrobun's drag region doesn't
    *  implement the native title-bar double-click gesture. */
@@ -724,7 +1154,1269 @@ export const api = {
       harnessId ? `/agent-models?harness=${encodeURIComponent(harnessId)}` : "/agent-models",
       { method: "POST" },
     ),
-  listProjects: () => j<Project[]>("/projects"),
+  listProjects: (signal?: AbortSignal) => j<Project[]>("/projects", { signal }),
+  relinkProject: (oldPath: string, newPath: string) =>
+    j<{ ok: boolean; oldPath: string; newPath: string; reboundBrainMemories: number }>(
+      "/projects/relink",
+      { method: "POST", body: JSON.stringify({ oldPath, newPath }) },
+      { retry: false },
+    ),
+  getProjectLifecycle: (path: string, signal?: AbortSignal) =>
+    j<{ lifecycle: ProjectLifecycleSnapshot }>(`/projects/lifecycle?path=${encodeURIComponent(path)}`, { signal }),
+  stopProject: (path: string, reason?: string) =>
+    j<ProjectLifecycleActionResult>(
+      "/projects/lifecycle/stop",
+      { method: "POST", body: JSON.stringify(reason ? { path, reason } : { path }) },
+      { retry: false },
+    ),
+  startProject: (path: string) =>
+    j<ProjectLifecycleActionResult>(
+      "/projects/lifecycle/start",
+      { method: "POST", body: JSON.stringify({ path }) },
+      { retry: false },
+    ),
+  getOwnerActions: () => j<import("../../shared/owner-actions.ts").OwnerActionsPayload>("/owner-actions"),
+  getHandsoffOverview: () => j<import("../../shared/handsoff.ts").HandsoffOverview>("/handsoff/overview"),
+  getHandsoffQueue: (projectPath?: string) =>
+    projectPath
+      ? j<import("../../shared/smart-queue.ts").SmartQueueProjectSummary>(`/handsoff/queue?projectPath=${encodeURIComponent(projectPath)}`)
+      : j<import("../../shared/smart-queue.ts").SmartQueueOverview>("/handsoff/queue"),
+  getHandsoffPolicy: (projectPath: string) =>
+    j<HandsoffPolicyView>(`/handsoff/policy?projectPath=${encodeURIComponent(projectPath)}`),
+  saveHandsoffPolicy: (projectPath: string, policy: Partial<import("../../shared/handsoff.ts").HandsoffPolicy>) =>
+    j<HandsoffPolicyView>("/handsoff/policy", { method: "PUT", body: JSON.stringify({ projectPath, policy }) }, { retry: false }),
+  getHandsoffAuthorization: (projectPath: string) =>
+    j<import("../../shared/handsoff-authorization.ts").HandsoffAuthorizationView>(`/handsoff/authorization?projectPath=${encodeURIComponent(projectPath)}`),
+  /** Opens the native Owner confirmation and waits for the Owner. The busy banner is suspended while it is open. */
+  authorizeHandsoff: (projectPath: string, body: { hours: number; launches: number; locale: "en" | "ru" }) =>
+    withCoreBusySuspended(() =>
+      j<import("../../shared/handsoff-authorization.ts").HandsoffAuthorizationView>("/handsoff/authorization", { method: "POST", body: JSON.stringify({ projectPath, ...body }) }, { retry: false })),
+  revokeHandsoffAuthorization: (projectPath: string) =>
+    j<import("../../shared/handsoff-authorization.ts").HandsoffAuthorizationView>("/handsoff/authorization", { method: "DELETE", body: JSON.stringify({ projectPath }) }, { retry: false }),
+  submitHandsoff: (taskId: string) =>
+    j<HandsoffTaskView>("/handsoff/submit", { method: "POST", body: JSON.stringify({ taskId }) }, { retry: false }),
+  getHandsoffTask: (taskId: string) => j<HandsoffTaskView>(`/handsoff/tasks/${encodeURIComponent(taskId)}`),
+  retryHandsoff: (runId: string) => j<HandsoffTaskView>(`/handsoff/runs/${encodeURIComponent(runId)}/retry`, { method: "POST" }, { retry: false }),
+  resumeHandsoff: (runId: string) => j<HandsoffTaskView>(`/handsoff/runs/${encodeURIComponent(runId)}/resume`, { method: "POST" }, { retry: false }),
+  cancelHandsoff: (runId: string) => j<HandsoffTaskView>(`/handsoff/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" }, { retry: false }),
+  listRecurringTemplates: (projectPath?: string) =>
+    j<{ templates: import("../../shared/recurring-tasks.ts").RecurringTemplateView[] }>(
+      `/recurring/templates${projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : ""}`,
+    ),
+  getRecurringTemplate: (id: string) =>
+    j<{
+      template: import("../../shared/recurring-tasks.ts").RecurringTemplateView;
+      history: import("../../shared/recurring-tasks.ts").RecurringOccurrenceHistoryItem[];
+    }>(`/recurring/templates/${encodeURIComponent(id)}`),
+  createRecurringTemplate: (input: import("../../shared/recurring-tasks.ts").CreateRecurringTemplateInput) =>
+    j<{
+      template: import("../../shared/recurring-tasks.ts").RecurringTemplateView;
+      generatedTaskIds: string[];
+    }>("/recurring/templates", { method: "POST", body: JSON.stringify(input) }, { retry: false }),
+  updateRecurringTemplate: (id: string, patch: import("../../shared/recurring-tasks.ts").UpdateRecurringTemplateInput) =>
+    j<{ template: import("../../shared/recurring-tasks.ts").RecurringTemplateView }>(
+      `/recurring/templates/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+      { retry: false },
+    ),
+  pauseRecurringTemplate: (id: string) =>
+    j<{ template: import("../../shared/recurring-tasks.ts").RecurringTemplateView }>(
+      `/recurring/templates/${encodeURIComponent(id)}/pause`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  resumeRecurringTemplate: (id: string) =>
+    j<{ template: import("../../shared/recurring-tasks.ts").RecurringTemplateView; generatedTaskIds: string[] }>(
+      `/recurring/templates/${encodeURIComponent(id)}/resume`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  stopRecurringTemplate: (id: string) =>
+    j<{ template: import("../../shared/recurring-tasks.ts").RecurringTemplateView }>(
+      `/recurring/templates/${encodeURIComponent(id)}/stop`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  triggerRecurringTemplate: (id: string) =>
+    j<{
+      template: import("../../shared/recurring-tasks.ts").RecurringTemplateView;
+      occurrence: import("../../shared/recurring-tasks.ts").RecurringOccurrence;
+      taskId: string;
+    }>(`/recurring/templates/${encodeURIComponent(id)}/trigger`, { method: "POST" }, { retry: false }),
+  getRecurringTemplateHistory: (id: string, limit = 100) =>
+    j<{
+      template: import("../../shared/recurring-tasks.ts").RecurringTemplateView;
+      history: import("../../shared/recurring-tasks.ts").RecurringOccurrenceHistoryItem[];
+    }>(`/recurring/templates/${encodeURIComponent(id)}/history?limit=${limit}`),
+  convertTaskToRecurring: (
+    taskId: string,
+    input: Omit<import("../../shared/recurring-tasks.ts").CreateRecurringTemplateInput, "projectPath" | "title" | "prompt" | "urgency" | "taskType" | "templateConfig"> & {
+      title?: string;
+      prompt?: string;
+      urgency?: number;
+      taskType?: TaskType;
+      templateConfig?: import("../../shared/recurring-tasks.ts").RecurringTemplateTaskConfig;
+    },
+  ) =>
+    j<{
+      template: import("../../shared/recurring-tasks.ts").RecurringTemplateView;
+      generatedTaskIds: string[];
+    }>(`/recurring/tasks/${encodeURIComponent(taskId)}/convert`, { method: "POST", body: JSON.stringify(input) }, { retry: false }),
+  reconcileRecurring: (projectPath?: string) =>
+    j<{ generatedTaskIds: string[]; skippedCount: number; submittedCount: number }>(
+      "/recurring/reconcile",
+      { method: "POST", body: JSON.stringify(projectPath ? { projectPath } : {}) },
+      { retry: false },
+    ),
+  getProjectPermissions: (projectPath?: string) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionsPayload>(`/project-permissions${projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : ""}`),
+  getProjectTestPreview: (taskId: string) =>
+    j<import("../../shared/project-permissions.ts").ProjectTestPreview>(`/project-permissions/tasks/${encodeURIComponent(taskId)}`),
+  getProjectTestEvidence: (taskId: string) =>
+    j<import("../../shared/project-test-evidence.ts").ProjectTestEvidence>(`/project-permissions/tasks/${encodeURIComponent(taskId)}/evidence`),
+  requestProjectTest: (taskId: string, reviewed: { projectPath: string; commandFingerprint: string; sourceFingerprint: string }) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionRequest>("/project-permissions/requests", { method: "POST", body: JSON.stringify({ taskId, reviewed }) }, { retry: false }),
+  setProjectPermissionDefault: (projectPath: string, mode: "ask" | "deny") =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionsPayload>("/project-permissions/default", { method: "PUT", body: JSON.stringify({ projectPath, mode }) }, { retry: false }),
+  setProjectWorkspaceDevelopment: (projectPath: string, enabled: boolean) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionsPayload & { project: Project }>("/project-permissions/workspace-development", { method: "PUT", body: JSON.stringify({ projectPath, enabled }) }, { retry: false }),
+  addProjectPermissionRule: (projectPath: string, command: string) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionsPayload>("/project-permissions/rules", { method: "POST", body: JSON.stringify({ projectPath, command }) }, { retry: false }),
+  revokeProjectPermissionRule: (id: string) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionRule>(`/project-permissions/rules/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  approveProjectPermission: (id: string, body: { projectPath: string; commandFingerprint: string }) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionRequest>(`/project-permissions/requests/${encodeURIComponent(id)}/approve`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  denyProjectPermission: (id: string) =>
+    j<import("../../shared/project-permissions.ts").ProjectPermissionRequest>(`/project-permissions/requests/${encodeURIComponent(id)}/deny`, { method: "POST" }, { retry: false }),
+  getPortfolioAnalysis: () =>
+    j<{
+      analysis: PortfolioAnalysis;
+      snapshot: PortfolioSnapshotInput;
+      adapterWarnings: string[];
+      capturedAtMs: number;
+      accountResources: import("./account-api.ts").AccountResources;
+    }>("/portfolio/analysis"),
+  listClusters: (opts?: { archived?: boolean; slug?: string }) => {
+    const query = new URLSearchParams();
+    if (opts?.archived) query.set("archived", "true");
+    if (opts?.slug) query.set("slug", opts.slug);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return j<{ company: { id: string; name: string }; clusters: Cluster[] }>(`/clusters${suffix}`);
+  },
+  createCluster: (body: Record<string, unknown>) =>
+    j<Cluster>("/clusters", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  getCluster: (id: string) => j<ClusterDetails>(`/clusters/${encodeURIComponent(id)}`),
+  updateCluster: (id: string, body: Record<string, unknown>) =>
+    j<Cluster>(`/clusters/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, { retry: false }),
+  archiveCluster: (id: string) =>
+    j<Cluster>(`/clusters/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  listUnassignedProjects: () => j<ClusterProject[]>("/clusters/unassigned-projects"),
+  resolveClusterMembership: (projectPath: string) =>
+    j<ClusterProject & { cluster: Cluster | null }>(`/clusters/membership?path=${encodeURIComponent(projectPath)}`),
+  listClusterProjects: (id: string) => j<ClusterProject[]>(`/clusters/${encodeURIComponent(id)}/projects`),
+  assignClusterProject: (id: string, projectPath: string) =>
+    j<ClusterProject>(`/clusters/${encodeURIComponent(id)}/projects`, {
+      method: "POST",
+      body: JSON.stringify({ projectPath }),
+    }, { retry: false }),
+  moveClusterProject: (id: string, projectPath: string) =>
+    j<ClusterProject>(`/clusters/${encodeURIComponent(id)}/projects/move`, {
+      method: "POST",
+      body: JSON.stringify({ projectPath }),
+    }, { retry: false }),
+  unassignClusterProject: (id: string, projectPath: string) =>
+    j<ClusterProject>(
+      `/clusters/${encodeURIComponent(id)}/projects?path=${encodeURIComponent(projectPath)}`,
+      { method: "DELETE" },
+      { retry: false },
+    ),
+  getClusterSummary: (id: string) =>
+    j<{ cluster: Cluster; aggregate: ClusterAggregate }>(`/clusters/${encodeURIComponent(id)}/summary`),
+  // FO-010A employee identity API. Identity and organization only: none of
+  // these calls starts an agent, picks a model, or touches an account.
+  listEmployees: (opts?: { projectPath?: string; kind?: string; status?: string; archived?: boolean }) => {
+    const query = new URLSearchParams();
+    if (opts?.projectPath) query.set("projectPath", opts.projectPath);
+    if (opts?.kind) query.set("kind", opts.kind);
+    if (opts?.status) query.set("status", opts.status);
+    if (opts?.archived) query.set("archived", "true");
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return j<{ employees: Employee[] }>(`/employees${suffix}`);
+  },
+  getEmployee: (id: string, signal?: AbortSignal) => j<EmployeeDetails>(`/employees/${encodeURIComponent(id)}`, { signal }),
+  createEmployee: (body: Record<string, unknown>) =>
+    j<Employee>("/employees", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  updateEmployee: (id: string, body: Record<string, unknown>) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, { retry: false }),
+  regenerateEmployeeName: (id: string) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}/regenerate-name`, { method: "POST", body: "{}" }, { retry: false }),
+  assignEmployee: (id: string, projectPath: string) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}/assign`, { method: "POST", body: JSON.stringify({ projectPath }) }, { retry: false }),
+  unassignEmployee: (id: string) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}/unassign`, { method: "POST", body: "{}" }, { retry: false }),
+  archiveEmployee: (id: string) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  unarchiveEmployee: (id: string) =>
+    j<Employee>(`/employees/${encodeURIComponent(id)}/unarchive`, { method: "POST", body: "{}" }, { retry: false }),
+  getHeadEmployee: () => j<{ head: Employee | null }>("/employees/head"),
+  setHeadEmployee: (body: { name: string; description?: string }) =>
+    j<{ employee: Employee; created: boolean }>("/employees/head", { method: "PUT", body: JSON.stringify(body) }, { retry: false }),
+  getOrganization: () => j<OrganizationTree>("/employees/organization"),
+  getProjectTeam: (projectPath: string) =>
+    j<ProjectTeam>(`/employees/project-team?projectPath=${encodeURIComponent(projectPath)}`),
+  getCatalogRoles: (params?: { search?: string; division?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.search) query.set("search", params.search);
+    if (params?.division) query.set("division", params.division);
+    const qs = query.toString();
+    return j<{
+      roles: RoleTemplateSummary[];
+      total: number;
+      allTotal: number;
+      divisions: DivisionMeta[];
+      divisionsMetadata: Record<string, { label: string; icon: string; color: string }>;
+      countsByDivision: Record<string, number>;
+    }>(`/catalog/roles${qs ? `?${qs}` : ""}`);
+  },
+  getCatalogRole: (slug: string) =>
+    j<{ role: RoleTemplate }>(`/catalog/roles/${encodeURIComponent(slug)}`),
+  getCatalogDivisions: () =>
+    j<{ divisions: DivisionMeta[] }>("/catalog/divisions"),
+  getCatalogManifest: () =>
+    j<{ manifest: CatalogManifestSummary }>("/catalog/manifest"),
+  getEmployeeProfessionalProfile: (employeeId: string) =>
+    j<{ profile: EmployeeProfessionalProfile | null }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile`),
+  assignEmployeeProfessionalRole: (employeeId: string, body: AssignProfessionalRoleRequest) =>
+    j<{ profile: EmployeeProfessionalProfile }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile`, { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  updateEmployeeProfessionalPrompt: (employeeId: string, body: UpdateProfessionalPromptRequest) =>
+    j<{ profile: EmployeeProfessionalProfile }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile`, { method: "PUT", body: JSON.stringify(body) }, { retry: false }),
+  resetEmployeeProfessionalPrompt: (employeeId: string, expectedRevision: number) =>
+    j<{ profile: EmployeeProfessionalProfile }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile/reset`, { method: "POST", body: JSON.stringify({ expectedRevision }) }, { retry: false }),
+  getEmployeePromptRevisions: (employeeId: string) =>
+    j<{ revisions: EmployeePromptRevisionSummary[] }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile/revisions`),
+  listRunbooks: () =>
+    j<{ runbooks: RunbookSummary[] }>("/catalog/runbooks"),
+  getRunbook: (slug: string) =>
+    j<{ runbook: RunbookDetail }>(`/catalog/runbooks/${encodeURIComponent(slug)}`),
+  listHiringProposals: (filter: { projectPath?: string; status?: string; catalogRoleSlug?: string } = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) if (value) query.set(key, value);
+    const suffix = query.toString();
+    return j<{ proposals: HiringProposal[] }>(`/hiring-proposals${suffix ? `?${suffix}` : ""}`);
+  },
+  getHiringProposalSummary: () =>
+    j<HiringProposalSummary>("/hiring-proposals/summary"),
+  getHiringProposal: (id: string) =>
+    j<{ proposal: HiringProposal }>(`/hiring-proposals/${encodeURIComponent(id)}`),
+  getHiringProposalHistory: (id: string) =>
+    j<{ proposal: HiringProposal; events: HiringProposalEvent[] }>(`/hiring-proposals/${encodeURIComponent(id)}/history`),
+  createHiringProposal: (body: {
+    projectPath: string;
+    roleSlug: string;
+    proposedName?: string;
+    professionalTitle?: string;
+    promptMarkdown?: string;
+    justification: string;
+    competencies?: string[];
+    relatedTasks?: string[];
+  }) =>
+    j<{ proposal: HiringProposal }>("/hiring-proposals", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  approveHiringProposal: (id: string, body: ApproveHiringProposalRequest) =>
+    j<{ proposal: HiringProposal; employee: Employee; alreadyApplied: boolean }>(
+      `/hiring-proposals/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  rejectHiringProposal: (id: string, body: RejectHiringProposalRequest) =>
+    j<{ proposal: HiringProposal; alreadyApplied: boolean }>(
+      `/hiring-proposals/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  updateHiringProposal: (id: string, body: UpdateHiringProposalRequest) =>
+    j<{ proposal: HiringProposal }>(
+      `/hiring-proposals/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  withdrawHiringProposal: (id: string, expectedRevision: number, note?: string) =>
+    j<{ proposal: HiringProposal }>(
+      `/hiring-proposals/${encodeURIComponent(id)}/withdraw`,
+      { method: "POST", body: JSON.stringify({ expectedRevision, note }) },
+      { retry: false },
+    ),
+  getEmployeePromptRevision: (employeeId: string, revision: number) =>
+    j<{ revision: EmployeePromptRevision }>(`/employees/${encodeURIComponent(employeeId)}/professional-profile/revisions/${revision}`),
+  listInfrastructure: (opts?: {
+    q?: string;
+    type?: string;
+    clusterId?: string;
+    projectPath?: string;
+    environment?: string;
+    provider?: string;
+    archived?: "true" | "false" | "all";
+  }) => {
+    const query = new URLSearchParams();
+    if (opts?.q) query.set("q", opts.q);
+    if (opts?.type) query.set("type", opts.type);
+    if (opts?.clusterId) query.set("clusterId", opts.clusterId);
+    if (opts?.projectPath) query.set("projectPath", opts.projectPath);
+    if (opts?.environment) query.set("environment", opts.environment);
+    if (opts?.provider) query.set("provider", opts.provider);
+    if (opts?.archived) query.set("archived", opts.archived);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return j<{ resources: InfrastructureResource[]; truncated: boolean }>(`/infrastructure/resources${suffix}`);
+  },
+  createInfrastructure: (body: Record<string, unknown>) =>
+    j<InfrastructureResource>("/infrastructure/resources", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  getInfrastructure: (id: string) => j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}`),
+  updateInfrastructure: (id: string, body: Record<string, unknown>) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }, { retry: false }),
+  archiveInfrastructure: (id: string) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}/archive`, { method: "POST" }, { retry: false }),
+  restoreInfrastructure: (id: string) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}/restore`, { method: "POST" }, { retry: false }),
+  linkInfrastructureCluster: (id: string, clusterId: string) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}/clusters`, {
+      method: "POST",
+      body: JSON.stringify({ clusterId }),
+    }, { retry: false }),
+  unlinkInfrastructureCluster: (id: string, clusterId: string) =>
+    j<InfrastructureResource>(
+      `/infrastructure/resources/${encodeURIComponent(id)}/clusters/${encodeURIComponent(clusterId)}`,
+      { method: "DELETE" },
+      { retry: false },
+    ),
+  linkInfrastructureProject: (id: string, projectPath: string) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}/projects`, {
+      method: "POST",
+      body: JSON.stringify({ projectPath }),
+    }, { retry: false }),
+  unlinkInfrastructureProject: (id: string, projectPath: string) =>
+    j<InfrastructureResource>(
+      `/infrastructure/resources/${encodeURIComponent(id)}/projects?projectPath=${encodeURIComponent(projectPath)}`,
+      { method: "DELETE" },
+      { retry: false },
+    ),
+  linkInfrastructureEnvironment: (id: string, body: { projectPath: string; environment: string; customLabel?: string }) =>
+    j<InfrastructureResource>(`/infrastructure/resources/${encodeURIComponent(id)}/environment-links`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, { retry: false }),
+  unlinkInfrastructureEnvironment: (id: string, body: { projectPath: string; environment: string; customLabel?: string }) => {
+    const query = new URLSearchParams({ projectPath: body.projectPath, environment: body.environment });
+    if (body.customLabel) query.set("customLabel", body.customLabel);
+    return j<InfrastructureResource>(
+      `/infrastructure/resources/${encodeURIComponent(id)}/environment-links?${query.toString()}`,
+      { method: "DELETE" },
+      { retry: false },
+    );
+  },
+  listProjectEnvironments: (projectPath: string) =>
+    j<{ environments: ProjectEnvironmentDeclaration[] }>(
+      `/infrastructure/project-environments?projectPath=${encodeURIComponent(projectPath)}`,
+    ),
+  declareProjectEnvironment: (body: { projectPath: string; environment: string; customLabel?: string }) =>
+    j<ProjectEnvironmentDeclaration>("/infrastructure/project-environments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }, { retry: false }),
+  removeProjectEnvironment: (body: { projectPath: string; environment: string; customLabel?: string }) => {
+    const query = new URLSearchParams({ projectPath: body.projectPath, environment: body.environment });
+    if (body.customLabel) query.set("customLabel", body.customLabel);
+    return j<{ removed: true }>(`/infrastructure/project-environments?${query.toString()}`, { method: "DELETE" }, { retry: false });
+  },
+  getClusterInfrastructure: (id: string) =>
+    j<ClusterInfrastructureView>(`/infrastructure/clusters/${encodeURIComponent(id)}`),
+  listDeploymentRequests: (projectPath?: string) => {
+    const suffix = projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : "";
+    return j<{ requests: import("../../shared/deployment-request/types.ts").DeploymentRequestRecord[] }>(
+      `/deployment-requests${suffix}`,
+    );
+  },
+  createDeploymentRequest: (body: {
+    projectPath: string;
+    clusterId: string;
+    environment: "staging" | "production";
+    revision: string;
+    requestedByRole: "owner" | "project-manager" | "head-of-pm";
+  }) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      "/deployment-requests",
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  approveDeploymentRequest: (id: string, body: { approvalDigest: string; confirmProduction?: boolean }) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  rejectDeploymentRequest: (id: string, body: { approvalDigest: string }) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  patchDeploymentRequest: (
+    id: string,
+    body: { clusterId?: string; environment?: "staging" | "production"; revision?: string },
+  ) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  listDeploymentStagingIntegrations: (projectPath?: string) => {
+    const suffix = projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : "";
+    return j<{ integrations: import("../../shared/deployment-request/integration.ts").StagingIntegrationRecord[] }>(
+      `/deployment-staging-integrations${suffix}`,
+    );
+  },
+  createDeploymentStagingIntegration: (body: {
+    clusterId: string;
+    projectPath: string;
+    integrationType: "external-staging-v1" | "forgeorbit-fake-staging-v1";
+    integrationLabel: string;
+    projectSlug: string;
+    entrypointRef: string;
+    realExecutionConfigured?: boolean;
+    realExecutionEnabled?: boolean;
+  }) =>
+    j<import("../../shared/deployment-request/integration.ts").StagingIntegrationRecord>(
+      "/deployment-staging-integrations",
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  authorizeDeploymentExecution: (id: string, body: { executionAuthDigest: string; confirmOwner?: boolean }) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}/authorize-execution`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  executeDeploymentStaging: (id: string) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}/execute`,
+      { method: "POST", body: JSON.stringify({}) },
+      { retry: false },
+    ),
+  getDeploymentManualHandoff: (id: string) =>
+    j<import("../../shared/deployment-request/owner-authorization.ts").DeploymentManualHandoff>(
+      `/deployment-requests/${encodeURIComponent(id)}/manual-handoff`,
+    ),
+  cancelDeploymentExecution: (id: string) =>
+    j<import("../../shared/deployment-request/types.ts").DeploymentRequestRecord>(
+      `/deployment-requests/${encodeURIComponent(id)}/cancel-execution`,
+      { method: "POST", body: "{}" },
+      { retry: false },
+    ),
+  // FO-010C. Organizational assignment only: these calls do not start a task
+  // or ask the model router for a recommendation.
+  getTaskAssignment: (taskId: string) =>
+    j<{ assignment: TaskAssignment | null; routerHandoff: AssignmentRouterHandoff }>(
+      `/task-assignments/task?taskId=${encodeURIComponent(taskId)}`,
+    ),
+  listEmployeeTaskAssignments: (employeeId: string) =>
+    j<{ assignments: TaskAssignment[]; routerHandoff: AssignmentRouterHandoff }>(
+      `/task-assignments?employeeId=${encodeURIComponent(employeeId)}`,
+    ),
+  listProjectTaskAssignments: (projectPath: string) =>
+    j<{ projectPath: string; assignments: TaskAssignment[]; routerHandoff: AssignmentRouterHandoff }>(
+      `/task-assignments/project?projectPath=${encodeURIComponent(projectPath)}`,
+    ),
+  taskAssignmentHistory: (scope: { taskId?: string; employeeId?: string; projectPath?: string }) => {
+    const query = new URLSearchParams();
+    if (scope.taskId) query.set("taskId", scope.taskId);
+    else if (scope.employeeId) query.set("employeeId", scope.employeeId);
+    else if (scope.projectPath) query.set("projectPath", scope.projectPath);
+    return j<{ events: TaskAssignmentEvent[]; truncated: boolean; routerHandoff: AssignmentRouterHandoff }>(
+      `/task-assignments/history?${query.toString()}`,
+    );
+  },
+  taskAssignmentCandidates: (employeeId: string) =>
+    j<{ tasks: AssignmentCandidate[]; truncated: boolean; routerHandoff: AssignmentRouterHandoff }>(
+      `/task-assignments/candidates?employeeId=${encodeURIComponent(employeeId)}`,
+    ),
+  assignTaskToEmployee: (taskId: string, employeeId: string) =>
+    j<{ assignment: TaskAssignment; created: boolean; routerHandoff: AssignmentRouterHandoff }>(
+      "/task-assignments",
+      { method: "POST", body: JSON.stringify({ taskId, employeeId }) },
+      { retry: false },
+    ),
+  reassignTask: (taskId: string, employeeId: string, expectedRevision: number) =>
+    j<{ assignment: TaskAssignment; routerHandoff: AssignmentRouterHandoff }>(
+      "/task-assignments/reassign",
+      { method: "POST", body: JSON.stringify({ taskId, employeeId, expectedRevision }) },
+      { retry: false },
+    ),
+  unassignTask: (taskId: string, expectedRevision: number) =>
+    j<{ assignment: TaskAssignment; routerHandoff: AssignmentRouterHandoff }>(
+      "/task-assignments/unassign",
+      { method: "POST", body: JSON.stringify({ taskId, expectedRevision }) },
+      { retry: false },
+    ),
+  // FO-010D. Proposals are suggestions awaiting the owner. Approving one
+  // assigns through the FO-010C core and still starts nothing.
+  listAssignmentProposals: (filter: { projectPath?: string; status?: string; taskId?: string; employeeId?: string } = {}, signal?: AbortSignal) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filter)) if (value) query.set(key, value);
+    const suffix = query.toString();
+    return j<{ proposals: AssignmentProposal[]; truncated: boolean }>(`/assignment-proposals${suffix ? `?${suffix}` : ""}`, { signal });
+  },
+  getAssignmentProposalSummary: () => j<ProposalSummary>("/assignment-proposals/summary"),
+  assignmentProposalHistory: (id: string) =>
+    j<{ events: AssignmentProposalEvent[]; truncated: boolean }>(`/assignment-proposals/${encodeURIComponent(id)}/history`),
+  assignmentExecutorReview: (id: string) => j<{ review: import("../../shared/execution/executor-routing.ts").AssignmentExecutorReview }>(`/assignment-proposals/${encodeURIComponent(id)}/recommendations`),
+  approveAssignmentProposal: (id: string, body: { expectedRevision: number; expectedAssignmentRevision: number | null; allowReassign: boolean; routingReviewToken?: string }) =>
+    j<{ proposal: AssignmentProposal; alreadyApplied: boolean }>(
+      `/assignment-proposals/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  rejectAssignmentProposal: (id: string, expectedRevision: number) =>
+    j<{ proposal: AssignmentProposal; alreadyApplied: boolean }>(
+      `/assignment-proposals/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify({ expectedRevision }) },
+      { retry: false },
+    ),
+  cancelAssignmentProposal: (id: string, expectedRevision: number) =>
+    j<{ proposal: AssignmentProposal; alreadyApplied: boolean }>(
+      `/assignment-proposals/${encodeURIComponent(id)}/cancel`,
+      { method: "POST", body: JSON.stringify({ expectedRevision }) },
+      { retry: false },
+    ),
+  listKnowledge: (owner: KnowledgeOwnerRef, opts?: { includeArchived?: boolean; category?: string; tag?: string; limit?: number }) => {
+    const query = new URLSearchParams({ ownerKind: owner.kind, ownerId: owner.id });
+    if (opts?.includeArchived) query.set("includeArchived", "true");
+    if (opts?.category) query.set("category", opts.category);
+    if (opts?.tag) query.set("tag", opts.tag);
+    if (opts?.limit) query.set("limit", String(opts.limit));
+    return j<{ documents: KnowledgeDocument[]; truncated: boolean }>(`/knowledge/documents?${query.toString()}`);
+  },
+  createKnowledge: (body: {
+    ownerKind: KnowledgeOwnerRef["kind"];
+    ownerId: string;
+    title: string;
+    description?: string;
+    category?: string;
+    tags?: string[];
+    content?: string;
+    sensitive?: boolean;
+  }) => j<KnowledgeDocument>("/knowledge/documents", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  readKnowledge: (id: string, revision?: number) => {
+    const query = revision ? `?revision=${revision}` : "";
+    return j<KnowledgeDocument & { content: string; sha256: string }>(`/knowledge/documents/${encodeURIComponent(id)}${query}`);
+  },
+  updateKnowledge: (id: string, body: {
+    expectedRevision: number;
+    title?: string;
+    description?: string;
+    category?: string;
+    tags?: string[];
+    content?: string;
+    sensitive?: boolean;
+  }) => j<KnowledgeDocument>(`/knowledge/documents/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, { retry: false }),
+  archiveKnowledge: (id: string, expectedRevision: number) =>
+    j<KnowledgeDocument>(`/knowledge/documents/${encodeURIComponent(id)}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision }),
+    }, { retry: false }),
+  restoreKnowledge: (id: string, expectedRevision: number) =>
+    j<KnowledgeDocument>(`/knowledge/documents/${encodeURIComponent(id)}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision }),
+    }, { retry: false }),
+  deleteKnowledge: (id: string, expectedRevision: number) =>
+    j<{ deleted: true; id: string }>(`/knowledge/documents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      body: JSON.stringify({ expectedRevision, confirm: "delete" }),
+    }, { retry: false }),
+  exportKnowledge: (id: string) =>
+    j<{ filename: string; markdown: string; revision: number; document: KnowledgeDocument }>(
+      `/knowledge/documents/${encodeURIComponent(id)}/export`,
+    ),
+  knowledgeRevisions: (id: string) =>
+    j<{ revisions: KnowledgeRevisionInfo[] }>(`/knowledge/documents/${encodeURIComponent(id)}/revisions`),
+  listBrain: (query: {
+    scopeKind: BrainScopeKind;
+    projectPath?: string;
+    q?: string;
+    limit?: number;
+    status?: BrainStatusValue;
+    inheritCompany?: boolean;
+  }) => {
+    const params = new URLSearchParams({ scopeKind: query.scopeKind, status: query.status ?? "active" });
+    if (query.projectPath) params.set("projectPath", query.projectPath);
+    if (query.q) params.set("q", query.q);
+    if (query.limit) params.set("limit", String(query.limit));
+    if (query.inheritCompany) params.set("inherit", "company");
+    return j<{ memories: BrainMemorySummary[]; truncated: boolean; inheritance: { applied: boolean; rule: string } }>(`/brain/memories?${params.toString()}`);
+  },
+  createBrain: (body: { scopeKind: BrainScopeKind; projectPath?: string; title: string; kind: BrainKind; content: string; requestId?: string }) =>
+    j<BrainMemory>("/brain/memories", { method: "POST", body: JSON.stringify(body) }, { retry: false }),
+  readBrain: (id: string) => j<BrainMemory>(`/brain/memories/${encodeURIComponent(id)}`),
+  updateBrain: (id: string, body: { expectedRevision: number; title?: string; kind?: BrainKind; content?: string }) =>
+    j<BrainMemory>(`/brain/memories/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }, { retry: false }),
+  archiveBrain: (id: string, expectedRevision: number) =>
+    j<BrainMemory>(`/brain/memories/${encodeURIComponent(id)}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision }),
+    }, { retry: false }),
+  searchBrainSemantic: (query: { scopeKind: BrainScopeKind; projectPath?: string; q: string; mode?: import("../../shared/brain/embeddings.ts").SearchMode; status?: BrainStatusValue; inheritCompany?: boolean; limit?: number }) => {
+    const params = new URLSearchParams({ scopeKind: query.scopeKind, status: query.status ?? "active", q: query.q });
+    if (query.projectPath) params.set("projectPath", query.projectPath);
+    if (query.mode) params.set("mode", query.mode);
+    if (query.limit) params.set("limit", String(query.limit));
+    if (query.inheritCompany) params.set("inherit", "company");
+    return j<{ results: import("../../shared/brain/embeddings.ts").SemanticSearchResult[]; mode: import("../../shared/brain/embeddings.ts").SearchMode; total: number }>(`/brain/memories/search?${params.toString()}`);
+  },
+  brainRelated: (id: string) =>
+    j<{ related: import("../../shared/brain/embeddings.ts").RelatedMemoryItem[] }>(`/brain/memories/${encodeURIComponent(id)}/related`),
+  listBrainCandidates: (query: { status?: string; scopeKind?: string; projectPath?: string; sourceEventKind?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set("status", query.status);
+    if (query.scopeKind) params.set("scopeKind", query.scopeKind);
+    if (query.projectPath) params.set("projectPath", query.projectPath);
+    if (query.sourceEventKind) params.set("sourceEventKind", query.sourceEventKind);
+    if (query.limit) params.set("limit", String(query.limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    return j<{ candidates: import("../../shared/brain/extraction.ts").BrainExtractionCandidate[] }>(`/brain/candidates${suffix}`);
+  },
+  readBrainCandidate: (id: string) =>
+    j<import("../../shared/brain/extraction.ts").BrainExtractionCandidate>(`/brain/candidates/${encodeURIComponent(id)}`),
+  editBrainCandidate: (id: string, body: { title?: string; kind?: BrainKind; content?: string }) =>
+    j<import("../../shared/brain/extraction.ts").BrainExtractionCandidate>(`/brain/candidates/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }, { retry: false }),
+  approveBrainCandidate: (id: string, body?: { title?: string; kind?: BrainKind; content?: string }) =>
+    j<{ candidate: import("../../shared/brain/extraction.ts").BrainExtractionCandidate; memory: BrainMemory }>(
+      `/brain/candidates/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify(body ?? {}) },
+      { retry: false },
+    ),
+  rejectBrainCandidate: (id: string, reason?: string) =>
+    j<import("../../shared/brain/extraction.ts").BrainExtractionCandidate>(
+      `/brain/candidates/${encodeURIComponent(id)}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+      { retry: false },
+    ),
+  brainEmbeddingStatus: () =>
+    j<import("../../shared/brain/embeddings.ts").EmbeddingEngineStatus>("/brain/embeddings/status"),
+  rebuildBrainEmbeddings: () =>
+    j<{ total: number; embedded: number; failed: number }>("/brain/embeddings/rebuild", { method: "POST" }, { retry: false }),
+  brainStatus: () => j<BrainIndexStatus>("/brain/status"),
+  listMemoryProposals: (query: { status?: string; managerKind?: string; sourceProjectPath?: string; messageId?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set("status", query.status);
+    if (query.managerKind) params.set("managerKind", query.managerKind);
+    if (query.sourceProjectPath) params.set("sourceProjectPath", query.sourceProjectPath);
+    if (query.messageId) params.set("messageId", query.messageId);
+    const queryText = params.toString();
+    const suffix = queryText ? `?${queryText}` : "";
+    return j<{ proposals: import("../../shared/brain/proposals.ts").MemoryProposal[] }>(`/brain/proposals${suffix}`);
+  },
+  readMemoryProposal: (id: string) =>
+    j<import("../../shared/brain/proposals.ts").MemoryProposal>(`/brain/proposals/${encodeURIComponent(id)}`),
+  editMemoryProposal: (id: string, body: { expectedRevision: number; title?: string; kind?: BrainKind; content?: string }) =>
+    j<import("../../shared/brain/proposals.ts").MemoryProposal>(`/brain/proposals/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }, { retry: false }),
+  approveMemoryProposal: (id: string, expectedRevision: number) =>
+    j<{ proposal: import("../../shared/brain/proposals.ts").MemoryProposal; memory: BrainMemory; replayed: boolean }>(
+      `/brain/proposals/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify({ expectedRevision }) },
+      { retry: false },
+    ),
+  rejectMemoryProposal: (id: string, expectedRevision: number, reason?: string) =>
+    j<import("../../shared/brain/proposals.ts").MemoryProposal>(`/brain/proposals/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision, ...(reason ? { reason } : {}) }),
+    }, { retry: false }),
+  brainContextEligible: (target: BrainContextTarget, access: BrainContextAccess, q?: string) =>
+    j<BrainEligibleResult>(`/brain/context/eligible?${brainContextQuery(target, access, q)}`),
+  brainContextPreview: (target: BrainContextTarget, access: BrainContextAccess, memories: BrainContextRequest["memories"]) =>
+    j<BrainContextPreview>("/brain/context/preview", {
+      method: "POST",
+      body: brainContextBody(target, access, memories),
+    }, { retry: false }),
+  brainContextApprove: (target: BrainContextTarget, access: BrainContextAccess, memories: BrainContextRequest["memories"], previewKey: string) =>
+    j<BrainContextGrant>("/brain/context/grants", {
+      method: "POST",
+      body: brainContextBody(target, access, memories, { previewKey, confirm: true }),
+    }, { retry: false }),
+  brainContextRevoke: (target: BrainContextTarget, grantId: string) =>
+    j<{ revoked: boolean }>(`/brain/context/grants/${encodeURIComponent(grantId)}?${brainContextQuery(target)}`, { method: "DELETE" }, { retry: false }),
+  brainContextTransmissions: (target: BrainContextTarget) =>
+    j<{ transmissions: BrainTransmission[] }>(`/brain/context/transmissions?${brainContextQuery(target)}`),
+  createBrowserSession: () =>
+    j<BrowserSessionView>("/browser/sessions", { method: "POST", body: "{}" }, { retry: false }),
+  browserSession: (id: string) => j<BrowserSessionView>(`/browser/sessions/${encodeURIComponent(id)}`),
+  navigateBrowser: (id: string, url: string) =>
+    j<BrowserSessionView>(`/browser/sessions/${encodeURIComponent(id)}/navigate`, { method: "POST", body: JSON.stringify({ url }) }, { retry: false }),
+  browserObservation: (id: string) => j<BrowserObservation>(`/browser/sessions/${encodeURIComponent(id)}/observation`),
+  openBrowserLink: (id: string, linkId: string, observationId: string) =>
+    j<BrowserSessionView>(`/browser/sessions/${encodeURIComponent(id)}/links/${encodeURIComponent(linkId)}/open`, {
+      method: "POST",
+      body: JSON.stringify({ observationId }),
+    }, { retry: false }),
+  backBrowser: (id: string) =>
+    j<BrowserSessionView>(`/browser/sessions/${encodeURIComponent(id)}/back`, { method: "POST", body: "{}" }, { retry: false }),
+  closeBrowserSession: (id: string) =>
+    j<BrowserSessionView>(`/browser/sessions/${encodeURIComponent(id)}/close`, { method: "POST", body: "{}" }, { retry: false }),
+  listBrowserSessions: () => j<{ sessions: BrowserSessionView[] }>("/browser/sessions"),
+  createBrowserAgentGrant: (input: { managerKind: "head-of-pm" | "project-manager"; projectPath?: string; sessionId: string }) =>
+    j<import("../../shared/browser/agent.ts").BrowserAgentGrantView>("/browser/agent-grants", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, { retry: false }),
+  revokeBrowserAgentGrant: (grantId: string, managerKind: "head-of-pm" | "project-manager", projectPath?: string) => {
+    const query = new URLSearchParams({ managerKind });
+    if (projectPath) query.set("projectPath", projectPath);
+    return j<{ revoked: boolean }>(`/browser/agent-grants/${encodeURIComponent(grantId)}?${query}`, { method: "DELETE" }, { retry: false });
+  },
+  browserScreenshot: async (id: string): Promise<Blob> => {
+    const res = await fetchWithRecovery({ fetchImpl: fetch, base: BASE }, `/browser/sessions/${encodeURIComponent(id)}/screenshot`, {
+      headers: { authorization: `Bearer ${API_TOKEN}` },
+    }, { retry: false });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const message = body && typeof body === "object" && "error" in body ? String(body.error) : `${res.status}`;
+      throw new ApiError(message, res.status, body);
+    }
+    return res.blob();
+  },
+  nativeComputerPermissions: () => j<NativePermissionStatus>("/native-computer/permissions"),
+  openNativeComputerSettings: (kind: "accessibility" | "screen-recording") =>
+    j<NativePermissionStatus>("/native-computer/permissions/open", { method: "POST", body: JSON.stringify({ kind }) }, { retry: false }),
+  nativeComputerApplications: () => j<{ applications: NativeApplicationRecord[]; truncated: boolean }>("/native-computer/applications"),
+  nativeComputerWindows: (identity: NativeProcessIdentity) =>
+    j<{ windows: NativeWindowRecord[]; truncated: boolean }>("/native-computer/windows", { method: "POST", body: JSON.stringify(identity) }, { retry: false }),
+  createNativeComputerSession: (identity: NativeProcessIdentity, windowId: number) =>
+    j<NativeSessionView>("/native-computer/sessions", { method: "POST", body: JSON.stringify({ bundleId: identity.bundleId, executablePath: identity.executablePath, pid: identity.pid, startSec: identity.startSec, startUsec: identity.startUsec, windowId }) }, { retry: false }),
+  nativeComputerSession: (id: string) => j<NativeSessionView>(`/native-computer/sessions/${encodeURIComponent(id)}`),
+  nativeComputerObservation: (id: string) =>
+    j<NativeObservation>(`/native-computer/sessions/${encodeURIComponent(id)}/observation`),
+  refreshNativeComputerObservation: (id: string) =>
+    j<NativeObservation>(`/native-computer/sessions/${encodeURIComponent(id)}/observation`, { method: "POST", body: "{}" }, { retry: false }),
+  requestNativeComputerAction: (id: string, input: NativeProcessIdentity & { windowId: number; observationId: string; elementId: string; action?: NativeAction; direction?: "up" | "down"; increment?: number; text?: string }) => {
+    const { windowId, observationId, elementId, action = "press_accessible_button", direction, increment, text } = input;
+    return j<NativeActionClaim>(`/native-computer/sessions/${encodeURIComponent(id)}/actions`, {
+      method: "POST",
+      body: JSON.stringify({ action, bundleId: input.bundleId, executablePath: input.executablePath, pid: input.pid, startSec: input.startSec, startUsec: input.startUsec, windowId, observationId, elementId, ...(direction ? { direction } : {}), ...(increment !== undefined ? { increment } : {}), ...(text !== undefined ? { text } : {}) }),
+    }, { retry: false });
+  },
+  confirmNativeComputerAction: (id: string, claimId: string, identity: NativeProcessIdentity, windowId: number) =>
+    j<NativeActionClaim>(`/native-computer/sessions/${encodeURIComponent(id)}/actions/${encodeURIComponent(claimId)}/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true, bundleId: identity.bundleId, executablePath: identity.executablePath, pid: identity.pid, startSec: identity.startSec, startUsec: identity.startUsec, windowId }),
+    }, { retry: false }),
+  closeNativeComputerSession: (id: string) =>
+    j<NativeSessionView>(`/native-computer/sessions/${encodeURIComponent(id)}/close`, { method: "POST", body: "{}" }, { retry: false }),
+  listNativeComputerSessions: () => j<{ sessions: NativeSessionView[]; lastInterrupted?: NativeSessionView | null }>("/native-computer/sessions"),
+  createNativeAgentGrant: (input: { managerKind: "head-of-pm" | "project-manager"; projectPath?: string; sessionId: string }) =>
+    j<import("../../shared/native-computer/agent.ts").NativeAgentGrantView>("/native-computer/agent-grants", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, { retry: false }),
+  revokeNativeAgentGrant: (grantId: string, managerKind: "head-of-pm" | "project-manager", projectPath?: string) => {
+    const query = new URLSearchParams({ managerKind });
+    if (projectPath) query.set("projectPath", projectPath);
+    return j<{ revoked: boolean }>(`/native-computer/agent-grants/${encodeURIComponent(grantId)}?${query}`, { method: "DELETE" }, { retry: false });
+  },
+  nativeComputerScreenshot: async (id: string): Promise<Blob> => {
+    const res = await fetchWithRecovery({ fetchImpl: fetch, base: BASE }, `/native-computer/sessions/${encodeURIComponent(id)}/screenshot`, {
+      method: "POST",
+      body: "{}",
+      headers: { authorization: `Bearer ${API_TOKEN}`, "content-type": "application/json" },
+    }, { retry: false });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const message = body && typeof body === "object" && "error" in body ? String(body.error) : `${res.status}`;
+      throw new ApiError(message, res.status, body);
+    }
+    return res.blob();
+  },
+  searchKnowledge: (opts: { q: string; owner?: KnowledgeOwnerRef; projectPath?: string; includeArchived?: boolean; category?: string; tag?: string; limit?: number }) => {
+    const query = new URLSearchParams({ q: opts.q });
+    if (opts.owner) {
+      query.set("ownerKind", opts.owner.kind);
+      query.set("ownerId", opts.owner.id);
+    }
+    if (opts.projectPath) query.set("projectPath", opts.projectPath);
+    if (opts.includeArchived) query.set("includeArchived", "true");
+    if (opts.category) query.set("category", opts.category);
+    if (opts.tag) query.set("tag", opts.tag);
+    if (opts.limit) query.set("limit", String(opts.limit));
+    return j<{ hits: KnowledgeSearchHit[]; truncated: boolean }>(`/knowledge/search?${query.toString()}`);
+  },
+  knowledgeScope: (projectPath: string) =>
+    j<KnowledgeScope>(`/knowledge/scope?projectPath=${encodeURIComponent(projectPath)}`),
+  // Knowledge context for managers (FO-011E). Choosing and previewing send
+  // nothing; only a confirmed grant, spent by one manager message, does.
+  knowledgeContextEligible: (target: KnowledgeContextTarget, owner?: KnowledgeOwnerRef) =>
+    j<KnowledgeEligibleResult>(`/knowledge/context/eligible?${contextQuery(target, owner)}`),
+  knowledgeContextPreview: (target: KnowledgeContextTarget, documents: KnowledgeSelectionInput[]) =>
+    j<KnowledgeContextPreview>("/knowledge/context/preview", {
+      method: "POST",
+      body: JSON.stringify({ ...contextTarget(target), documents }),
+    }, { retry: false }),
+  knowledgeContextApprove: (target: KnowledgeContextTarget, documents: KnowledgeSelectionInput[], previewKey: string) =>
+    j<KnowledgeContextGrant>("/knowledge/context/grants", {
+      method: "POST",
+      body: JSON.stringify({ ...contextTarget(target), documents, previewKey, confirm: true }),
+    }, { retry: false }),
+  knowledgeContextRevoke: (target: KnowledgeContextTarget, grantId: string) =>
+    j<{ revoked: boolean }>(`/knowledge/context/grants/${encodeURIComponent(grantId)}?${contextQuery(target)}`, { method: "DELETE" }, { retry: false }),
+  knowledgeContextTransmissions: (target: KnowledgeContextTarget) =>
+    j<{ transmissions: KnowledgeTransmission[] }>(`/knowledge/context/transmissions?${contextQuery(target)}`),
+  knowledgeEffectivePreview: (projectPath: string) =>
+    j<{ preview: import("../../shared/knowledge/effective.ts").EffectiveKnowledgePreview; note: string }>(
+      `/knowledge/effective?projectPath=${encodeURIComponent(projectPath)}`,
+    ),
+  getKnowledgeInheritanceSettings: (projectPath: string) =>
+    j<{ settings: import("../../shared/knowledge/effective.ts").KnowledgeInheritanceSettings }>(
+      `/knowledge/inheritance?projectPath=${encodeURIComponent(projectPath)}`,
+    ),
+  patchKnowledgeInheritanceSettings: (projectPath: string, body: { acceptCompany?: boolean; acceptCluster?: boolean }) =>
+    j<{ settings: import("../../shared/knowledge/effective.ts").KnowledgeInheritanceSettings }>(
+      `/knowledge/inheritance?projectPath=${encodeURIComponent(projectPath)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  patchKnowledgeDocumentInherit: (documentId: string, inheritToProjects: boolean) =>
+    j<KnowledgeDocument>(`/knowledge/documents/${encodeURIComponent(documentId)}/inherit`, {
+      method: "PATCH",
+      body: JSON.stringify({ inheritToProjects }),
+    }, { retry: false }),
+  getEnvironment: (projectPath: string) =>
+    j<EnvironmentIndex>(`/projects/environment?path=${encodeURIComponent(projectPath)}`),
+  getProjectEstimation: (projectPath: string) =>
+    j<EstimationRecord>(`/projects/estimation?path=${encodeURIComponent(projectPath)}`),
+  getProjectEstimationDependencies: (projectPath: string) =>
+    j<{ structuredDependencies: StructuredDependency[] }>(
+      `/projects/estimation/dependencies?path=${encodeURIComponent(projectPath)}`,
+    ),
+  saveProjectEstimation: (projectPath: string, settings: EstimationSettings) =>
+    j<EstimationRecord>("/projects/estimation", {
+      method: "PUT",
+      body: JSON.stringify({ path: projectPath, settings }),
+    }, { retry: false }),
+  createEnvironmentProfile: (projectPath: string, profile: LaunchProfile) =>
+    j<EnvironmentCommandResult>("/projects/environment", {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, profile }),
+    }, { retry: false }),
+  updateEnvironmentProfile: (projectPath: string, profileId: string, profile: LaunchProfile) =>
+    j<EnvironmentCommandResult>(`/projects/environment/${encodeURIComponent(profileId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ path: projectPath, profile }),
+    }, { retry: false }),
+  deleteEnvironmentProfile: (projectPath: string, profileId: string) =>
+    j<EnvironmentCommandResult>(
+      `/projects/environment/${encodeURIComponent(profileId)}?path=${encodeURIComponent(projectPath)}`,
+      { method: "DELETE" },
+      { retry: false },
+    ),
+  environmentAction: (projectPath: string, profileId: string, action: "start" | "stop" | "restart" | "refresh") =>
+    j<EnvironmentCommandResult>(
+      `/projects/environment/${encodeURIComponent(profileId)}/${action}?path=${encodeURIComponent(projectPath)}`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  environmentLogs: (projectPath: string, profileId: string, service?: string) => {
+    const query = new URLSearchParams({ path: projectPath });
+    if (service) query.set("service", service);
+    return j<EnvironmentLogs>(
+      `/projects/environment/${encodeURIComponent(profileId)}/logs?${query.toString()}`,
+    );
+  },
+  environmentUrls: (projectPath: string, profileId: string) =>
+    j<{ urls: UrlAvailability[] }>(
+      `/projects/environment/${encodeURIComponent(profileId)}/urls?path=${encodeURIComponent(projectPath)}`,
+    ),
+  /** Read-only scan for the project wizard. Does not register or create. */
+  discoverProject: (input: { path: string; folderName?: string }) =>
+    j<ProjectDiscovery>("/projects/discover", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /**
+   * Register a folder. The wizard sets `rejectDuplicate` and, for a new
+   * leaf, `createDirectory`. Other callers keep the idempotent upsert.
+   * `retry: false` — a replay after a created directory would 409.
+   */
+  registerProject: (input: {
+    path: string;
+    name?: string;
+    rejectDuplicate?: boolean;
+    createDirectory?: boolean;
+  }) =>
+    j<Project>("/projects", { method: "POST", body: JSON.stringify(input) }, { retry: false }),
+  // Global portfolio manager (FO-008C). Sending a message is the only call
+  // that runs its agent; approving a delegation runs the target project's
+  // manager once. Every write is `retry: false` so a replay can't start a
+  // second paid turn or send a delegation twice.
+  getHeadPortfolioBinding: () => j<HeadPortfolioBinding>("/portfolio-manager/head-binding"),
+  changeHeadPortfolioBinding: (employeeId: string | null, revision: number) =>
+    j<HeadPortfolioBinding>("/portfolio-manager/head-binding", { method: "PUT", body: JSON.stringify({ employeeId, revision, confirm: true }) }, { retry: false }),
+  getPortfolioManager: () => j<PortfolioManagerState>("/portfolio-manager"),
+  savePortfolioManagerConfig: (config: ManagerConfig) =>
+    j<ManagerConfig>("/portfolio-manager/config", { method: "PUT", body: JSON.stringify({ config }) }, { retry: false }),
+  portfolioManagerContext: () =>
+    j<{ sources: ContextSource[]; projectCount: number; listedProjects: number }>("/portfolio-manager/context"),
+  getHeadPmCoordination: () => j<HeadPmCoordinationSnapshot>("/portfolio-manager/coordination"),
+  getHeadAuto: (id: string) => j<import("../../shared/head-pm-auto.ts").HeadAutoView>(`/head-pm/initiatives/${encodeURIComponent(id)}/coordination`),
+  prepareHeadAuto: (id: string, batchIds: string[]) => j<import("../../shared/head-pm-auto.ts").HeadAutoView>(`/head-pm/initiatives/${encodeURIComponent(id)}/coordination`, { method: "POST", body: JSON.stringify({ batchIds }) }, { retry: false }),
+  actHeadAuto: (id: string, action: string, digest?: string) => j<import("../../shared/head-pm-auto.ts").HeadAutoView>(`/head-pm/initiatives/${encodeURIComponent(id)}/coordination/${action}`, { method: "POST", body: JSON.stringify({ digest }) }, { retry: false }),
+  listHeadPmInitiatives: () => j<HeadPmInitiativeView[]>("/head-pm/initiatives"),
+  getHeadPmInitiative: (id: string) => j<HeadPmInitiativeView>(`/head-pm/initiatives/${encodeURIComponent(id)}`),
+  cancelHeadPmInitiative: (id: string) =>
+    j<HeadPmInitiativeView>(`/head-pm/initiatives/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  linkHeadPmInitiativeBatch: (id: string, projectPath: string, batchId: string) =>
+    j<HeadPmInitiativeView>(
+      `/head-pm/initiatives/${encodeURIComponent(id)}/contributions/${encodeURIComponent(projectPath)}/link-batch`,
+      { method: "POST", body: JSON.stringify({ batchId }) },
+      { retry: false },
+    ),
+  patchHeadPmInitiativeProposal: (id: string, body: { title?: string; goal?: string; description?: string; contributions?: unknown[] }) =>
+    j<import("../../shared/head-pm-initiative-proposal.ts").HeadPmInitiativeProposal>(
+      `/head-pm/initiative-proposals/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      { retry: false },
+    ),
+  approveHeadPmInitiativeProposal: (id: string) =>
+    j<{ proposal: import("../../shared/head-pm-initiative-proposal.ts").HeadPmInitiativeProposal; initiativeId: string; alreadyCreated: boolean }>(
+      `/head-pm/initiative-proposals/${encodeURIComponent(id)}/approve`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  rejectHeadPmInitiativeProposal: (id: string) =>
+    j<import("../../shared/head-pm-initiative-proposal.ts").HeadPmInitiativeProposal>(
+      `/head-pm/initiative-proposals/${encodeURIComponent(id)}/reject`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  dismissHeadPmInitiativeProposal: (id: string) =>
+    j<import("../../shared/head-pm-initiative-proposal.ts").HeadPmInitiativeProposal>(
+      `/head-pm/initiative-proposals/${encodeURIComponent(id)}/dismiss`,
+      { method: "POST" },
+      { retry: false },
+    ),
+  sendPortfolioMessage: (input: { objectiveProjectPaths?: string[]; nativeGrantId?: string; scope?: import("../../shared/head-pm-scope.ts").HeadScope; text?: string; retryMessageId?: string; knowledgeGrantId?: string; brainGrantId?: string; browserGrantId?: string; allowMemoryProposals?: boolean; allowCompanyMemoryProposals?: boolean; memoryProposalProjectPaths?: string[] }) =>
+    j<{ turn: Omit<ManagerTurn, "projectPath">; message: PortfolioManagerMessage }>("/portfolio-manager/messages", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, { retry: false }),
+  settleHeadBoardProposal: (id: string, decision: "approve" | "reject", executionPermission?: import("../../shared/execution/workspace-grant.ts").TaskStagingGrant, resourceDigest?: string) =>
+    j<import("../../shared/head-pm-scope.ts").HeadBoardProposal>(`/head-pm/board-proposals/${encodeURIComponent(id)}/${decision}`, {
+      method: "POST", body: JSON.stringify({ confirm: true, executionPermission, resourceDigest }),
+    }, { retry: false }),
+  getPortfolioTurn: (id: string) => j<Omit<ManagerTurn, "projectPath"> & { missionId?: string }>(`/portfolio-manager/turns/${encodeURIComponent(id)}`),
+  cancelPortfolioTurn: (id: string) =>
+    j<{ cancelled: boolean }>(`/portfolio-manager/turns/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  setPortfolioPlanStatus: (planId: string, status: "accept" | "dismiss") =>
+    j<PortfolioPlan>(`/portfolio-manager/plans/${encodeURIComponent(planId)}/${status}`, { method: "POST" }, { retry: false }),
+  approveDelegation: (delegationId: string, revision: number) =>
+    j<{ delegation: DelegationView; alreadySent: boolean }>(
+      `/portfolio-manager/delegations/${encodeURIComponent(delegationId)}/approve`,
+      { method: "POST", body: JSON.stringify({ revision }) },
+      { retry: false },
+    ),
+  rejectDelegation: (delegationId: string) =>
+    j<DelegationView>(`/portfolio-manager/delegations/${encodeURIComponent(delegationId)}/reject`, { method: "POST" }, { retry: false }),
+  addPortfolioDecision: (text: string, source: "owner" | "manager") =>
+    j<PortfolioDecision>("/portfolio-manager/decisions", {
+      method: "POST",
+      body: JSON.stringify({ text, source }),
+    }, { retry: false }),
+  deletePortfolioDecision: (id: string) =>
+    j<{ deleted: boolean }>(`/portfolio-manager/decisions/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  // Project manager (FO-005A). Sending a message is the only call that
+  // runs an agent; `retry: false` on every write so a replay can't start a
+  // second paid turn or approve twice.
+  getManager: (projectPath: string, signal?: AbortSignal) =>
+    j<ManagerState>(`/project-manager?path=${encodeURIComponent(projectPath)}`, { signal }),
+  saveManagerConfig: (projectPath: string, config: ManagerConfig) =>
+    j<ManagerConfig>("/project-manager/config", {
+      method: "PUT",
+      body: JSON.stringify({ path: projectPath, config }),
+    }, { retry: false }),
+  managerContext: (projectPath: string) =>
+    j<{ sources: ContextSource[] }>(`/project-manager/context?path=${encodeURIComponent(projectPath)}`),
+  getManagerTurn: (id: string) => j<ManagerTurn>(`/project-manager/turns/${encodeURIComponent(id)}`),
+  cancelManagerTurn: (id: string) =>
+    j<{ cancelled: boolean }>(`/project-manager/turns/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  saveProposalEdits: (projectPath: string, proposalId: string, revision: number, items: ProposalItemEdit[]) =>
+    j<TaskProposal>(`/project-manager/proposals/${encodeURIComponent(proposalId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ path: projectPath, revision, items }),
+    }, { retry: false }),
+  approveProposal: (projectPath: string, proposalId: string, revision: number, items: ProposalItemEdit[]) =>
+    j<{ proposal: TaskProposal; created: string[]; alreadyApproved: boolean }>(
+      `/project-manager/proposals/${encodeURIComponent(proposalId)}/approve`,
+      { method: "POST", body: JSON.stringify({ path: projectPath, revision, items }) },
+      { retry: false },
+    ),
+  rejectProposal: (projectPath: string, proposalId: string) =>
+    j<TaskProposal>(`/project-manager/proposals/${encodeURIComponent(proposalId)}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  addManagerDecision: (projectPath: string, text: string, source: "owner" | "manager") =>
+    j<ManagerDecision>("/project-manager/decisions", {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, text, source }),
+    }, { retry: false }),
+  deleteManagerDecision: (projectPath: string, id: string) =>
+    j<{ deleted: boolean }>(
+      `/project-manager/decisions/${encodeURIComponent(id)}?path=${encodeURIComponent(projectPath)}`,
+      { method: "DELETE" },
+      { retry: false },
+    ),
+  // Supervised execution (FO-005B). Preparing and checking never call a
+  // model. Only `approveExecution` starts an agent, and it is `retry: false`
+  // like every write here: a replayed approval is answered by the core with
+  // the run that already started, never a second one.
+  listExecutions: (projectPath: string) =>
+    j<ExecutionView[]>(`/project-manager/executions?path=${encodeURIComponent(projectPath)}`),
+  getExecution: (projectPath: string, id: string) =>
+    j<ExecutionView>(`/project-manager/executions/${encodeURIComponent(id)}?path=${encodeURIComponent(projectPath)}`),
+  prepareExecution: (projectPath: string, taskId: string) =>
+    j<{ execution: ExecutionView; existing: boolean }>("/project-manager/executions", {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, taskId }),
+    }, { retry: false }),
+  updateExecution: (projectPath: string, id: string, revision: number, config: Partial<ExecutionConfig>) =>
+    j<ExecutionView>(`/project-manager/executions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ path: projectPath, revision, config }),
+    }, { retry: false }),
+  recheckExecution: (projectPath: string, id: string) =>
+    j<ExecutionView>(`/project-manager/executions/${encodeURIComponent(id)}/check`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  approveExecution: (projectPath: string, id: string, revision: number, acknowledgeUsage: boolean, acknowledgeFullAccess = false) =>
+    j<{ execution: ExecutionView; alreadyStarted: boolean }>(`/project-manager/executions/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, revision, acknowledgeUsage, acknowledgeFullAccess }),
+    }, { retry: false }),
+  dismissExecution: (projectPath: string, id: string) =>
+    j<ExecutionView>(`/project-manager/executions/${encodeURIComponent(id)}/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  executionResult: (projectPath: string, id: string) =>
+    j<ExecutionResult>(`/project-manager/executions/${encodeURIComponent(id)}/result?path=${encodeURIComponent(projectPath)}`),
+  reviewExecution: (projectPath: string, id: string, action: "accept" | "return" | "fix" | "stop", text?: string) =>
+    j<ExecutionView>(`/project-manager/executions/${encodeURIComponent(id)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, action, ...(text ? { text } : {}) }),
+    }, { retry: false }),
+  // Structured scheduling and execution batches (FO-005C). The core owns
+  // every rule (cycles, approval scope, policy, what may start); these are
+  // thin calls. Every write is `retry: false`: a replayed Start or Approve
+  // is answered idempotently by the core, never repeated blindly here.
+  getTaskPlan: (projectPath: string, proposalId: string) =>
+    j<PlanView>(`/project-manager/plans/${encodeURIComponent(proposalId)}?path=${encodeURIComponent(projectPath)}`),
+  verifyTaskPlan: (projectPath: string, proposalId: string, planKey: string) =>
+    j<{ fresh: true; plan: PlanView }>(`/project-manager/plans/${encodeURIComponent(proposalId)}/verify`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, planKey }),
+    }, { retry: false }),
+  // Controlled execution queue (FO-ORCH05): the Owner's order and pause/stop.
+  // Nothing here starts a run; "next" only names the task to review.
+  getPlanQueue: (projectPath: string, proposalId: string) =>
+    j<{ queue: QueueView | null }>(`/project-manager/plans/${encodeURIComponent(proposalId)}/queue?path=${encodeURIComponent(projectPath)}`),
+  savePlanQueue: (projectPath: string, proposalId: string, body: { taskIds: string[]; planKey: string; revision?: number }) =>
+    j<{ queue: QueueView }>(`/project-manager/plans/${encodeURIComponent(proposalId)}/queue`, {
+      method: "PUT",
+      body: JSON.stringify({ path: projectPath, ...body }),
+    }, { retry: false }),
+  setPlanQueueStatus: (projectPath: string, queueId: string, action: "pause" | "resume" | "stop", revision: number) =>
+    j<{ queue: QueueView }>(`/project-manager/queues/${encodeURIComponent(queueId)}/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, revision }),
+    }, { retry: false }),
+  nextPlanQueueTask: (projectPath: string, queueId: string, revision: number, planKey: string) =>
+    j<{ next: NonNullable<QueueView["next"]>; queue: QueueView }>(`/project-manager/queues/${encodeURIComponent(queueId)}/next`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, revision, planKey }),
+    }, { retry: false }),
+  /** Owner opt-in to keep the next task's review prepared. Read-only; confirms and starts nothing. */
+  setPlanQueueAutoPrepare: (projectPath: string, queueId: string, enabled: boolean, revision: number) =>
+    j<{ queue: QueueView; changed: boolean }>(`/project-manager/queues/${encodeURIComponent(queueId)}/auto-prepare`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, enabled, revision }),
+    }, { retry: false }),
+  /** Hand queue tasks to a new Execution Batch draft (FO-ORCH07). Creates a draft only; nothing starts. */
+  prepareQueueBatch: (projectPath: string, queueId: string, body: { revision: number; planKey: string; taskIds?: string[] }) =>
+    j<{ batch: BatchView; queue: QueueView; alreadyPrepared: boolean }>(`/project-manager/queues/${encodeURIComponent(queueId)}/batch`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, ...body }),
+    }, { retry: false }),
+  listScheduling: (projectPath: string) =>
+    j<{ tasks: TaskSchedulingView[] }>(`/project-manager/scheduling?path=${encodeURIComponent(projectPath)}`),
+  updateScheduling: (projectPath: string, taskId: string, change: { priority?: TaskPriority; dependsOn?: string[] }) =>
+    j<{ task: TaskSchedulingView; affectsBatches: string[] }>(`/project-manager/tasks/${encodeURIComponent(taskId)}/scheduling`, {
+      method: "PUT",
+      body: JSON.stringify({ path: projectPath, ...change }),
+    }, { retry: false }),
+  listBatches: (projectPath: string) =>
+    j<BatchView[]>(`/project-manager/batches?path=${encodeURIComponent(projectPath)}`),
+  getBatch: (projectPath: string, id: string) =>
+    j<BatchView>(`/project-manager/batches/${encodeURIComponent(id)}?path=${encodeURIComponent(projectPath)}`),
+  batchEvents: (projectPath: string, id: string) =>
+    j<{ events: BatchEventRow[] }>(`/project-manager/batches/${encodeURIComponent(id)}/events?path=${encodeURIComponent(projectPath)}`),
+  createBatch: (projectPath: string, taskIds: string[], title?: string, policy?: Partial<BatchPolicy>) =>
+    j<BatchView>("/project-manager/batches", {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, taskIds, ...(title ? { title } : {}), ...(policy ? { policy } : {}) }),
+    }, { retry: false }),
+  createBatchFromProposal: (projectPath: string, proposalId: string) =>
+    j<BatchView>(`/project-manager/proposals/${encodeURIComponent(proposalId)}/batch`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  updateBatch: (
+    projectPath: string,
+    id: string,
+    revision: number,
+    change: { taskIds?: string[]; title?: string; policy?: Partial<BatchPolicy>; configs?: Record<string, Partial<ExecutionConfig>> },
+  ) =>
+    j<BatchView>(`/project-manager/batches/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ path: projectPath, revision, ...change }),
+    }, { retry: false }),
+  previewBatch: (projectPath: string, id: string) =>
+    j<BatchView>(`/project-manager/batches/${encodeURIComponent(id)}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  approveBatch: (
+    projectPath: string,
+    id: string,
+    revision: number,
+    previewKey: string,
+    acknowledgedHarnessIds: string[],
+    queue?: { acknowledgeFullAccess?: string[]; authorizationMinutes?: number },
+  ) =>
+    j<{ batch: BatchView; alreadyApproved: boolean }>(`/project-manager/batches/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, revision, previewKey, acknowledgedHarnessIds, ...(queue ?? {}) }),
+    }, { retry: false }),
+  batchAction: (projectPath: string, id: string, action: "start" | "pause" | "resume" | "cancel" | "stop-runs") =>
+    j<BatchView | { batch: BatchView }>(`/project-manager/batches/${encodeURIComponent(id)}/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  /** Read-only: what a bounded autonomous grant would bind (FO-ORCH08). */
+  previewAutonomy: (projectPath: string, id: string) =>
+    j<AutonomyPreview>(`/project-manager/batches/${encodeURIComponent(id)}/autonomy/preview`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  /** The Owner's explicit grant. `retry: false`: a replay must never create a second grant. */
+  grantAutonomy: (
+    projectPath: string,
+    id: string,
+    body: { previewKey: string; maxRuns: number; maxParallelism: number; ttlMinutes: number; acknowledgeUnknownQuota: boolean },
+  ) =>
+    j<{ batch: BatchView }>(`/project-manager/batches/${encodeURIComponent(id)}/autonomy`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, confirm: true, ...body }),
+    }, { retry: false }),
+  revokeAutonomy: (projectPath: string, id: string) =>
+    j<{ batch: BatchView; alreadyEnded: boolean }>(`/project-manager/batches/${encodeURIComponent(id)}/autonomy/revoke`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  releaseBatchTask: (projectPath: string, id: string, taskId: string) =>
+    j<BatchView>(`/project-manager/batches/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/release`, {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath }),
+    }, { retry: false }),
+  // FO-AUTO02: bounded multi-task employee + QC orchestration.
+  listOrchestratedBatches: (projectPath: string) =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView[]>(
+      `/project-manager/orchestrated-batches?path=${encodeURIComponent(projectPath)}`,
+    ),
+  getOrchestratedBatch: (projectPath: string, id: string) =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView>(
+      `/project-manager/orchestrated-batches/${encodeURIComponent(id)}?path=${encodeURIComponent(projectPath)}`,
+    ),
+  createOrchestratedBatch: (projectPath: string, taskIds: string[], title?: string) =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView>("/project-manager/orchestrated-batches", {
+      method: "POST",
+      body: JSON.stringify({ path: projectPath, taskIds, ...(title ? { title } : {}) }),
+    }, { retry: false }),
+  approveOrchestratedBatch: (
+    projectPath: string,
+    id: string,
+    body: import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchApproveBody,
+  ) =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView>(
+      `/project-manager/orchestrated-batches/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify({ path: projectPath, ...body }) },
+      { retry: false },
+    ),
+  orchestratedBatchAction: (projectPath: string, id: string, action: "start" | "pause" | "resume" | "cancel") =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView>(
+      `/project-manager/orchestrated-batches/${encodeURIComponent(id)}/${action}`,
+      { method: "POST", body: JSON.stringify({ path: projectPath }) },
+      { retry: false },
+    ),
+  authorizeOrchestratedPhase: (
+    projectPath: string,
+    id: string,
+    body: { taskId: string; phase: "developer" | "reviewer"; implementationRunId?: string },
+  ) =>
+    j<import("../../shared/pm-orchestrated-batch.ts").OrchestratedBatchView>(
+      `/project-manager/orchestrated-batches/${encodeURIComponent(id)}/phase-grants`,
+      { method: "POST", body: JSON.stringify({ path: projectPath, ...body }) },
+      { retry: false },
+    ),
+  /**
+   * Start one AI interview turn (FO-003). Returns at once; poll
+   * `getInterviewTurn` for the reply. `retry: false` — a replay would start a
+   * second paid turn.
+   */
+  startInterviewTurn: (input: InterviewTurnInput) =>
+    j<InterviewTurn>("/project-interviews/turns", { method: "POST", body: JSON.stringify(input) }, { retry: false }),
+  /** Local CLI probes only (no model call): the flags an interview turn on
+   *  this harness runs with and what they don't prevent. */
+  interviewPreflight: (input: { harness: string; model: string; effort: string | null }) =>
+    j<{ harness: { id: string; label: string; kind: string }; isolation: InterviewIsolation }>(
+      "/project-interviews/preflight",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  getInterviewTurn: (id: string) => j<InterviewTurn>(`/project-interviews/turns/${encodeURIComponent(id)}`),
+  cancelInterviewTurn: (id: string) =>
+    j<{ cancelled: boolean }>(`/project-interviews/turns/${encodeURIComponent(id)}`, { method: "DELETE" }, { retry: false }),
+  loadInterviewDraft: (projectPath: string) =>
+    j<{ state: InterviewState | null }>(`/project-interviews/draft?path=${encodeURIComponent(projectPath)}`),
+  saveInterviewDraft: (state: InterviewState) =>
+    j<{ ok: true }>("/project-interviews/draft", { method: "PUT", body: JSON.stringify({ state }) }),
+  deleteInterviewDraft: (projectPath: string) =>
+    j<{ deleted: boolean }>(`/project-interviews/draft?path=${encodeURIComponent(projectPath)}`, { method: "DELETE" }),
+  /** Read-only: whether each accepted draft's path is free. */
+  checkProjectDocs: (input: { projectPath: string; files: { kind: DocKind; path: string }[] }) =>
+    j<{ projectExists: boolean; checks: DocTargetCheck[] }>("/project-interviews/check-docs", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  /** Create accepted drafts in a registered project. Never overwrites. */
+  writeProjectDocs: (input: { projectPath: string; files: { kind: DocKind; path: string; content: string }[] }) =>
+    j<{ results: DocWriteResult[] }>(
+      "/project-interviews/write-docs",
+      { method: "POST", body: JSON.stringify(input) },
+      { retry: false },
+    ),
   /** The native folder panel; registers the pick as a project. */
   pickProject: (startingFolder?: string) =>
     withCoreBusySuspended(() =>
@@ -782,6 +2474,144 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ path: p, config }),
     }),
+  listProjectRules: (p: string) =>
+    j<{ rules: import("../../shared/types.ts").ProjectRule[]; version: string }>(
+      `/projects/rules?path=${encodeURIComponent(p)}`,
+    ),
+  createProjectRule: (p: string, body: { name: string; body: string; enabled?: boolean }) =>
+    j<{ rule: import("../../shared/types.ts").ProjectRule; rules: import("../../shared/types.ts").ProjectRule[]; version: string }>(
+      "/projects/rules",
+      { method: "POST", body: JSON.stringify({ path: p, ...body }) },
+    ),
+  updateProjectRule: (p: string, ruleId: string, patch: { name?: string; body?: string; enabled?: boolean; sortOrder?: number }) =>
+    j<{ rule: import("../../shared/types.ts").ProjectRule; rules: import("../../shared/types.ts").ProjectRule[]; version: string }>(
+      `/projects/rules/${encodeURIComponent(ruleId)}`,
+      { method: "PATCH", body: JSON.stringify({ path: p, ...patch }) },
+    ),
+  deleteProjectRule: (p: string, ruleId: string) =>
+    j<{ rules: import("../../shared/types.ts").ProjectRule[]; version: string }>(
+      `/projects/rules/${encodeURIComponent(ruleId)}?path=${encodeURIComponent(p)}`,
+      { method: "DELETE" },
+    ),
+  getRunExecution: (runId: string) => j<import("../../shared/run-execution.ts").RunExecution>(`/runs/${encodeURIComponent(runId)}/execution`),
+  /** Existing read-only preview; never starts a test or requests authorization. */
+  getTaskComputerWorkflow: (id: string) =>
+    j<{ review: import("../../shared/task-computer-workflow.ts").TaskComputerReview | null; used: boolean; run: import("../../shared/task-computer-workflow.ts").TaskComputerRun | null }>(
+      `/tasks/${encodeURIComponent(id)}/computer-workflow`),
+  saveTaskComputerWorkflow: (id: string, scope: import("../../shared/task-computer-workflow.ts").TaskComputerScope | null) =>
+    j<{ review: import("../../shared/task-computer-workflow.ts").TaskComputerReview | null; used: boolean; run: import("../../shared/task-computer-workflow.ts").TaskComputerRun | null }>(
+      `/tasks/${encodeURIComponent(id)}/computer-workflow`, { method: "PUT", body: JSON.stringify(scope) }, { retry: false }),
+  getTaskComputerScreenshot: (id: string, runId: string) =>
+    j<{ image: string }>(`/tasks/${encodeURIComponent(id)}/computer-workflow/screenshot/${encodeURIComponent(runId)}`),
+  getTaskQcEvidence: (taskId: string) =>
+    j<import("./manager-outcome").OutcomeTestEvidence>(`/tasks/${encodeURIComponent(taskId)}/qc-evidence`),
+  getTaskQc: (taskId: string) =>
+    j<{ state: import("../../shared/types.ts").TaskQcState; reviews: import("../../shared/types.ts").TaskQcReview[]; timeLimitSeconds?: number | null }>(
+      `/tasks/${encodeURIComponent(taskId)}/qc`,
+    ),
+  getTaskWorkspace: (taskId: string) =>
+    j<{ workspace: import("../../shared/task-workspace.ts").TaskWorkspaceView | null }>(
+      `/task-workspace?taskId=${encodeURIComponent(taskId)}`,
+    ).then((body) => body.workspace),
+  prepareTaskWorkspace: (body: { taskId: string; outputPaths?: string[]; dependencyPaths?: string[]; includePaths?: string[]; writeScope?: "explicit-outputs" | "working-copy" }) =>
+    j<{ workspace: import("../../shared/task-workspace.ts").TaskWorkspaceView }>(
+      "/task-workspace/prepare",
+      { method: "POST", body: JSON.stringify(body) },
+    ).then((result) => result.workspace),
+  abandonTaskWorkspace: (taskId: string) =>
+    j<{ workspace: import("../../shared/task-workspace.ts").TaskWorkspaceView }>(
+      "/task-workspace/abandon",
+      { method: "POST", body: JSON.stringify({ taskId }) },
+    ).then((result) => result.workspace),
+  publishTaskWorkspace: (body: { taskId: string; approve: true; paths: string[] }) =>
+    j<{ workspace: import("../../shared/task-workspace.ts").TaskWorkspaceView }>(
+      "/task-workspace/publish",
+      { method: "POST", body: JSON.stringify(body) },
+    ).then((result) => result.workspace),
+  runTaskWorkspaceCheck: (taskId: string, command: string) =>
+    j<{ check: import("../../shared/working-copy-checks.ts").WorkingCopyCheckRecord; workspace: import("../../shared/task-workspace.ts").TaskWorkspaceView | null }>(
+      "/task-workspace/check",
+      { method: "POST", body: JSON.stringify({ taskId, command }) },
+      { retry: false },
+    ),
+  getTaskSupervisedLive: (taskId: string) =>
+    j<import("../../shared/supervised-live-workflow.ts").SupervisedLiveView & {
+      taskId: string;
+      implementer: { employeeId: string; name: string } | null;
+      implementation: { harness: string; model: string | null };
+      latestEmployeeRunPhase: import("../../shared/execution/run.ts").EmployeeRunPhase | null;
+      qc: { state: import("../../shared/types.ts").TaskQcState; reviews: import("../../shared/types.ts").TaskQcReview[] };
+      usesFakeDriver: boolean;
+    }>(`/tasks/${encodeURIComponent(taskId)}/supervised-workflow`),
+  getTaskOrchestratedWorkflow: (taskId: string) =>
+    j<import("../../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowView>(
+      `/tasks/${encodeURIComponent(taskId)}/orchestrated-workflow`,
+    ),
+  approveOrchestratedWorkflow: (taskId: string, body: import("../../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowApproveBody) =>
+    j<import("../../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowView>(
+      `/tasks/${encodeURIComponent(taskId)}/orchestrated-workflow`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  cancelOrchestratedWorkflow: (taskId: string) =>
+    j<import("../../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowView>(
+      `/tasks/${encodeURIComponent(taskId)}/orchestrated-workflow/cancel`,
+      { method: "POST" },
+    ),
+  resumeOrchestratedWorkflow: (taskId: string) =>
+    j<import("../../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowView>(
+      `/tasks/${encodeURIComponent(taskId)}/orchestrated-workflow/resume`,
+      { method: "POST" },
+    ),
+  prepareTaskQcReview: (
+    taskId: string,
+    body: { reviewerHarness: string; reviewerModel?: string; reviewerEmployeeId?: string; reviewerRoleSlug?: string },
+  ) =>
+    j<{
+      review: import("../../shared/types.ts").TaskQcReview;
+      promptPreview: string;
+      blockedReason: string | null;
+    }>(`/tasks/${encodeURIComponent(taskId)}/qc/reviews`, { method: "POST", body: JSON.stringify(body) }),
+  /** The Owner's one-time authorization of one additional review round. It starts nothing. */
+  authorizeQcExtension: (taskId: string, expectedRound: number) =>
+    j<{ state: import("../../shared/types.ts").TaskQcState; replayed: boolean }>(`/tasks/${encodeURIComponent(taskId)}/qc/extension`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true, expectedRound }),
+    }),
+  startTaskQcReview: (taskId: string, reviewId: string) =>
+    j<{ runId: string }>(`/tasks/${encodeURIComponent(taskId)}/qc/reviews/${encodeURIComponent(reviewId)}/start`, {
+      method: "POST",
+    }, { retry: false }),
+  getQcRecovery: (taskId: string) =>
+    j<import("../../shared/qc-recovery.ts").QcRecoveryView>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery`),
+  prepareQcRecovery: (taskId: string, body: { reviewerHarness: string; reviewerModel: string; reviewerEffort?: string; reviewerMode?: string; validMinutes?: number; purpose?: "process-failure" | "evidence-refresh" }) =>
+    j<import("../../shared/qc-recovery.ts").QcRecoveryGrant>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  reconcileQcRecovery: (taskId: string) =>
+    j<import("../../shared/qc-recovery.ts").QcRecoveryView>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery/reconcile`, { method: "POST" }),
+  approveQcRecovery: (taskId: string, grantId: string) =>
+    j<import("../../shared/qc-recovery.ts").QcRecoveryGrant>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery/${encodeURIComponent(grantId)}/approve`, { method: "POST" }),
+  startQcRecovery: (taskId: string, grantId: string) =>
+    j<{ runId: string }>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery/${encodeURIComponent(grantId)}/start`, { method: "POST" }, { retry: false }),
+  cancelQcRecovery: (taskId: string, grantId: string) =>
+    j<import("../../shared/qc-recovery.ts").QcRecoveryGrant>(`/tasks/${encodeURIComponent(taskId)}/qc-recovery/${encodeURIComponent(grantId)}/cancel`, { method: "POST" }),
+  prepareReviewTest: (taskId: string, body: { acknowledgeRisk: true; validMinutes?: number; purpose?: "first-review" | "evidence-refresh" }) =>
+    j<import("../../shared/review-evidence.ts").ReviewTestAuthorization>(`/tasks/${encodeURIComponent(taskId)}/qc-evidence/test-authorization`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  approveReviewTest: (taskId: string, authId: string) =>
+    j<import("../../shared/review-evidence.ts").ReviewTestAuthorization>(`/tasks/${encodeURIComponent(taskId)}/qc-evidence/test-authorization/${encodeURIComponent(authId)}/approve`, { method: "POST" }),
+  executeReviewTest: (taskId: string, authId: string) =>
+    j<{ authorization: import("../../shared/review-evidence.ts").ReviewTestAuthorization; bundle: import("../../shared/review-evidence.ts").ReviewEvidenceBundle }>(`/tasks/${encodeURIComponent(taskId)}/qc-evidence/test-authorization/${encodeURIComponent(authId)}/execute`, { method: "POST" }),
+  cancelReviewTest: (taskId: string, authId: string) =>
+    j<import("../../shared/review-evidence.ts").ReviewTestAuthorization>(`/tasks/${encodeURIComponent(taskId)}/qc-evidence/test-authorization/${encodeURIComponent(authId)}/cancel`, { method: "POST" }),
+  acknowledgeTaskQcOwner: (taskId: string) =>
+    j<{ state: import("../../shared/types.ts").TaskQcState; task: import("../../shared/types.ts").Task | null }>(
+      `/tasks/${encodeURIComponent(taskId)}/qc/ack-owner`,
+      { method: "POST" },
+    ),
   /** Open a native file/folder picker and return the chosen references.
    *  WKWebView never exposes `File.path`, so this native panel is the only
    *  reliable way to turn a user pick into an absolute path. Returns `[]` on
@@ -1495,7 +3325,7 @@ export const api = {
    *  staleness). Used to re-check a task's persisted draft right after the
    *  panel seeds from a possibly-stale polled object — see RunPanel's
    *  pristine-adopt seeding. 404s (task deleted) surface as ApiError. */
-  getTask: (id: string) => j<Task>(`/tasks/${id}`),
+  getTask: (id: string, signal?: AbortSignal) => j<Task>(`/tasks/${encodeURIComponent(id)}`, { signal }),
   createTask: (input: {
     title: string;
     prompt: string;
@@ -1503,6 +3333,7 @@ export const api = {
     agent: string;
     workdir: string;
     isolation: Isolation;
+    accessMode?: AccessMode;
     baseRef?: string;
     /** Explicit branch name for worktree isolation. Overrides the project's
      *  nomenclature; the server validates it and makes it unique. */
@@ -1536,6 +3367,10 @@ export const api = {
      *  mutually exclusive with `agentProfileId` (400 when both are sent).
      *  See `docs/plans/pipelines.md` D1. */
     pipelineId?: string;
+    /** Kanban urgency 1 (Minimal) .. 5 (Critical); the server defaults to 3 (Normal). */
+    urgency?: import("../../shared/board-order.ts").Urgency;
+    /** Earliest UTC instant (ISO-8601) at which automatic execution may start this task, or null for immediate availability. */
+    availableFromUtc?: string | null;
   }) =>
     // retry: false — a replay would create a duplicate task + branch.
     j<Task>("/tasks", { method: "POST", body: JSON.stringify(input) }, { retry: false }),
@@ -1543,10 +3378,42 @@ export const api = {
     j<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   moveTask: (id: string, column: ColumnId) =>
     j<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ column }) }),
+  /** Changes only the Kanban urgency; the card lands at the end of its new urgency group. */
+  setTaskUrgency: (id: string, urgency: import("../../shared/board-order.ts").Urgency) =>
+    j<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ urgency }) }, { retry: false }),
+  /** Sets or clears the earliest UTC execution availability timestamp without touching urgency, status, rank, or grants. */
+  setTaskAvailability: (id: string, availableFromUtc: string | null, expectedUpdatedAt?: number) =>
+    j<Task>(
+      `/tasks/${id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(expectedUpdatedAt !== undefined ? { availableFromUtc, expectedUpdatedAt } : { availableFromUtc }),
+      },
+      { retry: false },
+    ),
+  /** Moves one task inside its own project + column + urgency group (idempotent; the server enforces the boundary). */
+  reorderTask: (id: string, body: { expectedColumn: ColumnId; expectedUrgency: import("../../shared/board-order.ts").Urgency; placement: import("../../shared/board-order.ts").Placement }) =>
+    j<{ task: Task; order: string[]; rowsWritten: number; renumbered: boolean }>(`/tasks/${id}/reorder`, { method: "POST", body: JSON.stringify(body) }),
+  admitTaskToInbox: (id: string) =>
+    j<Task>(`/tasks/${id}/admit-inbox`, { method: "POST" }, { retry: false }),
   deleteTask: (id: string) => j<void>(`/tasks/${id}`, { method: "DELETE" }),
   // `pending: true` (optional): the server returned before the agent spawn
   // finished; the run row already exists (task-details-blank-while-session-restores.md §3.1).
   startTask: (id: string) => j<{ runId: string; pending?: true }>(`/tasks/${id}/start`, { method: "POST" }),
+  getTaskLaunchDiagnostics: (id: string) =>
+    j<import("../../shared/execution/access-mode.ts").AccessDiagnostics>(`/tasks/${encodeURIComponent(id)}/launch-diagnostics`),
+  previewLaunchDiagnostics: (input: {
+    accessMode?: AccessMode;
+    harnessId?: string;
+    mode?: string | null;
+    isolation?: Isolation;
+    workdir?: string;
+    branch?: string | null;
+    isPipeline?: boolean;
+  }) => j<import("../../shared/execution/access-mode.ts").AccessDiagnostics>("/launch-diagnostics", {
+    method: "POST",
+    body: JSON.stringify(input),
+  }),
   /** `force: true` bypasses the done-column gate (still rejects an active
    *  run) — used by the Worktrees page's "Archive & delete" flow to archive
    *  a stale worktree's task regardless of its current column. `stopRun:
@@ -1618,7 +3485,7 @@ export const api = {
    *  query string since WebSockets can't set the Authorization header. */
   terminalSocketUrl: (id: string) =>
     `ws://127.0.0.1:${API_PORT}/terminals/${encodeURIComponent(id)}/ws?token=${encodeURIComponent(API_TOKEN)}`,
-  listRuns: (taskId: string) => j<Run[]>(`/tasks/${taskId}/runs`),
+  listRuns: (taskId: string, signal?: AbortSignal) => j<Run[]>(`/tasks/${encodeURIComponent(taskId)}/runs`, { signal }),
   /** Backward page of a task's persisted events, older than `beforeId`
    *  (exclusive) — drives the run panel's "Load earlier" affordance once the
    *  bounded SSE replay window (`EVENTS_REPLAY_LIMIT`) has been exhausted.
@@ -1653,7 +3520,7 @@ export const api = {
   getTaskTeardownPreview: (taskId: string) =>
     j<TaskTeardownPreview>(`/tasks/${encodeURIComponent(taskId)}/teardown-preview`),
   cancelRun: (runId: string) =>
-    j<{ cancelled: boolean }>(`/runs/${runId}/cancel`, { method: "POST" }),
+    j<{ cancelled: boolean; termination: import("../../shared/run-termination.ts").RunTermination | null }>(`/runs/${runId}/cancel`, { method: "POST" }),
   // Mirrors the orchestrator's `SendInputResult` (src/bun/orchestrator.ts) —
   // keep the two in sync. `withheld`/`savedToBacklog` are only ever present
   // alongside `delivered: false`: they distinguish "claude is showing a
@@ -2051,8 +3918,11 @@ export const api = {
    *  `listHarnessModels`). No type whitelist here: every `AppEvent` variant
    *  is forwarded to `onEvent` as-is, so a new variant needs no change in
    *  this function. Live-only (no replay). */
-  subscribeAppEvents(onEvent: (e: AppEvent) => void): () => void {
+  /** `onOpen` fires on the first connect and on every automatic reconnect,
+   *  so a caller can re-read state whose events may have been missed. */
+  subscribeAppEvents(onEvent: (e: AppEvent) => void, onOpen?: () => void, onDisconnect?: () => void): () => void {
     const es = new EventSource(`${BASE}/app/events?token=${encodeURIComponent(API_TOKEN)}`);
+    if (onOpen) es.onopen = () => onOpen();
     es.onmessage = (m) => {
       try {
         const parsed = JSON.parse(m.data);
@@ -2060,7 +3930,7 @@ export const api = {
         onEvent(parsed as AppEvent);
       } catch { /* ignore */ }
     };
-    es.onerror = (e) => { console.warn("[agetor] app events stream error", e); };
+    es.onerror = (e) => { onDisconnect?.(); console.warn("[agetor] app events stream error", e); };
     return () => es.close();
   },
 
@@ -2116,4 +3986,167 @@ export const api = {
     es.onerror = (e) => { console.warn("[agetor] task events stream error", taskId, e); };
     return () => es.close();
   },
+
+  // ── Backup & Recovery (FO-P2-004) ────────────────────────────────────────
+  // Non-idempotent calls opt out of the transport retry: re-issuing a create,
+  // restore or cancel after a dropped response could start a second operation.
+  backupProfile: () => j<BackupProfileInfo>("/backup/profile"),
+  pickBackupDestination: (purpose: BackupPickPurpose) =>
+    j<{ path?: string; grantId?: string; cancelled?: boolean }>(
+      "/backup/destinations/pick",
+      { method: "POST", body: JSON.stringify({ purpose }) },
+      { retry: false },
+    ),
+  createBackup: (grantId: string) =>
+    j<{ operation: BackupOperationView }>(
+      "/backup/create",
+      { method: "POST", body: JSON.stringify({ grantId }) },
+      { retry: false },
+    ),
+  verifyBackup: (snapshotPath: string) =>
+    j<{ operation: BackupOperationView }>(
+      "/backup/verify",
+      { method: "POST", body: JSON.stringify({ snapshotPath }) },
+      { retry: false },
+    ),
+  inspectBackup: (snapshotPath: string) =>
+    j<{ snapshot: BackupSnapshotSummary }>("/backup/inspect", {
+      method: "POST",
+      body: JSON.stringify({ snapshotPath }),
+    }),
+  previewBackupRestore: (snapshotPath: string, verificationId?: string) =>
+    j<BackupRestorePreview>("/backup/restore/preview", {
+      method: "POST",
+      body: JSON.stringify({ snapshotPath, verificationId }),
+    }),
+  restoreBackup: (input: {
+    snapshotPath: string;
+    grantId?: string;
+    verificationId: string;
+    destinationName?: string;
+    managed?: boolean;
+  }) =>
+    j<{ operation: BackupOperationView }>(
+      "/backup/restore",
+      { method: "POST", body: JSON.stringify(input) },
+      { retry: false },
+    ),
+  selectSnapshot: (path: string) =>
+    j<{ path: string; cancelled: boolean }>(
+      "/backup/snapshots/select",
+      { method: "POST", body: JSON.stringify({ path }) },
+      { retry: false },
+    ),
+  backupHistory: () => j<BackupHistoryResponse>("/backup/history"),
+  addBackupLocation: (grantId: string) =>
+    j<{ locations: string[] }>(
+      "/backup/history/locations",
+      { method: "POST", body: JSON.stringify({ grantId }) },
+      { retry: false },
+    ),
+  backupOperations: () => j<{ operations: BackupOperationView[] }>("/backup/operations"),
+  backupOperation: (operationId: string) =>
+    j<{ operation: BackupOperationView }>(`/backup/operations/${encodeURIComponent(operationId)}`),
+  cancelBackupOperation: (operationId: string) =>
+    j<{ operation: BackupOperationView; cancellation: unknown }>(
+      `/backup/operations/${encodeURIComponent(operationId)}/cancel`,
+      { method: "POST", body: "{}" },
+      { retry: false },
+    ),
+
+  profileActivationStatus: () => j<ProfileActivationStatusResponse>("/profile/activation"),
+  inspectProfileActivationCandidate: (candidatePath: string) =>
+    j<ProfileActivationCandidateResponse>("/profile/activation/candidate/inspect", {
+      method: "POST",
+      body: JSON.stringify({ candidatePath }),
+    }),
+  relinkCandidateProject: (candidatePath: string, oldPath: string, newPath: string) =>
+    j<ProfileActivationRelinkResponse>("/profile/activation/candidate/relink", {
+      method: "POST",
+      body: JSON.stringify({ candidatePath, oldPath, newPath }),
+    }),
+  prepareProfileActivation: (candidatePath: string) =>
+    j<ProfileActivationPrepareResponse>("/profile/activation/prepare", {
+      method: "POST",
+      body: JSON.stringify({ candidatePath, confirm: true }),
+    }),
+  prepareProfileRollback: () =>
+    j<ProfileActivationPrepareResponse>("/profile/activation/rollback/prepare", {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    }),
+  relaunchForProfileTransition: () =>
+    j<ProfileActivationRelaunchResponse>("/profile/activation/relaunch", {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
+    }),
 };
+
+export interface ManagerTurn {
+  id: string;
+  projectPath: string;
+  messageId: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  error: string | null;
+  startedAt: number;
+  settledAt: number | null;
+}
+
+export interface InterviewTurnInput {
+  interviewId: string;
+  harness: string;
+  model: string;
+  effort: string | null;
+  fast?: boolean;
+  maxMode?: boolean;
+  request: InterviewRequest;
+  project: {
+    path: string;
+    name: string;
+    description: string;
+    mode: "create" | "import";
+    empty: boolean;
+    stack: string;
+    signals: string[];
+    gitBranch: string | null;
+    readmePath: string | null;
+    ideaPath: string | null;
+    prdPath: string | null;
+    targets: { idea: string | null; prd: string | null };
+  };
+  messages: InterviewMessage[];
+  drafts: InterviewDrafts;
+  /** The `consentKey` of the isolation summary the user confirmed. */
+  consent: string | null;
+}
+
+export type InterviewTurnResult =
+  | { kind: "question"; reply: QuestionReply }
+  | { kind: "drafts"; reply: DraftsReply }
+  | { kind: "section"; reply: SectionReply };
+
+export interface InterviewTurn {
+  id: string;
+  interviewId: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  result: InterviewTurnResult | null;
+  error: string | null;
+  startedAt: number;
+  settledAt: number | null;
+}
+
+export interface DocTargetCheck {
+  kind: DocKind;
+  path: string;
+  state: "free" | "exists" | "invalid" | "outside";
+  absolute: string | null;
+  error: string | null;
+}
+
+export interface DocWriteResult {
+  kind: DocKind;
+  path: string;
+  status: "created" | "failed";
+  absolute: string | null;
+  error: string | null;
+}

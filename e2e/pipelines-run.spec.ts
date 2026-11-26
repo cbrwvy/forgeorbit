@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2e coverage for actually RUNNING a pipeline (docs/plans/pipelines.md
@@ -206,7 +206,7 @@ async function waitForPipelineStatus(backend: E2EBackend, id: string, expected: 
 }
 
 function boardCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 function stepNode(page: Page, stepId: string): Locator {
@@ -231,7 +231,7 @@ function historyRowFor(page: Page, stepName: string): Locator {
 }
 
 async function openPipelineRunFromBoard(page: Page, backend: E2EBackend, title: string): Promise<void> {
-  await gotoApp(page, backend.bootBase);
+  await gotoBoard(page, backend.bootBase);
   await boardCard(page, title).click();
   await expect(page.getByTestId("pipeline-run-view")).toBeVisible();
 }
@@ -261,8 +261,8 @@ test.describe("pipelines run: New Task form picker", () => {
     const id = await createPipelineRest(backend, pipelineName, [step as never], []);
     createdPipelineIds.push(id);
 
-    await gotoApp(page, backend.bootBase);
-    const form = page.locator("aside").first();
+    await gotoBoard(page, backend.bootBase);
+    const form = page.getByTestId("new-task-panel");
     const picker = form.getByTestId("new-task-pipeline-picker").getByTestId("pipeline-picker");
     await expect(form.getByText("Agent", { exact: true })).toBeVisible();
 
@@ -463,7 +463,8 @@ test.describe("pipelines run: executing a run", () => {
     // Clicking a satellite opens that persona's details: its profile, the
     // step that delegates to it, and every helper spawned for it — here the
     // one fake helper, finished — each openable on its own transcript tab.
-    await helperOneNode.click({ force: true });
+    await page.getByTestId("pipeline-run-view").getByRole("button", { name: "Fit View", exact: true }).click();
+    await helperOneNode.click();
     const details = page.getByTestId("subagent-details-dialog");
     await expect(details).toBeVisible();
     await expect(details.getByTestId("subagent-details-name")).toHaveText("Helper One");
@@ -488,7 +489,8 @@ test.describe("pipelines run: executing a run", () => {
     await expect(page.getByTestId("pipeline-run-view")).toBeVisible();
 
     // Helper Two never ran: its details say so and list no helpers.
-    await helperTwoNode.click({ force: true });
+    await page.getByTestId("pipeline-run-view").getByRole("button", { name: "Fit View", exact: true }).click();
+    await helperTwoNode.click();
     await expect(details).toBeVisible();
     await expect(details.getByTestId("subagent-details-name")).toHaveText("Helper Two");
     await expect(details.getByTestId("subagent-details-none")).toBeVisible();
@@ -602,7 +604,8 @@ test.describe("pipelines run: executing a run", () => {
 
     const advance = blocked.getByTestId("pipeline-run-advance");
     await advance.getByRole("button", { name: "Pick next step(s)…" }).click();
-    await advance.getByRole("button", { name: "B", exact: true }).click();
+    // Multi-select rows are WAI-ARIA options (`role="option"` on a button), not buttons.
+    await advance.getByRole("option", { name: "B", exact: true }).click();
     // Close the popover before hitting Advance.
     await page.keyboard.press("Escape");
     await advance.getByRole("button", { name: "Advance", exact: true }).click();
@@ -1047,10 +1050,11 @@ test.describe("pipelines run: executing a run", () => {
         has: page.getByRole("heading", { name: label, exact: true }),
       });
     const cardIn = (label: string, title: string) =>
-      column(label).locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+      column(label).locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
     await expect(cardIn("Done", viewTitle)).toBeVisible();
 
-    await cardIn("Review", cardTitle).getByRole("button", { name: "Done" }).click();
+    // `exact`: the card title button is "Done Card …" and would also match a substring.
+    await cardIn("Review", cardTitle).getByRole("button", { name: "Done", exact: true }).click();
     await waitForColumn(backend, cardTask.id, "done");
     await expect(cardIn("Done", cardTitle)).toBeVisible();
   });
@@ -1179,7 +1183,7 @@ const ASK_SPAWN_DELAY_MS = "3000";
  *  wait for why. */
 async function gotoAppSubscribed(page: Page, backend: E2EBackend): Promise<void> {
   const globalEventsRequested = page.waitForRequest((r) => new URL(r.url()).pathname === "/events");
-  await gotoApp(page, backend.bootBase);
+  await gotoBoard(page, backend.bootBase);
   await globalEventsRequested;
 }
 
@@ -1447,7 +1451,7 @@ test.describe("pipelines run: step attention — an errored step", () => {
       blockMessage = block!.message;
     }).toPass({ timeout: CONVERGE_TIMEOUT });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const review = boardCard(page, title).getByRole("button", { name: "Review", exact: true });
     await expect(review).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     await review.click();
@@ -1532,7 +1536,7 @@ test.describe("pipelines run: step attention — blocks", () => {
       expect(row.column).toBe("blocked");
     }).toPass({ timeout: CONVERGE_TIMEOUT });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const review = boardCard(page, title).getByRole("button", { name: "Review", exact: true });
     await expect(review).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     await review.click();

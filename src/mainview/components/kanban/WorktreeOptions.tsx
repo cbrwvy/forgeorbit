@@ -1,4 +1,6 @@
-import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react";
 import { GitBranch, SlidersHorizontal } from "lucide-react";
 import { api, type BranchNamingConfig } from "@/lib/api";
 import { Input } from "@/components/ui/input";
@@ -84,6 +86,7 @@ export interface WorktreeOptionsState {
    *  the branch-name field's settings gear and its `BranchNamingDialog`. */
   workdir: string;
   taskType: TaskType;
+  worktreeGit: "unknown" | "git" | "non-git";
 }
 
 /**
@@ -95,6 +98,9 @@ export interface WorktreeOptionsState {
 export function useWorktreeOptions({ workdir, title, taskType, enabled = true }: { workdir: string; title: string; taskType: TaskType; enabled?: boolean }): WorktreeOptionsState {
   const [isolate, setIsolate] = useState(true);
   const [baseRef, setBaseRef] = useState("");
+  const [worktreeGit, setWorktreeGit] = useState<"unknown" | "git" | "non-git">("unknown");
+  const workdirForGit = workdir.trim();
+  const lastGitWorkdir = useRef("");
   // Branch nomenclature for the selected project (loaded from the server;
   // falls back to the built-in defaults). While clean (`!branchDirty`), the
   // field DERIVES its display from the tag-visible PATTERN (e.g.
@@ -123,6 +129,29 @@ export function useWorktreeOptions({ workdir, title, taskType, enabled = true }:
       .catch(() => { if (!cancelled) setBranchConfig(DEFAULT_BRANCH_CONFIG); });
     return () => { cancelled = true; };
   }, [workdir, enabled]);
+
+  useEffect(() => {
+    if (!enabled || !workdirForGit) {
+      setWorktreeGit("unknown");
+      return;
+    }
+    let cancelled = false;
+    void api.discoverProject({ path: workdirForGit }).then(
+      (discovery) => {
+        if (cancelled) return;
+        const kind = discovery.git.present ? "git" as const : "non-git" as const;
+        setWorktreeGit(kind);
+        if (lastGitWorkdir.current !== workdirForGit) {
+          lastGitWorkdir.current = workdirForGit;
+          if (kind === "non-git") setIsolate(false);
+        }
+      },
+      () => {
+        if (!cancelled) setWorktreeGit("unknown");
+      },
+    );
+    return () => { cancelled = true; };
+  }, [workdirForGit, enabled]);
 
   // The tag-visible pattern for the current config + type, e.g. `feature/<slug>`.
   // Deliberately stable while the title is typed — only config/taskType move
@@ -166,7 +195,7 @@ export function useWorktreeOptions({ workdir, title, taskType, enabled = true }:
     [branchField.resolved],
   );
 
-  const valid = !isolate || branchValidation.ok;
+  const valid = (!isolate || branchValidation.ok) && (worktreeGit !== "non-git" || !isolate);
 
   const payload = () => worktreePayload({ isolate, baseRef, branchSubmitValue: branchField.submitValue });
 
@@ -208,6 +237,7 @@ export function useWorktreeOptions({ workdir, title, taskType, enabled = true }:
     onBranchConfigSaved: setBranchConfig,
     workdir,
     taskType,
+    worktreeGit,
   };
 }
 
@@ -227,28 +257,29 @@ type Props = { state: WorktreeOptionsState } | { locked: { branch: string } };
  * picker, no editable name, no dialog.
  */
 export function WorktreeOptions(props: Props) {
+  useUILocale();
   if ("locked" in props) {
     const { branch } = props.locked;
     return (
       <div data-testid="worktree-options-locked" className="space-y-3">
         <div className="min-w-0 space-y-1">
-          <label className="text-muted-foreground">Branch</label>
+          <label className="text-muted-foreground"><I18nText id="common.branch" /></label>
           <Input
             data-testid="locked-branch"
             readOnly
             value={branch}
             className="font-mono text-[11px]"
           />
-          <p className="text-[10px] text-muted-foreground">PR head branch — checked out as-is.</p>
+          <p className="text-[10px] text-muted-foreground"><I18nText id="tasks.pr_head_branch_checked_out_as_is" /></p>
         </div>
 
         <label
           className="flex cursor-default items-center gap-1.5 opacity-80"
-          title="Always isolated — the PR's head branch is checked out in its own worktree, so your checkout stays clean."
+          title={tr("tasks.always_isolated_the_pr_s_head_branch_is")}
         >
           <input type="checkbox" checked disabled data-testid="isolate-toggle" />
           <GitBranch className="size-3" />
-          <span>Isolate (worktree)</span>
+          <span><I18nText id="tasks.isolate_worktree" /></span>
         </label>
       </div>
     );
@@ -271,40 +302,56 @@ export function WorktreeOptions(props: Props) {
     branchField,
     branchValidation,
     onBranchConfigSaved,
+    worktreeGit,
   } = state;
+
+  const isolateBlocked = worktreeGit === "non-git";
+  const isolateUnknown = worktreeGit === "unknown";
 
   return (
     <div data-testid="worktree-options" className="space-y-3">
+      {isolateBlocked && (
+        <p className="rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-[11px] text-warning" data-testid="worktree-non-git-notice" role="status">
+          <I18nText id="tasks.worktree_non_git_notice" />
+        </p>
+      )}
+      {isolateUnknown && workdir.trim() && (
+        <p className="text-[11px] text-muted-foreground" data-testid="worktree-git-unknown-notice" role="status">
+          <I18nText id="tasks.worktree_git_unknown_notice" />
+        </p>
+      )}
       <BranchPicker
-        label="Branch"
+        label={tr("common.branch")}
         workdir={workdir}
         value={baseRef}
         onChange={setBaseRef}
         placement="bottom"
         title={
           isolate
-            ? "Base ref the worktree branches from. Pick the current branch row to use what's checked out at task start."
-            : "Isolation is off — the value is recorded but the agent will run directly in the project workdir."
+            ? tr("common.base_ref_the_worktree_branches_from_pick_the")
+            : tr("common.isolation_is_off_the_value_is_recorded_but")
         }
       />
 
       <label
-        className="flex cursor-pointer items-center gap-1.5"
-        title={isolateTitle}
+        className={cn("flex items-center gap-1.5", isolateBlocked ? "cursor-not-allowed opacity-70" : "cursor-pointer")}
+        title={isolateBlocked ? tr("tasks.worktree_non_git_notice") : isolateTitle}
       >
         <input
           type="checkbox"
-          checked={isolate}
+          checked={isolate && !isolateBlocked}
+          disabled={isolateBlocked}
           onChange={(e) => setIsolate(e.target.checked)}
           data-testid="isolate-toggle"
         />
         <GitBranch className="size-3" />
-        <span>Isolate (worktree)</span>
+        <span><I18nText id="tasks.isolate_worktree" /></span>
       </label>
+      <p className="text-[11px] text-muted-foreground" data-testid="isolate-staging-hint"><I18nText id="tasks.isolation_staging_hint" /></p>
 
       {isolate && (
         <div className="space-y-1">
-          <label className="text-muted-foreground">Branch name</label>
+          <label className="text-muted-foreground"><I18nText id="tasks.branch_name" /></label>
           <div className="relative">
             <Input
               data-testid="branch-name-input"
@@ -316,14 +363,14 @@ export function WorktreeOptions(props: Props) {
                 "pr-9 font-mono text-[11px]",
                 !branchValidation.ok && "border-destructive focus-visible:ring-destructive",
               )}
-              title="Git branch the worktree will use. Live-resolved from this project's nomenclature (title, type, project name); edit to override, or use the settings button to change the pattern."
+              title={tr("tasks.git_branch_the_worktree_will_use_live_resolved")}
             />
             <button
               type="button"
               onClick={() => setBranchSettingsOpen(true)}
               disabled={!workdir.trim()}
-              title="Branch naming settings for this project"
-              aria-label="Configure branch naming"
+              title={tr("tasks.branch_naming_settings_for_this_project")}
+              aria-label={tr("tasks.configure_branch_naming")}
               className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
             >
               <SlidersHorizontal className="size-3.5" />
@@ -344,9 +391,7 @@ export function WorktreeOptions(props: Props) {
               type="button"
               onClick={() => setBranchDirty(false)}
               className="text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
-            >
-              Reset to pattern
-            </button>
+            ><I18nText id="tasks.reset_to_pattern" />{" "}</button>
           )}
         </div>
       )}

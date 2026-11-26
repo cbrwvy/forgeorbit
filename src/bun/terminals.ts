@@ -20,7 +20,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import type { ServerWebSocket } from "bun";
 import type { Task, TerminalTab } from "../shared/types.ts";
-import { tasks } from "./db.ts";
+import { db, tasks } from "./db.ts";
+import { requiresProfessionalInputReview } from "./professional-input-policy.ts";
 // NOTE: worktree.ts is imported *dynamically* inside createTerminal, not at
 // the top level. worktree.ts reads db.ts's `dataDir` at module init; importing
 // it statically here would pull that read into db.ts's own init chain (db.ts →
@@ -173,6 +174,7 @@ export async function createTerminal(
     const current = (): { task: Task } | { error: string; notFound?: boolean } => {
       const t = tasks.get(taskId);
       if (!t) return { error: "task not found", notFound: true };
+      if (requiresProfessionalInputReview(db, taskId)) return { error: "Professional task input requires an Owner Turn review; raw terminals are unavailable." };
       if (t.archivedAt != null) return { error: ARCHIVED_TERMINAL_ERROR };
       if (isTaskTearingDown(taskId)) return { error: TEARDOWN_TERMINAL_ERROR };
       return { task: t };
@@ -331,7 +333,7 @@ export function getTerminal(id: string): TerminalTab | null {
 
 export function writeTerminal(id: string, data: string | Uint8Array): boolean {
   const e = terminals.get(id);
-  if (!e || e.exited) return false;
+  if (!e || e.exited || requiresProfessionalInputReview(db, e.taskId)) return false;
   e.term.write(data);
   return true;
 }

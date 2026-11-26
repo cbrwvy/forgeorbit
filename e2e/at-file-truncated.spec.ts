@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard as gotoApp } from "./helpers";
 
 /**
  * E2E coverage for the `@` file-reference feature PAST the 20k listing cap
@@ -97,9 +97,9 @@ async function registerProject(apiBase: string, apiToken: string, dir: string): 
 
 // ---- Locator helpers (mirrors e2e/at-file-autocomplete.spec.ts) -----------
 
-/** The New Task sidebar — always the first `<aside>` in DOM order. */
+/** The named New Task sidebar; the project sidebar is also an aside. */
 function newTaskForm(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 function promptTextarea(scope: Locator): Locator {
@@ -163,7 +163,7 @@ test.describe("@ file references past the truncation cap", () => {
     const row = atRow(form, "src/zzz-target.ts");
     await expect(row).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     await expect(
-      atPopover(form).getByText("Large repo — matches searched server-side"),
+      atPopover(form).getByText("Matches searched server-side; discovery limits may omit files."),
     ).toBeVisible();
 
     await page.keyboard.press("Enter");

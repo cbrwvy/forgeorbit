@@ -1,3 +1,6 @@
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Dispatch, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useIsPresent } from "motion/react";
@@ -83,6 +86,7 @@ interface PreviewRequest {
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 function Issues({ issues, kind }: { issues: BundleIssue[]; kind: "warning" | "blocking" }) {
+  useUILocale();
   if (issues.length === 0) return null;
   return (
     <ul className="mt-1.5 space-y-1">
@@ -112,6 +116,7 @@ function planLevelIssues(plan: BundleImportPlan): BundleIssue[] {
 }
 
 function Collapsed({ label, text, testId }: { label: string; text: string; testId?: string }) {
+  useUILocale();
   if (!text.trim()) return null;
   return (
     <details data-testid={testId} className="mt-1.5 text-[11px]">
@@ -148,12 +153,12 @@ interface ImportFailure {
 }
 
 const DISCARD_IMPORT = {
-  title: "Discard this import?",
-  description: "Your changes to names and harnesses will be lost.",
+  get title() { return tr("common.discard_this_import"); },
+  get description() { return tr("common.your_changes_to_names_and_harnesses_will_be"); },
 } as const;
 const DISCARD_PASTE = {
-  title: "Discard the pasted JSON?",
-  description: "The text you pasted will be lost.",
+  get title() { return tr("common.discard_the_pasted_json"); },
+  get description() { return tr("common.the_text_you_pasted_will_be_lost"); },
 } as const;
 
 /**
@@ -183,6 +188,7 @@ export function ImportBundleDialog({
   onImported?: (result: { enabledHarnesses: string[] }) => void;
   guardsNavigation?: boolean;
 }) {
+  const { locale: uiLocale } = useUILocale();
   const [text, setText] = useState<string | null>(null);
   const [sourceLabel, setSourceLabel] = useState<string>("");
   const [pasteDraft, setPasteDraft] = useState("");
@@ -204,7 +210,7 @@ export function ImportBundleDialog({
     const lost = importErrorRef.current?.lost;
     importErrorRef.current = null;
     if (!lost) return;
-    toast.error("Import didn't finish", {
+    toast.error(tr("common.import_didn_t_finish"), {
       id: "bundle-import-left-pending",
       description: lostImportLeftText(lost.cause),
       duration: Infinity,
@@ -267,7 +273,7 @@ export function ImportBundleDialog({
     };
   }, [abortPreview, noteLeavingPendingVerdict]);
 
-  const optionsKey = useMemo(() => JSON.stringify(toImportOptions(options)), [options]);
+  const optionsKey = useMemo(() => JSON.stringify(toImportOptions(options)), [options, uiLocale]);
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const optionsKeyRef = useRef(optionsKey);
@@ -472,12 +478,12 @@ export function ImportBundleDialog({
     (dropped) => {
       void (async () => {
         if (importOptionsEdited(optionsRef.current)) {
-          const ok = await confirm({
-            title: "Replace this import?",
+          const ok = await confirm(() => ({
+            title: tr("common.replace_this_import"),
             description: DISCARD_IMPORT.description,
-            confirmLabel: "Replace",
+            confirmLabel: tr("common.replace"),
             variant: "destructive",
-          });
+          }));
           if (!ok) return;
         }
         loadText(dropped, "Dropped file");
@@ -497,7 +503,7 @@ export function ImportBundleDialog({
   const requestClose = useCallback(async () => {
     if (importing) return;
     if (discardAsk) {
-      const ok = await confirm({ ...discardAsk, confirmLabel: "Discard", variant: "destructive" });
+      const ok = await confirm(() => ({ ...discardAsk, confirmLabel: tr("common.discard"), variant: "destructive" }));
       if (!ok) return;
     }
     onClose();
@@ -508,7 +514,7 @@ export function ImportBundleDialog({
   const backToSource = async () => {
     if (importing) return;
     if (importOptionsEdited(optionsRef.current)) {
-      const ok = await confirm({ ...DISCARD_IMPORT, confirmLabel: "Discard", variant: "destructive" });
+      const ok = await confirm(() => ({ ...DISCARD_IMPORT, confirmLabel: tr("common.discard"), variant: "destructive" }));
       if (!ok) return;
     }
     noteLeavingPendingVerdict();
@@ -540,7 +546,7 @@ export function ImportBundleDialog({
       // request it can still be too large to send.
       const tooLarge = bundleTextTooLarge(res.text, `"${res.filename}"`);
       if (tooLarge) {
-        toast.error("Can't import that file", { description: tooLarge, duration: Infinity });
+        toast.error(tr("common.can_t_import_that_file"), { description: tooLarge, duration: Infinity });
         return;
       }
       loadText(res.text, res.filename);
@@ -551,13 +557,13 @@ export function ImportBundleDialog({
       // panel itself may still be on screen.
       const description =
         e instanceof ApiError && e.status === 501
-          ? "Choosing a file isn't available here — paste the JSON instead."
+          ? tr("common.choosing_a_file_isn_t_available_here_paste")
           : e instanceof ApiError
             ? message(e)
             : e instanceof ApiUnreachableError
-              ? `${requestFailureText(e)} — choose the file again once it's back.`
-              : `${requestFailureText(e)} — if the file panel is still open, close it and choose the file again.`;
-      toast.error("Couldn't open the file", { description, duration: Infinity });
+              ? tr("common.choose_the_file_again_once_it_s_back", { p0: String(requestFailureText(e)) })
+              : tr("common.if_the_file_panel_is_still_open_close", { p0: String(requestFailureText(e)) });
+      toast.error(tr("common.couldn_t_open_the_file"), { description, duration: Infinity });
     } finally {
       if (pick === pickRef.current) setPicking(false);
     }
@@ -607,7 +613,7 @@ export function ImportBundleDialog({
       void refreshPipelines();
       const warnings = result.warnings.length;
       toast.success(importSuccessText(result), {
-        description: warnings > 0 ? `${warnings} warning${warnings === 1 ? "" : "s"} — ${result.warnings[0]!.message}` : undefined,
+        description: warnings > 0 ? tr("common.warning_1174fb", { p0: String(warnings), p1: String(warnings === 1 ? "" : "s"), p2: String(result.warnings[0]!.message) }) : undefined,
       });
       onImported?.({ enabledHarnesses: result.enabledHarnesses });
       onClose();
@@ -631,24 +637,24 @@ export function ImportBundleDialog({
         if (conflict) {
           // A 409 commits nothing — the core refused before writing.
           const plan = (e.body as { plan?: BundleImportPlan } | null)?.plan;
-          toast.error("Nothing was imported", {
+          toast.error(tr("common.nothing_was_imported_ff2b44"), {
             description: lateImportConflictText(plan, { fingerprint: sentFingerprint, message: e.message }),
             duration: Infinity,
           });
         } else if (unreachable) {
-          toast.error("Couldn't import", {
-            description: `${requestFailureText(e)}, so the import most likely didn't run. Open Import again once it's back.`,
+          toast.error(tr("common.couldn_t_import"), {
+            description: tr("common.so_the_import_most_likely_didn_t_run", { p0: String(requestFailureText(e)) }),
             duration: Infinity,
           });
         } else if (e instanceof ApiError) {
           // The core answered with an error: it writes in one transaction,
           // so nothing was imported.
-          toast.error("Nothing was imported", { description: lateImportErrorText(e.message), duration: Infinity });
+          toast.error(tr("common.nothing_was_imported_ff2b44"), { description: lateImportErrorText(e.message), duration: Infinity });
         } else {
           // No answer: it may still have committed, so say where to look.
           refreshEnabled();
-          toast.error("Import didn't finish", {
-            description: `${requestFailureText(e)}, so the import may already have run — check your Agents and Pipelines before importing the file again.`,
+          toast.error(tr("common.import_didn_t_finish"), {
+            description: tr("common.so_the_import_may_already_have_run_check", { p0: String(requestFailureText(e)) }),
             duration: Infinity,
           });
         }
@@ -693,7 +699,7 @@ export function ImportBundleDialog({
         // differs from the shown one (its names now taken) answers 409 with
         // the new plan instead of creating anything.
         setImportError({
-          message: `${requestFailureText(e)}, so the import most likely didn't run. Import again once it's back.`,
+          message: tr("common.so_the_import_most_likely_didn_t_run_08c2d6", { p0: String(requestFailureText(e)) }),
           key,
           unreachable: true,
         });
@@ -773,16 +779,13 @@ export function ImportBundleDialog({
         <header className="flex items-start justify-between gap-3 border-b border-border/60 p-3">
           <div className="min-w-0">
             <h2 id={TITLE_ID} className="flex items-center gap-2 text-sm font-semibold">
-              <PackagePlus className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              Import Agents and Pipelines
-            </h2>
+              <PackagePlus className="size-4 shrink-0 text-muted-foreground" aria-hidden /><I18nText id="bundle.import_agents_and_pipelines" />{" "}</h2>
             <p className="mt-1 truncate text-xs text-muted-foreground">
               {showPreview ? (
-                <>
-                  From <span className="font-medium text-foreground">{sourceLabel}</span>
+                <><I18nText id="common.from" />{" "}<span className="font-medium text-foreground">{sourceLabel}</span>
                 </>
               ) : (
-                "An agetor bundle (.agetor.json), or a pipeline file from an older version."
+                tr("common.an_agetor_bundle_agetor_json_or_a_pipeline")
               )}
             </p>
           </div>
@@ -792,7 +795,7 @@ export function ImportBundleDialog({
             data-testid="bundle-import-close"
             onClick={() => void requestClose()}
             disabled={importing}
-            aria-label="Close"
+            aria-label={tr("common.close")}
           >
             <X className="size-4" />
           </Button>
@@ -817,7 +820,7 @@ export function ImportBundleDialog({
               onPreviewPaste={previewPaste}
             />
           ) : (
-            <div ref={previewRef} tabIndex={-1} role="region" aria-label="Import preview" className="outline-none">
+            <div ref={previewRef} tabIndex={-1} role="region" aria-label={tr("bundle.import_preview")} className="outline-none">
               {/* Locked while the import runs (an edit then would be dropped)
                   and while a lost import's verdict is pending. */}
               <fieldset disabled={previewLocked} className="m-0 min-w-0 border-0 p-0">
@@ -841,10 +844,9 @@ export function ImportBundleDialog({
           <div className="min-w-0 text-[11px] text-muted-foreground">
             {showPreview && plan && !plan.canImport && (
               <span className="text-danger">
-                {plan.blocking.length} blocking issue{plan.blocking.length === 1 ? "" : "s"} — fix them to import
-              </span>
+                {plan.blocking.length}{" "}<I18nText id="bundle.blocking_issue" />{plan.blocking.length === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="bundle.fix_them_to_import" />{" "}</span>
             )}
-            {showPreview && plan?.canImport && (previewing || (planStale && !previewError)) && <span>Updating preview…</span>}
+            {showPreview && plan?.canImport && (previewing || (planStale && !previewError)) && <span><I18nText id="bundle.updating_preview" /></span>}
             {showPreview && plan?.canImport && !previewing && planStale && previewError && (
               <span className="text-danger">{previewOutdatedNote(previewError)}</span>
             )}
@@ -858,13 +860,9 @@ export function ImportBundleDialog({
                 disabled={importing}
                 onClick={() => void backToSource()}
               >
-                <ArrowLeft className="mr-1 size-3.5" aria-hidden />
-                Other file
-              </Button>
+                <ArrowLeft className="mr-1 size-3.5" aria-hidden /><I18nText id="bundle.other_file" />{" "}</Button>
             )}
-            <Button size="sm" variant="outline" onClick={() => void requestClose()} disabled={importing}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="outline" onClick={() => void requestClose()} disabled={importing}><I18nText id="common.cancel" />{" "}</Button>
             {showPreview && (
               <Button
                 size="sm"
@@ -894,12 +892,12 @@ export function ImportBundleDialog({
                 }}
               >
                 {importing
-                  ? "Importing…"
+                  ? tr("common.importing")
                   : plan
                     ? planChanged
-                      ? "Import updated plan"
-                      : `Import ${countsSummary({ agents: plan.agents.length, pipelines: plan.pipelines.length })}`
-                    : "Import"}
+                      ? tr("common.import_updated_plan")
+                      : tr("common.import", { p0: String(countsSummary({ agents: plan.agents.length, pipelines: plan.pipelines.length })) })
+                    : tr("bundle.import")}
               </Button>
             )}
           </div>
@@ -912,6 +910,7 @@ export function ImportBundleDialog({
 
 /** An error (or, for a lost import's verdict, a warning) above the preview. */
 function ErrorBox({ text, onRetry, tone = "danger" }: { text: string; onRetry?: () => void; tone?: "danger" | "warning" }) {
+  useUILocale();
   return (
     <div
       data-testid="bundle-import-error"
@@ -923,9 +922,7 @@ function ErrorBox({ text, onRetry, tone = "danger" }: { text: string; onRetry?: 
     >
       <span className="min-w-0">{text}</span>
       {onRetry && (
-        <Button size="sm" variant="outline" data-testid="bundle-import-retry" className="h-6 shrink-0 px-2 text-[11px]" onClick={onRetry}>
-          Retry
-        </Button>
+        <Button size="sm" variant="outline" data-testid="bundle-import-retry" className="h-6 shrink-0 px-2 text-[11px]" onClick={onRetry}><I18nText id="common.retry" />{" "}</Button>
       )}
     </div>
   );
@@ -948,6 +945,7 @@ function SourceStep({
   onChooseFile: () => void;
   onPreviewPaste: () => void;
 }) {
+  useUILocale();
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -964,13 +962,13 @@ function SourceStep({
           }}
         >
           <FileJson className="mr-1 size-3.5" aria-hidden />
-          {picking ? "Choosing…" : "Choose file…"}
+          {picking ? tr("common.choosing") : tr("common.choose_file")}
         </Button>
-        <span className="text-muted-foreground">or drop a .json file here, or paste the JSON below.</span>
+        <span className="text-muted-foreground"><I18nText id="bundle.or_drop_a_json_file_here_or_paste" /></span>
       </div>
       <Textarea
         data-testid="bundle-import-paste"
-        aria-label="Bundle JSON"
+        aria-label={tr("bundle.bundle_json")}
         aria-invalid={pasteError ? true : undefined}
         aria-describedby={pasteError ? "bundle-import-paste-error" : undefined}
         value={pasteDraft}
@@ -991,9 +989,7 @@ function SourceStep({
           data-testid="bundle-import-paste-preview"
           disabled={!pasteDraft.trim()}
           onClick={onPreviewPaste}
-        >
-          Preview
-        </Button>
+        ><I18nText id="common.preview" />{" "}</Button>
       </div>
     </div>
   );
@@ -1020,12 +1016,13 @@ function PreviewStep({
   planChanged: boolean;
   onRetry: () => void;
 }) {
+  useUILocale();
   const previewErrorBox = previewError && (
     <ErrorBox text={previewError.message} onRetry={previewError.retryable && !previewing ? onRetry : undefined} />
   );
   if (!plan) {
     return (
-      previewErrorBox ?? <p className="text-muted-foreground">{previewing ? "Reading the file…" : "Preparing the preview…"}</p>
+      previewErrorBox ?? <p className="text-muted-foreground">{previewing ? tr("common.reading_the_file") : tr("common.preparing_the_preview")}</p>
     );
   }
 
@@ -1040,33 +1037,24 @@ function PreviewStep({
           className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
         >
           <AlertTriangle className="mt-px size-3.5 shrink-0" aria-hidden />
-          <span>
-            Nothing was imported: something on this machine changed since the preview, so the import changed
-            too. The plan below is what it would create now — review it, then import again.
-          </span>
+          <span><I18nText id="bundle.nothing_was_imported_something_on_this_machine_changed" />{" "}</span>
         </div>
       )}
       {previewErrorBox}
       {plan.legacy && (
-        <div data-testid="bundle-import-legacy" className="rounded-md bg-info/10 px-3 py-2 text-info">
-          Legacy pipeline file — its Agents are matched by name to the Agents already on this machine.
-        </div>
+        <div data-testid="bundle-import-legacy" className="rounded-md bg-info/10 px-3 py-2 text-info"><I18nText id="bundle.legacy_pipeline_file_its_agents_are_matched_by" />{" "}</div>
       )}
       <div
         data-testid="bundle-import-third-party-note"
         className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
       >
         <ShieldAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-        <span>
-          This file is third-party content: its instructions become part of your agents' prompts. Read them
-          before importing.
-        </span>
+        <span><I18nText id="bundle.this_file_is_third_party_content_its_instructions" />{" "}</span>
       </div>
 
       {plan.agents.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Agents ({plan.agents.length})
+          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"><I18nText id="bundle.agents" />{plan.agents.length})
           </h3>
           {plan.agents.map((agent, i) => (
             <AgentRow
@@ -1084,7 +1072,7 @@ function PreviewStep({
 
       {harnessesWithNotes.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Harnesses</h3>
+          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"><I18nText id="common.harnesses" /></h3>
           {harnessesWithNotes.map((h) => (
             <HarnessRow key={h.id} harness={h} options={options} dispatch={dispatch} />
           ))}
@@ -1093,8 +1081,7 @@ function PreviewStep({
 
       {plan.pipelines.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Pipelines ({plan.pipelines.length})
+          <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground"><I18nText id="bundle.pipelines" />{plan.pipelines.length})
           </h3>
           {plan.pipelines.map((p) => (
             <PipelineRow
@@ -1132,6 +1119,7 @@ function AgentRow({
   autoHarnessId: string | null | undefined;
   dispatch: OptionsDispatch;
 }) {
+  useUILocale();
   const choices = harnessChoices(agent, plan);
   const typed = ownOption(options.agentNames, agent.key);
   // No override: the planner's own pick — not the shown plan's binding, which
@@ -1152,11 +1140,11 @@ function AgentRow({
     >
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Name</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground"><I18nText id="common.name" /></span>
           <Input
             data-testid="bundle-import-agent-name"
             // Every row's field reads "Name"; say whose, visible word first.
-            aria-label={rowFieldLabel("Name", "Agent", agent.sourceName, position, plan.agents.length)}
+            aria-label={rowFieldLabel(tr("common.name"), tr("common.agent"), agent.sourceName, position, plan.agents.length)}
             value={typed ?? agent.name}
             placeholder={agent.name}
             maxLength={AGENT_PROFILE_LIMITS.name}
@@ -1165,10 +1153,10 @@ function AgentRow({
           />
         </label>
         <label className="space-y-1">
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Harness</span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground"><I18nText id="common.harness" /></span>
           <Select
             data-testid="bundle-import-agent-harness"
-            aria-label={rowFieldLabel("Harness", "Agent", agent.sourceName, position, plan.agents.length)}
+            aria-label={rowFieldLabel(tr("common.harness"), tr("common.agent"), agent.sourceName, position, plan.agents.length)}
             value={selected}
             onChange={(e) => {
               const id = e.target.value;
@@ -1178,11 +1166,10 @@ function AgentRow({
             }}
             className="h-8 text-xs"
           >
-            {selected === "" && <option value="">Pick a harness…</option>}
+            {selected === "" && <option value=""><I18nText id="bundle.pick_a_harness" /></option>}
             {missing && (
               <option value={selected} disabled>
-                {selected} — not available
-              </option>
+                {selected}{" "}<I18nText id="bundle.not_available" />{" "}</option>
             )}
             {choices.map((h) => (
               <option key={h.id} value={h.id}>
@@ -1199,21 +1186,19 @@ function AgentRow({
           {agent.effort ? ` · ${agent.effort}` : ""}
           {agent.mode ? ` · ${agent.mode}` : ""}
         </span>
-        <span>
-          · from{" "}
+        <span><I18nText id="bundle.from" />{" "}
           <span className="font-mono">
             {from.label && from.label !== from.id ? `${from.label} (${from.id})` : from.id}
           </span>{" "}
           ({from.kind})
         </span>
-        {agent.renamed && typed === undefined && <span>· was "{agent.sourceName}"</span>}
+        {agent.renamed && typed === undefined && <span><I18nText id="bundle.was" />{agent.sourceName}"</span>}
       </p>
       {agent.skills.length > 0 && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Skills: <span className="font-mono">{agent.skills.map((s) => `/${s}`).join(", ")}</span>
+        <p className="mt-1 text-[11px] text-muted-foreground"><I18nText id="bundle.skills" />{" "}<span className="font-mono">{agent.skills.map((s) => `/${s}`).join(", ")}</span>
         </p>
       )}
-      <Collapsed label="Instructions" text={agent.instructions} testId="bundle-import-agent-instructions" />
+      <Collapsed label={tr("common.instructions")} text={agent.instructions} testId="bundle-import-agent-instructions" />
       <Issues issues={agent.warnings} kind="warning" />
       <Issues issues={agent.errors} kind="blocking" />
     </div>
@@ -1229,6 +1214,7 @@ function HarnessRow({
   options: ImportOptionsState;
   dispatch: OptionsDispatch;
 }) {
+  useUILocale();
   const on = options.enableHarnesses.includes(harness.id);
   return (
     <div
@@ -1243,16 +1229,14 @@ function HarnessRow({
           <span className="font-mono text-[10px] text-muted-foreground">({harness.id})</span>
         </span>
         {harness.canEnable && (
-          <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-            Enable as part of the import
-            <Switch
+          <label className="flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground"><I18nText id="bundle.enable_as_part_of_the_import" />{" "}<Switch
               data-testid="bundle-import-harness-enable"
               checked={on}
               onCheckedChange={(enabled) => dispatch({ type: "enable-harness", harnessId: harness.id, enabled })}
               // Starts with the visible text (WCAG 2.5.3 Label in Name), so
               // "click Enable as part of the import" works for voice users;
               // the harness label tells the rows apart.
-              aria-label={`Enable as part of the import: ${harness.label}`}
+              aria-label={tr("common.enable_as_part_of_the_import", { p0: String(harness.label) })}
             />
           </label>
         )}
@@ -1274,14 +1258,15 @@ function PipelineRow({
   options: ImportOptionsState;
   dispatch: OptionsDispatch;
 }) {
+  useUILocale();
   const typed = ownOption(options.pipelineNames, String(pipeline.index));
   return (
     <div data-testid="bundle-import-pipeline-row" className="rounded-md border border-border/60 p-2.5">
       <label className="space-y-1">
-        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Name</span>
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground"><I18nText id="common.name" /></span>
         <Input
           data-testid="bundle-import-pipeline-name"
-          aria-label={rowFieldLabel("Name", "Pipeline", pipeline.sourceName, pipeline.index, total)}
+          aria-label={rowFieldLabel(tr("common.name"), tr("common.pipeline"), pipeline.sourceName, pipeline.index, total)}
           value={typed ?? pipeline.name}
           placeholder={pipeline.name}
           maxLength={PIPELINE_LIMITS.name}
@@ -1290,7 +1275,7 @@ function PipelineRow({
         />
       </label>
       {pipeline.renamed && typed === undefined && (
-        <p className="mt-1 text-[11px] text-muted-foreground">was "{pipeline.sourceName}"</p>
+        <p className="mt-1 text-[11px] text-muted-foreground"><I18nText id="bundle.was_acdb8b" />{pipeline.sourceName}"</p>
       )}
       <ol className="mt-2 space-y-1">
         {pipeline.steps.map((step) => (
@@ -1299,11 +1284,11 @@ function PipelineRow({
               <span className="font-medium">{step.name}</span>
               <span className="text-muted-foreground">
                 →{" "}
-                {step.agentName ?? (step.legacy === "dangling" ? "missing Agent" : "no Agent")}
-                {step.legacy === "remapped" ? " (matched by name)" : ""}
+                {step.agentName ?? (step.legacy === "dangling" ? tr("common.missing_agent") : tr("common.no_agent"))}
+                {step.legacy === "remapped" ? tr("common.matched_by_name") : ""}
               </span>
             </div>
-            <Collapsed label="Step instructions" text={step.instructions} />
+            <Collapsed label={tr("bundle.step_instructions")} text={step.instructions} />
           </li>
         ))}
       </ol>

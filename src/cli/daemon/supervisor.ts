@@ -1,8 +1,15 @@
-import { openSync, closeSync, existsSync, mkdirSync } from "node:fs";
+import { openSync, closeSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Subprocess } from "bun";
 import { discoverCore, type CoreInfo } from "../api-client.ts";
-import { resolveDataDir } from "../../bun/core-creds.ts";
+import { isPidAlive, readCoreCreds, removeCoreCreds, resolveDataDir } from "../../bun/core-creds.ts";
+import {
+  resolveCoreDiscoveryTarget,
+} from "../../bun/profile-activation-state.ts";
+import { canonicalizeProfilePath } from "../../bun/profile-paths.ts";
+import { ProfileActivationError } from "../../bun/profile-activation-errors.ts";
+import { ensurePrivateDataDir } from "../../bun/private-storage.ts";
 
 /**
  * Owns the lifecycle of the shared Agetor "core" from the CLI's side. The core
@@ -18,9 +25,22 @@ export interface EnsureOptions {
   noDaemon?: boolean;
 }
 
+function discoveryTarget(opts: EnsureOptions): {
+  activeDataDir: string;
+  expectedProfileIdentity: string;
+} {
+  try {
+    return resolveCoreDiscoveryTarget(opts.dataDir);
+  } catch (err) {
+    if (err instanceof ProfileActivationError) throw err;
+    throw err;
+  }
+}
+
 /** Return a live core, spawning a headless daemon if none is running. */
 export async function ensureCore(opts: EnsureOptions = {}): Promise<CoreInfo> {
-  const existing = await discoverCore(opts.dataDir);
+  const { activeDataDir, expectedProfileIdentity } = discoveryTarget(opts);
+  const existing = await discoverCore(activeDataDir, { expectedProfileIdentity });
   if (existing) return existing;
   if (opts.noDaemon) {
     throw new Error(
@@ -30,18 +50,70 @@ export async function ensureCore(opts: EnsureOptions = {}): Promise<CoreInfo> {
   return spawnDaemon(opts);
 }
 
+async function waitForPidExit(pid: number, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) return;
+    await Bun.sleep(50);
+  }
+}
+
+/** Graceful shutdown, then SIGTERM/SIGKILL — only for a child this spawn owns. */
+async function terminateOwnedSpawn(
+  proc: Subprocess,
+  activeDataDir: string,
+): Promise<void> {
+  const childPid = proc.pid;
+  if (childPid === undefined || !isPidAlive(childPid)) return;
+
+  const creds = readCoreCreds(activeDataDir);
+  if (creds?.pid === childPid) {
+    try {
+      await fetch(`http://127.0.0.1:${creds.port}/daemon/shutdown`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${creds.token}` },
+        signal: AbortSignal.timeout(2_000),
+      });
+    } catch {
+      /* expected while the core exits */
+    }
+    await waitForPidExit(childPid, 5_000);
+  }
+
+  if (isPidAlive(childPid)) {
+    try {
+      process.kill(childPid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+    await waitForPidExit(childPid, 3_000);
+  }
+  if (isPidAlive(childPid)) {
+    try {
+      process.kill(childPid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
+    await waitForPidExit(childPid, 2_000);
+  }
+
+  const after = readCoreCreds(activeDataDir);
+  if (after?.pid === childPid) removeCoreCreds(activeDataDir);
+}
+
 /** Spawn a detached headless daemon and wait until it's serving. */
 export async function spawnDaemon(opts: EnsureOptions = {}): Promise<CoreInfo> {
-  const dataDir = opts.dataDir ?? resolveDataDir();
-  mkdirSync(dataDir, { recursive: true });
+  const { activeDataDir, expectedProfileIdentity } = discoveryTarget(opts);
+  const baseDir = canonicalizeProfilePath(opts.dataDir ?? resolveDataDir());
+  ensurePrivateDataDir(activeDataDir);
   // Redirect the daemon's stdout/stderr into the same log it writes lifecycle
   // lines to, so a crash on boot leaves a trace the user can read.
-  const logFd = openSync(path.join(dataDir, "daemon.log"), "a");
+  const logFd = openSync(path.join(activeDataDir, "daemon.log"), "a", 0o600);
 
   const env: Record<string, string> = {
     ...process.env,
-    FORGEORBIT_DATA_DIR: dataDir,
-    AGETOR_DATA_DIR: dataDir,
+    FORGEORBIT_DATA_DIR: baseDir,
+    AGETOR_DATA_DIR: baseDir,
   };
   if (opts.port) {
     env.FORGEORBIT_API_PORT = String(opts.port);
@@ -57,16 +129,21 @@ export async function spawnDaemon(opts: EnsureOptions = {}): Promise<CoreInfo> {
   // The child dup'd the log fd; release the parent's copy so the CLI doesn't
   // hold a redundant descriptor for the rest of this invocation.
   closeSync(logFd);
-  // Detach: the daemon must outlive this CLI invocation.
-  proc.unref();
 
-  const core = await waitForCore(opts.dataDir, 15_000);
-  if (!core) {
-    throw new Error(
-      `ForgeOrbit daemon did not come up within 15s — see ${path.join(dataDir, "daemon.log")}`,
-    );
+  try {
+    const core = await waitForCore(activeDataDir, expectedProfileIdentity, 30_000, proc.pid);
+    if (!core) {
+      await terminateOwnedSpawn(proc, activeDataDir);
+      throw new Error(
+        `ForgeOrbit daemon did not come up within 30s — see ${path.join(activeDataDir, "daemon.log")}`,
+      );
+    }
+    proc.unref();
+    return core;
+  } catch (err) {
+    await terminateOwnedSpawn(proc, activeDataDir);
+    throw err;
   }
-  return core;
 }
 
 /**
@@ -84,21 +161,37 @@ function daemonCommand(): string[] {
 }
 
 async function waitForCore(
-  dataDir: string | undefined,
+  activeDataDir: string,
+  expectedProfileIdentity: string,
   timeoutMs: number,
+  ownedPid?: number,
 ): Promise<CoreInfo | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const core = await discoverCore(dataDir);
-    if (core) return core;
+    if (ownedPid !== undefined && !isPidAlive(ownedPid)) return null;
+    const core = await discoverCore(activeDataDir, { expectedProfileIdentity });
+    if (core) {
+      if (ownedPid !== undefined && core.pid !== ownedPid) return null;
+      return core;
+    }
     await Bun.sleep(150);
   }
   return null;
 }
 
 /** Ask a running core to shut down. Returns false if nothing was running. */
-export async function stopDaemon(dataDir?: string): Promise<boolean> {
-  const core = await discoverCore(dataDir);
+export async function stopDaemon(explicitBaseDataDir?: string): Promise<boolean> {
+  let activeDataDir: string;
+  let expectedIdentity: string;
+  try {
+    ({ activeDataDir, expectedProfileIdentity: expectedIdentity } = resolveCoreDiscoveryTarget(
+      explicitBaseDataDir,
+    ));
+  } catch (err) {
+    if (err instanceof ProfileActivationError) throw err;
+    throw err;
+  }
+  const core = await discoverCore(activeDataDir, { expectedProfileIdentity: expectedIdentity });
   if (!core) return false;
   try {
     await fetch(`http://127.0.0.1:${core.port}/daemon/shutdown`, {

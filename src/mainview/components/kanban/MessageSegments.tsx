@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 // Renderers for the `MessageSegment[]` model produced by
 // `src/shared/user-message.ts`'s `parseMessageSegments` — the general
 // "beautify any tag" mechanism described in
@@ -43,6 +45,7 @@ import { USER_MD_COMPONENTS, MD_URL_TRANSFORM } from "./md-components";
  *  every machine-emitted block (and `UserMessageBlock`'s own header) shares
  *  it instead of re-typing the class string. */
 export function MachineLabel({ children }: { children: React.ReactNode }) {
+  useUILocale();
   return (
     <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary/80">
       {children}
@@ -57,13 +60,12 @@ export function MachineLabel({ children }: { children: React.ReactNode }) {
  *  the rendered body and shows this instead, display-only, so the raw
  *  persisted event is untouched. */
 export function HandoffReminderBadge() {
+  useUILocale();
   return (
     <div
       data-testid="handoff-reminder-badge"
       className="mb-1 inline-flex w-fit items-center gap-1 rounded-md bg-muted/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground"
-    >
-      Automatic handoff reminder
-    </div>
+    ><I18nText id="tasks.automatic_handoff_reminder" />{" "}</div>
   );
 }
 
@@ -71,6 +73,7 @@ export function HandoffReminderBadge() {
  *  muted, whitespace preserved. `output` is expected pre-cleaned (ANSI
  *  stripped, trimmed) by the caller; an empty string renders as "—". */
 export function CommandOutputBody({ output }: { output: string }) {
+  useUILocale();
   return (
     <div
       data-testid="command-output-block"
@@ -86,13 +89,14 @@ export function CommandOutputBody({ output }: { output: string }) {
  *  present, the first 8 chars of the forked agent's id) rather than the raw
  *  JSON body. */
 export function ForkedSkillCard({ launch }: { launch: ForkedSkillLaunch }) {
+  useUILocale();
   return (
     <div
       data-testid="forked-skill-card"
       className="inline-flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-[11px]"
     >
       <GitFork className="size-3 text-primary" />
-      <span>Skill launched in background</span>
+      <span><I18nText id="tasks.skill_launched_in_background" /></span>
       <span className="rounded-md border border-primary/40 bg-primary/15 px-1.5 py-0.5 font-mono text-[11px] font-medium text-primary">
         {forkedSkillLabel(launch)}
       </span>
@@ -100,8 +104,7 @@ export function ForkedSkillCard({ launch }: { launch: ForkedSkillLaunch }) {
         <span
           className="font-mono text-[10px] text-muted-foreground"
           title={launch.agentId}
-        >
-          agent {launch.agentId.slice(0, 8)}
+        ><I18nText id="common.agent_d4f0bc" />{" "}{launch.agentId.slice(0, 8)}
         </span>
       )}
     </div>
@@ -110,9 +113,10 @@ export function ForkedSkillCard({ launch }: { launch: ForkedSkillLaunch }) {
 
 /** A `<bash-input>` tag — the command line of a `!`-prefixed shell escape. */
 export function ShellInputBlock({ command }: { command: string }) {
+  useUILocale();
   return (
     <div data-testid="shell-input-block">
-      <MachineLabel>shell</MachineLabel>
+      <MachineLabel><I18nText id="tasks.shell" /></MachineLabel>
       <div className="flex items-start gap-1">
         <Terminal className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
         <span className="whitespace-pre-wrap font-mono text-[11px] text-foreground">
@@ -136,12 +140,13 @@ export function ShellOutputBlock({
   kind: "stdout" | "stderr";
   body: string;
 }) {
+  useUILocale();
   const trimmed = body.trim();
   if (!trimmed) return null;
   const isError = kind === "stderr";
   return (
     <div data-testid="shell-output-block" data-kind={kind}>
-      <MachineLabel>{isError ? "shell error" : "shell output"}</MachineLabel>
+      <MachineLabel>{isError ? tr("common.shell_error") : tr("tasks.shell_output")}</MachineLabel>
       <div
         className={cn(
           "whitespace-pre-wrap font-mono text-[11px]",
@@ -162,6 +167,7 @@ export function ShellOutputBlock({
  *  user text via the normal segment flow right below this block, same as
  *  any other tag — this component only owns the instructions body itself. */
 export function AgentInstructionsBlock({ body }: { body: string }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const trimmed = body.trim();
   return (
@@ -179,9 +185,7 @@ export function AgentInstructionsBlock({ body }: { body: string }) {
         <ChevronRight
           className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
           aria-hidden
-        />
-        Agent instructions
-      </button>
+        /><I18nText id="tasks.agent_instructions" />{" "}</button>
       {open && trimmed && (
         <div className="agetor-md px-2 pb-1.5 pt-0.5">
           <ReactMarkdown
@@ -212,6 +216,7 @@ export function GenericTagBlock({
   segment: TagSegment;
   depth: number;
 }) {
+  const { locale: uiLocale } = useUILocale();
   const isEmpty = segment.body.trim() === "";
   // Both parses run in the render body, but only ever need to redo the work
   // when the underlying tag body changes — not on every re-render (e.g. a
@@ -220,11 +225,11 @@ export function GenericTagBlock({
   // JSX below branches on their results.
   const jsonValue = useMemo(
     () => (isEmpty ? undefined : tryParseJsonBody(segment.body)),
-    [isEmpty, segment.body],
+    [isEmpty, segment.body, uiLocale],
   );
   const nestedSegments = useMemo(
     () => parseMessageSegments(segment.body),
-    [segment.body],
+    [segment.body, uiLocale],
   );
 
   return (
@@ -310,12 +315,13 @@ export function MessageSegments({
   segments: MessageSegment[];
   depth?: number;
 }) {
+  useUILocale();
   const visibleSegments = segments.filter((seg) => !rendersNothing(seg));
 
   if (segments.length > 0 && visibleSegments.length === 0) {
     return (
       <div data-testid="message-segments">
-        <MachineLabel>shell output</MachineLabel>
+        <MachineLabel><I18nText id="tasks.shell_output" /></MachineLabel>
         <CommandOutputBody output="" />
       </div>
     );
@@ -340,7 +346,7 @@ export function MessageSegments({
         if (seg.name === "local-command-stdout") {
           return (
             <div key={i}>
-              <MachineLabel>command output</MachineLabel>
+              <MachineLabel><I18nText id="tasks.command_output" /></MachineLabel>
               <CommandOutputBody output={stripAnsiSgr(seg.body).trim()} />
             </div>
           );

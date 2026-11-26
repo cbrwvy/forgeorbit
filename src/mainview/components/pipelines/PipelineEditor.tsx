@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
@@ -40,8 +42,8 @@ import {
   type SubagentSatellite,
 } from "@/lib/pipelines";
 import { newStep, validatePipelineGraph } from "../../../shared/pipeline.ts";
-import { PIPELINE_LIMITS } from "../../../shared/types.ts";
-import type { Harness, Pipeline, PipelineEdge, PipelineGraph, PipelineInput, PipelineStep } from "../../../shared/types.ts";
+import { PIPELINE_LIMITS, type Harness, type Pipeline, type PipelineEdge, type PipelineGraph, type PipelineInput, type PipelineStep } from "../../../shared/types.ts";
+
 import { PipelineCanvasContext, type PipelineCanvasContextValue, type StepProfileResolution } from "./pipeline-canvas-context";
 import { StepEdge } from "./StepEdge";
 import { StepNode } from "./StepNode";
@@ -108,10 +110,10 @@ function keyboardLayerOpen(): boolean {
 
 function uniqueStepName(existing: PipelineStep[]): string {
   const used = new Set(existing.map((s) => s.name.trim().toLowerCase()));
-  if (!used.has("new step")) return "New step";
+  if (!used.has("new step")) return tr("common.new_step");
   let n = 2;
   while (used.has(`new step ${n}`)) n += 1;
-  return `New step ${n}`;
+  return tr("common.new_step_f0d1dc", { p0: String(n) });
 }
 
 /** Single-edge counterpart of `toFlowEdges` — used whenever the editor adds
@@ -163,6 +165,7 @@ function blankGraph(): { graph: PipelineGraph; step: PipelineStep } {
  * touches the node objects React Flow itself tracks.
  */
 export function PipelineEditor(props: PipelineEditorProps) {
+  useUILocale();
   return (
     <ReactFlowProvider>
       <PipelineEditorInner {...props} />
@@ -171,6 +174,7 @@ export function PipelineEditor(props: PipelineEditorProps) {
 }
 
 function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpenSettingsAgents }: PipelineEditorProps) {
+  const { locale: uiLocale } = useUILocale();
   const confirm = useConfirm();
   const { resolved } = useTheme();
   const { fitView } = useReactFlow();
@@ -234,7 +238,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
   // `.react-flow__node` as ours when it lives inside it.
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  const profileById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
+  const profileById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles, uiLocale]);
 
   const resolveProfile = useCallback(
     (agentProfileId: string | null): StepProfileResolution => {
@@ -250,7 +254,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
 
   const canvasContextValue = useMemo<PipelineCanvasContextValue>(
     () => ({ startStepId, resolveProfile }),
-    [startStepId, resolveProfile],
+    [startStepId, resolveProfile, uiLocale],
   );
 
   // ---- Edge mutations (defined first: appendStep/addEdgeToGraph below
@@ -467,7 +471,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
           pipeline.graph,
         );
       } catch (err) {
-        if (!cancelled) setLoadError(err instanceof ApiError ? err.message : "Failed to load pipeline.");
+        if (!cancelled) setLoadError(err instanceof ApiError ? err.message : tr("common.failed_to_load_pipeline"));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -484,7 +488,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
   // for at most the two nodes whose selection flag actually flips).
   const nodesWithSelection = useMemo(
     () => nodes.map((n) => (n.selected === (n.id === selectedStepId) ? n : { ...n, selected: n.id === selectedStepId })),
-    [nodes, selectedStepId],
+    [nodes, selectedStepId, uiLocale],
   );
 
   // ---- Subagent satellites: one small node per persona a step may
@@ -505,7 +509,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
   const profileNameById = useCallback((id: string) => profileById.get(id)?.name ?? null, [profileById]);
   const satellites = useMemo<SubagentSatellite[]>(
     () => nodes.flatMap((n) => subagentSatellites(n.data.step, [], profileNameById)),
-    [nodes, profileNameById],
+    [nodes, profileNameById, uiLocale],
   );
   const satelliteNodeMemory = useRef(new Map<string, { key: string; item: SubagentFlowNode }>());
   const satelliteEdgeMemory = useRef(new Map<string, { key: string; item: SubagentFlowEdge }>());
@@ -513,20 +517,20 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
   const subagentNodes = useMemo(
     () => reconcileFlowItems(satelliteNodeMemory.current, toSubagentFlowNodes(satellites), subagentNodeKey),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content (satellitesKey), not the satellites array identity.
-    [satellitesKey],
+    [satellitesKey, uiLocale],
   );
   const subagentEdges = useMemo(
     () => reconcileFlowItems(satelliteEdgeMemory.current, toSubagentFlowEdges(satellites), subagentEdgeKey),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- same content key as subagentNodes.
-    [satellitesKey],
+    [satellitesKey, uiLocale],
   );
   // React Flow requires a parent to precede its children — satellites go
   // last, after every step node.
-  const canvasNodes = useMemo<CanvasNode[]>(() => [...nodesWithSelection, ...subagentNodes], [nodesWithSelection, subagentNodes]);
-  const canvasEdges = useMemo<CanvasEdge[]>(() => [...edges, ...subagentEdges], [edges, subagentEdges]);
+  const canvasNodes = useMemo<CanvasNode[]>(() => [...nodesWithSelection, ...subagentNodes], [nodesWithSelection, subagentNodes, uiLocale]);
+  const canvasEdges = useMemo<CanvasEdge[]>(() => [...edges, ...subagentEdges], [edges, subagentEdges, uiLocale]);
   const detailsSatellite = useMemo(
     () => (detailsNodeId ? (satellites.find((sat) => sat.nodeId === detailsNodeId) ?? null) : null),
-    [detailsNodeId, satellites],
+    [detailsNodeId, satellites, uiLocale],
   );
   const detailsStep = detailsSatellite ? (nodes.find((n) => n.id === detailsSatellite.stepId)?.data.step ?? null) : null;
   const detailsStepName = detailsStep?.name ?? "";
@@ -561,11 +565,11 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
     [onEdgesChange],
   );
 
-  const derivedGraph = useMemo(() => graphFromFlow(nodes, edges, startStepId), [nodes, edges, startStepId]);
+  const derivedGraph = useMemo(() => graphFromFlow(nodes, edges, startStepId), [nodes, edges, startStepId, uiLocale]);
 
   const selectedStep = useMemo(
     () => (selectedStepId ? (derivedGraph.steps.find((s) => s.id === selectedStepId) ?? null) : null),
-    [derivedGraph, selectedStepId],
+    [derivedGraph, selectedStepId, uiLocale],
   );
 
   // `derivedGraph` recomputes on every node-position change — including
@@ -591,14 +595,14 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
     return () => clearTimeout(t);
   }, [derivedGraph]);
 
-  const liveValidation = useMemo(() => validatePipelineGraph(debouncedGraph), [debouncedGraph]);
+  const liveValidation = useMemo(() => validatePipelineGraph(debouncedGraph), [debouncedGraph, uiLocale]);
   const liveSnapshot = useMemo(
     () => snapshotOf(name, description, maxStepsInput, derivedGraph),
-    [name, description, maxStepsInput, derivedGraph],
+    [name, description, maxStepsInput, derivedGraph, uiLocale],
   );
   const isDirty = liveSnapshot !== initialSnapshotRef.current;
   const maxSteps = parseMaxSteps(maxStepsInput);
-  const maxStepsError = maxSteps == null ? `Max steps must be a whole number between 1 and ${PIPELINE_LIMITS.maxStepsMax}.` : null;
+  const maxStepsError = maxSteps == null ? tr("common.max_steps_must_be_a_whole_number_between", { p0: String(PIPELINE_LIMITS.maxStepsMax) }) : null;
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
@@ -631,12 +635,12 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
 
   const handleBack = useCallback(async () => {
     if (isDirty) {
-      const ok = await confirm({
-        title: "Discard unsaved changes?",
-        description: "You have unsaved changes to this pipeline — leaving now will discard them.",
-        confirmLabel: "Discard changes",
+      const ok = await confirm(() => ({
+        title: tr("common.discard_unsaved_changes"),
+        description: tr("common.you_have_unsaved_changes_to_this_pipeline_leaving"),
+        confirmLabel: tr("common.discard_changes"),
         variant: "destructive",
-      });
+      }));
       if (!ok) return;
     }
     onBack();
@@ -688,7 +692,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
       initialSnapshotRef.current = snapshotOf(trimmedName, trimmedDescription, String(maxSteps), validated.graph);
       onSaved(saved);
     } catch (err) {
-      setValidationError(err instanceof ApiError ? err.message : "Failed to save pipeline.");
+      setValidationError(err instanceof ApiError ? err.message : tr("common.failed_to_save_pipeline"));
     } finally {
       setSaving(false);
     }
@@ -698,9 +702,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
 
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-        Loading pipeline…
-      </div>
+      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground"><I18nText id="pipelines.loading_pipeline" />{" "}</div>
     );
   }
 
@@ -708,9 +710,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-sm text-danger">
         <p>{loadError}</p>
-        <Button type="button" variant="outline" size="sm" onClick={onBack}>
-          Back to pipelines
-        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onBack}><I18nText id="pipelines.back_to_pipelines" />{" "}</Button>
       </div>
     );
   }
@@ -719,31 +719,48 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
     <div data-testid="pipeline-editor" className="flex h-full min-h-0 w-full flex-col">
       <div
         data-testid="pipeline-editor-toolbar"
-        className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2.5"
+        className="flex flex-col gap-2 border-b border-border bg-card px-4 py-2.5"
       >
+        <div className="flex items-center gap-2" data-testid="pipeline-editor-toolbar-main">
         <Button type="button" variant="ghost" size="sm" data-testid="pipeline-back" onClick={handleBack} className="gap-1.5">
-          <ArrowLeft className="size-4" aria-hidden />
-          Back
-        </Button>
+          <ArrowLeft className="size-4" aria-hidden /><I18nText id="common.back" />{" "}</Button>
         <Input
           data-testid="pipeline-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Pipeline name"
+          placeholder={tr("pipelines.pipeline_name")}
           maxLength={PIPELINE_LIMITS.name}
-          className="h-8 w-48"
+          className="h-8 w-48 shrink-0"
         />
         <Input
           data-testid="pipeline-description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Description (optional)"
+          placeholder={tr("common.description_optional")}
           maxLength={PIPELINE_LIMITS.description}
           className="h-8 min-w-[160px] flex-1"
         />
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          Max steps
-          <Input
+        <div className="flex shrink-0 items-center gap-2">
+          {displayedError && (
+            <span data-testid="pipeline-validation-error" className="max-w-xs truncate text-[length:var(--text-secondary)] text-danger" title={displayedError}>
+              {displayedError}
+            </span>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            data-testid="pipeline-save"
+            disabled={saving || !liveValidation.ok || !name.trim() || maxSteps == null}
+            onClick={handleSave}
+            className="gap-1.5"
+          >
+            <Save className="size-4" aria-hidden />
+            {saving ? tr("common.saving_23e392") : tr("common.save")}
+          </Button>
+        </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2" data-testid="pipeline-editor-toolbar-tools">
+        <label className="flex items-center gap-1.5 text-[length:var(--text-secondary)] text-muted-foreground"><I18nText id="pipelines.max_steps" />{" "}<Input
             type="number"
             min={1}
             max={PIPELINE_LIMITS.maxStepsMax}
@@ -763,9 +780,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
           />
         </label>
         <Button type="button" variant="outline" size="sm" data-testid="pipeline-add-step" onClick={addStep} className="gap-1.5">
-          <Plus className="size-4" aria-hidden />
-          Add step
-        </Button>
+          <Plus className="size-4" aria-hidden /><I18nText id="pipelines.add_step" />{" "}</Button>
         <Button
           type="button"
           variant="outline"
@@ -774,40 +789,20 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
           onClick={handleAutoArrange}
           className="gap-1.5"
         >
-          <LayoutGrid className="size-4" aria-hidden />
-          Auto-arrange
-        </Button>
+          <LayoutGrid className="size-4" aria-hidden /><I18nText id="pipelines.auto_arrange" />{" "}</Button>
         <Button type="button" variant="outline" size="sm" data-testid="pipeline-fit-view" onClick={handleFitView} className="gap-1.5">
-          <Maximize2 className="size-4" aria-hidden />
-          Fit view
-        </Button>
-        <div className="ml-auto flex items-center gap-2">
-          {displayedError && (
-            <span data-testid="pipeline-validation-error" className="max-w-xs truncate text-xs text-danger" title={displayedError}>
-              {displayedError}
-            </span>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            data-testid="pipeline-save"
-            disabled={saving || !liveValidation.ok || !name.trim() || maxSteps == null}
-            onClick={handleSave}
-            className="gap-1.5"
-          >
-            <Save className="size-4" aria-hidden />
-            {saving ? "Saving…" : "Save"}
-          </Button>
+          <Maximize2 className="size-4" aria-hidden /><I18nText id="pipelines.fit_view" />{" "}</Button>
         </div>
+        <p data-testid="pipeline-narrow-notice" className="hidden rounded-md border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[length:var(--text-secondary)] text-warning max-[900px]:block">
+          <I18nText id="uxfix.pipeline.narrowNotice" />{" "}
+        </p>
       </div>
 
       <div className="relative flex min-h-0 flex-1">
         <div ref={canvasRef} data-testid="pipeline-canvas" className="relative min-w-0 flex-1">
           {nodes.length === 0 && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <p className="rounded-md border border-dashed border-border bg-card/80 px-4 py-2 text-sm text-muted-foreground">
-                Add a step to get started.
-              </p>
+              <p className="rounded-md border border-dashed border-border bg-card/80 px-4 py-2 text-sm text-muted-foreground"><I18nText id="pipelines.add_a_step_to_get_started" />{" "}</p>
             </div>
           )}
           <PipelineCanvasContext.Provider value={canvasContextValue}>
@@ -866,7 +861,7 @@ function PipelineEditorInner({ pipelineId, onBack, onSaved, onDirtyChange, onOpe
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 320, opacity: 0 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="w-80 shrink-0 border-l border-border bg-card"
+              className="w-80 max-w-[45%] shrink-0 border-l border-border bg-card"
             >
               <StepPanel
                 key={selectedStep.id}

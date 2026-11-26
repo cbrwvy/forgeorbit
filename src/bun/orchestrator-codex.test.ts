@@ -39,6 +39,9 @@ test("startTask (codex) sets tmux_session + persists the thread id as codex_sess
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
 
+  // Driver-level fixture: current admission rules require Ready before start.
+  (await import("./db.ts")).tasks.update(taskId, { column: "ready" });
+
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
 
@@ -69,6 +72,8 @@ test("sendInput (codex, idle) spawns a NEW run row that resumes the same thread"
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  (await import("./db.ts")).tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
@@ -108,6 +113,8 @@ test("sendInput (codex, busy) queues the follow-up; it spawns after the active t
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  (await import("./db.ts")).tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);

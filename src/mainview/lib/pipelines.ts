@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 /**
  * Webview-side helpers for {@link Pipeline}s: a module-cached list hook
  * mirroring `useAgentProfiles` (`src/mainview/lib/agent-profiles.ts`), plus
@@ -770,7 +771,7 @@ export function subagentSatellites(
       kind: "live",
       profileId: null,
       subagentId: sub.id,
-      label: (sub.description ?? sub.agentType ?? "Subagent").trim() || "Subagent",
+      label: (sub.description ?? sub.agentType ?? tr("common.subagent_d6cb41")).trim() || tr("common.subagent_d6cb41"),
       visual: "working",
       instances: [sub],
     });
@@ -966,7 +967,7 @@ export function stepNodeTaskFor(
 export function blockedSummary(run: PipelineRunState | null | undefined): string | null {
   if (!run || run.blocked.length === 0) return null;
   const [first, ...rest] = run.blocked;
-  const suffix = rest.length > 0 ? ` (+${rest.length} more)` : "";
+  const suffix = rest.length > 0 ? tr("common.more", { p0: String(rest.length) }) : "";
   return `${first!.message}${suffix}`;
 }
 
@@ -983,13 +984,13 @@ const RESPONSE_KIND_DISPLAY: Record<
   NonNullable<PipelineStepRecord["responseKind"]>,
   { text: string; tone: ResponseKindTone }
 > = {
-  handoff: { text: "Handed off", tone: "success" },
-  "handoff-blocked": { text: "Reported blocked", tone: "warning" },
-  "handoff-missing": { text: "No handoff", tone: "warning" },
-  "handoff-invalid": { text: "Invalid handoff", tone: "warning" },
-  "user-ask": { text: "Asked you", tone: "warning" },
-  error: { text: "Error", tone: "danger" },
-  cancelled: { text: "Cancelled", tone: "muted" },
+  handoff: { get text() { return tr("common.handed_off"); }, tone: "success" },
+  "handoff-blocked": { get text() { return tr("common.reported_blocked"); }, tone: "warning" },
+  "handoff-missing": { get text() { return tr("common.no_handoff"); }, tone: "warning" },
+  "handoff-invalid": { get text() { return tr("common.invalid_handoff"); }, tone: "warning" },
+  "user-ask": { get text() { return tr("common.asked_you"); }, tone: "warning" },
+  error: { get text() { return tr("common.error"); }, tone: "danger" },
+  cancelled: { get text() { return tr("phase.cancelled"); }, tone: "muted" },
 };
 
 /**

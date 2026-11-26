@@ -1,14 +1,33 @@
+import { recoverHeadAuto } from "./head-pm-auto.ts";
 import pkg from "../../package.json" with { type: "json" };
 import { API_TOKEN, formatHostForUrl, getApiPort, resolveApiHost } from "./api-config.ts";
 import { db, dataDir, subagents } from "./db.ts";
-import { reconcileOrphans, rearmFxAutoResumes, reapIdleSessions, stopFxAutoResumeTimers } from "./orchestrator.ts";
+import { reconcileOrphans, rearmFxAutoResumes, reapIdleSessions, releaseSettledSessionsOnQuit, stopFxAutoResumeTimers } from "./orchestrator.ts";
+import { recoverBrowserAgentGrants } from "./browser-agent.ts";
+import { recoverNativeAgentGrants } from "./native-computer-agent.ts";
+import { closeLiveBrowserSessionsSync, reconcileBrowserSessionsOnBoot } from "./browser-session.ts";
+import { closeLiveNativeComputerSessionsSync, reconcileNativeComputerOnBoot } from "./native-computer-session.ts";
 import { initPipelineRunner, reconcilePipelineRuns } from "./pipeline-runner.ts";
+import { initExecutionBatches, recoverExecutionBatches } from "./execution-batches.ts";
+import { initOrchestratedWorkflows, recoverOrchestratedWorkflows } from "./pm-orchestrated-workflow.ts";
+import { initOrchestratedBatches, recoverOrchestratedBatches } from "./pm-orchestrated-batch.ts";
+import { recoverPortfolioDelegations } from "./portfolio-manager.ts";
+import { initEmployeeExecutionTracking, recoverEmployeeExecutions } from "./employee-run.ts";
+import { initHandsoff, recoverHandsoff, stopHandsoffTimers } from "./handsoff/driver.ts";
+import { recoverHandsoffAuthorizations } from "./handsoff/authorization.ts";
+import { initRecurringScheduler, recoverRecurringTasks, stopRecurringScheduler } from "./recurring/scheduler.ts";
+import { recoverBrainContext } from "./brain-context.ts";
+import { recoverBrainProposals } from "./brain-proposals.ts";
+import { recoverKnowledgeContext } from "./knowledge-context.ts";
 import { startLagMonitor, stopLagMonitor } from "./event-loop-lag.ts";
 import { scheduleRetention, stopRetentionTimers } from "./retention.ts";
 import { ensureDisclaimedServer } from "./tmux-resolution.ts";
-import { startApiServer, attachedClientCount } from "./server.ts";
+import { stopInterviewTurnsSync, sweepInterviewLeftovers } from "./project-interview.ts";
+import { disposeEnvironmentManager, startEnvironmentManager } from "./environment/runtime.ts";
+import { startApiServer, disposeActiveBackupService, attachedClientCount } from "./server.ts";
 import { rehydratePath } from "./login-path.ts";
 import { refreshAllModels, startPeriodicDiscovery } from "./model-discovery.ts";
+import { reconcileProjectLifecyclesOnBoot } from "./project-lifecycle.ts";
 import { reapLiveFxProcs } from "./fx-acp.ts";
 import {
   writeCoreCreds,
@@ -92,7 +111,7 @@ export function hasRunningWork(): boolean {
 }
 
 let shuttingDown = false;
-function shutdown(reason: string, code = 0): void {
+async function shutdown(reason: string, code = 0): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   daemonLog(`shutting down (${reason})`);
@@ -105,6 +124,16 @@ function shutdown(reason: string, code = 0): void {
   // reaping any live fx children — do it explicitly, before the rest of
   // teardown, rather than relying on fx-acp's handler to have done it.
   reapLiveFxProcs();
+  closeLiveBrowserSessionsSync();
+  closeLiveNativeComputerSessionsSync();
+  // Interview turns are one-shot CLIs in tmux; none should outlive the core.
+  stopInterviewTurnsSync();
+  // Settled task sessions are not reattached on the next boot. Running
+  // runs are kept so reconcileOrphans can pick them up.
+  releaseSettledSessionsOnQuit();
+  // Abort in-flight environment checks. Do not signal processes or containers
+  // the user left running — the next boot's restore() re-proves ownership.
+  disposeEnvironmentManager();
   // Same reasoning for the auto-resume engine's in-memory timers (Phase 8
   // review #7): `fxAutoResumeTimers` entries are `.unref()`'d so they never
   // block a clean exit on their own, but stopping them explicitly here keeps
@@ -113,6 +142,8 @@ function shutdown(reason: string, code = 0): void {
   // not touch any persisted `fxRecovery` row — `rearmFxAutoResumes()` re-arms
   // them from the DB on the next boot.
   stopFxAutoResumeTimers();
+  stopHandsoffTimers();
+  stopRecurringScheduler();
   // Retention: abort a running pass between chunks and clear its timers; stop
   // the lag sampler. Trimmed rows stay trimmed, the next boot resumes.
   stopRetentionTimers();
@@ -121,6 +152,15 @@ function shutdown(reason: string, code = 0): void {
     removeCoreCreds(dataDir);
   } catch {
     /* best-effort */
+  }
+  // Backup/Restore: bounded, idempotent disposal of the isolated runner.
+  // Terminates live workers and verification children, preserving published
+  // artifacts, receipts and INDETERMINATE evidence. Failures/timeouts must not
+  // prevent the daemon from exiting.
+  try {
+    await disposeActiveBackupService();
+  } catch {
+    /* never block shutdown */
   }
   process.exit(code);
 }
@@ -168,16 +208,55 @@ export async function runDaemon(): Promise<void> {
   // run first — leaving every session that server ever hosts un-disclaimed
   // too.
   await ensureDisclaimedServer();
+  // FO-003.1: kill the tmux session of any interview turn a previous process
+  // left running (crash, force quit), by its exact name, and clear its files.
+  await sweepInterviewLeftovers();
   // Same ordering as index.ts's desktop boot path: wire the pipeline runner
   // to the global lifecycle stream before reconcileOrphans() so a step
   // task's boot-time orphan→ready transition reaches it too.
   initPipelineRunner();
   await reconcileOrphans();
+  reconcileProjectLifecyclesOnBoot();
+  await reconcileBrowserSessionsOnBoot();
+  await reconcileNativeComputerOnBoot();
+  void recoverBrowserAgentGrants();
+  await recoverNativeAgentGrants();
+  try {
+    await startEnvironmentManager();
+  } catch (error) {
+    daemonLog(`environment manager failed to start: ${error instanceof Error ? error.message : String(error)}`);
+  }
   // M16: same ordering as index.ts's desktop boot path — reconcile every
   // pipeline parent left mid-flight by a prior crash/restart right after
   // reconcileOrphans() resolves every step task's own orphan→ready
   // transition. `daemonLog`, not `console.log` — see the rearm comment below.
   const reconciledPipelineRunCount = await reconcilePipelineRuns();
+  // Approved execution batches (FO-005C.1): after runs and pipelines are
+  // reconciled, restore unfinished batches — a running one comes back
+  // paused and a start that was in flight is adopted or held, never
+  // relaunched. Nothing new starts until the owner resumes it.
+  recoverExecutionBatches();
+  recoverHeadAuto();
+  recoverOrchestratedWorkflows();
+  recoverOrchestratedBatches();
+  const { recoverQcRecoveryGrants } = await import("./qc-recovery.ts");
+  await recoverQcRecoveryGrants();
+  recoverPortfolioDelegations();
+  recoverEmployeeExecutions();
+  const { recoverTaskWorkspaces } = await import("./task-workspace.ts");
+  recoverTaskWorkspaces();
+  void recoverKnowledgeContext();
+  void recoverBrainContext();
+  recoverBrainProposals();
+  initExecutionBatches();
+  initOrchestratedWorkflows();
+  initOrchestratedBatches();
+  initEmployeeExecutionTracking();
+  initHandsoff();
+  recoverHandsoffAuthorizations();
+  recoverHandsoff();
+  initRecurringScheduler();
+  void recoverRecurringTasks();
   if (reconciledPipelineRunCount > 0) {
     daemonLog(`reconciled ${reconciledPipelineRunCount} pipeline run(s)`);
   }
@@ -278,8 +357,8 @@ export async function runDaemon(): Promise<void> {
   // stderr — which `spawnDaemon` points at this same daemon.log.
   daemonLog(`cli-daemon listening on http://${formatHostForUrl(apiHost.host)}:${server.port}`);
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => { void shutdown("SIGINT"); });
+  process.on("SIGTERM", () => { void shutdown("SIGTERM"); });
 
   // Idle-shutdown loop: exit once nothing is running AND no client is attached
   // for longer than the timeout. The interval is unref'd so it never keeps the
@@ -292,7 +371,7 @@ export async function runDaemon(): Promise<void> {
         return;
       }
       if (idleSince == null) idleSince = Date.now();
-      else if (Date.now() - idleSince >= IDLE_TIMEOUT_MS) shutdown("idle timeout");
+      else if (Date.now() - idleSince >= IDLE_TIMEOUT_MS) void shutdown("idle timeout");
     }, IDLE_CHECK_MS);
     timer.unref();
   }

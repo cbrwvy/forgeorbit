@@ -117,7 +117,7 @@ async function openTask(page: Page, title: string) {
  *  `cursor-grab` on the Card root unconditionally, the only stable hook
  *  available since board cards carry no `data-testid`. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator('[class*="cursor-grab"]').filter({ hasText: title });
+  return page.locator('[data-testid="task-card"]').filter({ hasText: title });
 }
 
 /** Waits for the scenario's final assistant chunk ("Done.", emitted just

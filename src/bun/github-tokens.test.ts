@@ -1,6 +1,6 @@
 import { test, expect, beforeEach, afterEach, afterAll, describe } from "bun:test";
 import { mkdtempSync, existsSync, writeFileSync, statSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   listGitHubTokens,
@@ -10,6 +10,7 @@ import {
   githubTokensPath,
   resolveDataDir,
 } from "./github-tokens.ts";
+import { resolveDataDir as sharedResolver } from "./data-dir.ts";
 import { rmTestDataDir } from "./test-data-dir.ts";
 
 const ORIGINAL_AGETOR_DATA_DIR = process.env.AGETOR_DATA_DIR;
@@ -137,10 +138,8 @@ describe("resolveDataDir priority", () => {
     expect(resolveDataDir()).toBe("/custom/agetor");
   });
 
-  test("defaults to ~/.agetor when neither variable is set", () => {
-    delete process.env.FORGEORBIT_DATA_DIR;
-    delete process.env.AGETOR_DATA_DIR;
-    expect(resolveDataDir()).toBe(path.join(homedir(), ".agetor"));
+  test("token store exposes the shared filesystem-free profile resolver", () => {
+    expect(resolveDataDir).toBe(sharedResolver);
   });
 
   test("saving token with FORGEORBIT_DATA_DIR writes to that directory", () => {

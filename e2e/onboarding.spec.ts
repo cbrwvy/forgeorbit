@@ -1,246 +1,245 @@
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Page } from "./fixtures";
-import { gotoApp, openSettingsGeneral, getPreferences } from "./helpers";
+import { gotoApp, openSettingsGeneral, getPreferences, openWorkspaces } from "./helpers";
 
 /**
- * E2E coverage for first-run onboarding — the welcome dialog + live
- * "Getting started" checklist (docs/plans/onboarding-first-run.md, §5 TT2).
- * Runs Chromium against the real webview + real Bun API/orchestrator, same
- * as theme/font-size/quote — no mocked fetches.
+ * FO-UX-SIMPLIFY02-M7: the one getting-started block on Home (Add a project, Set up an AI tool,
+ * Give the Head of PM a goal). Replaces the welcome dialog and the board checklist.
  *
- * Unlike those three specs, every test here uses `freshBackend`
- * (e2e/fixtures.ts) instead of the worker-scoped `backend`: onboarding's
- * visibility rules (`resolveOnboardingVisibility` in
- * src/mainview/lib/onboarding.ts) branch on whether the `onboardingDismissed`
- * preference has *ever* been written (`dismissedPref === undefined`), and
- * there's no "unset preference" API. Several cases below need that exact
- * "never evaluated" state independently — a fresh welcome dialog, a Skip
- * that then persists, an existing-user auto-dismiss on first load — so
- * sharing one backend/DB across tests (the theme.spec.ts pattern) would let
- * whichever test runs first permanently consume that state for the rest of
- * the file. `freshBackend` sidesteps that entirely: a brand-new headless
- * backend + SQLite DB per test.
- *
- * `gotoApp`'s default (`e2e/helpers.ts`) seeds `onboardingDismissed="true"`
- * before navigating, which is exactly wrong for these tests — they need the
- * real first-run state — so every navigation here passes
- * `{ seedOnboardingDismissed: false }` except where a test deliberately wants
- * the dismissed/replay state (case 4).
+ * Every test uses `freshBackend` (a virgin headless core + SQLite per test): the block branches on
+ * whether `onboardingDismissed` was ever written, and there is no "unset preference" API. Providers
+ * are never started — the harness binaries are stubs and every driver is fake. `gotoApp`'s default
+ * seeds the dismissal, which is wrong here, so every navigation passes `{ seedOnboardingDismissed: false }`.
  */
 
-function auth(backend: E2EBackend): { authorization: string } {
-  return { authorization: `Bearer ${backend.apiToken}` };
+test.describe.configure({ timeout: 90_000 });
+
+/** No harness binary resolves: a profile with no AI tool installed at all. */
+const NO_TOOLS = {
+  AGETOR_CLAUDE_BIN: "/nonexistent/claude",
+  AGETOR_CODEX_BIN: "/nonexistent/codex",
+  AGETOR_CURSOR_BIN: "/nonexistent/cursor-agent",
+  AGETOR_GEMINI_BIN: "/nonexistent/gemini",
+  AGETOR_ANTIGRAVITY_BIN: "/nonexistent/agy",
+  AGETOR_FX_BIN: "/nonexistent/fx",
+};
+/** Only the tools that ship switched off resolve (codex, cursor, gemini): installed, but disabled. */
+const ONLY_DISABLED_TOOLS = {
+  AGETOR_CLAUDE_BIN: "/nonexistent/claude",
+  AGETOR_ANTIGRAVITY_BIN: "/nonexistent/agy",
+  AGETOR_FX_BIN: "/nonexistent/fx",
+};
+
+function auth(b: E2EBackend): { authorization: string } {
+  return { authorization: `Bearer ${b.apiToken}` };
 }
 
-interface TaskRow {
-  id: string;
-  column: string;
+async function projectDir(b: E2EBackend, name: string): Promise<string> {
+  const dir = await realpath(await mkdtemp(path.join(tmpdir(), `m7-${name}-`)));
+  await mkdir(path.join(dir, "docs"), { recursive: true });
+  await writeFile(path.join(dir, "docs", "IDEA.md"), "# Idea\n");
+  await writeFile(path.join(dir, "docs", "PRD.md"), "# PRD\n");
+  await writeFile(path.join(dir, "README.md"), "# Readme\n");
+  return dir;
 }
 
-/** Registers a project by absolute path (an authed `POST /projects`, per
- *  src/bun/server.ts:546-572) — the API equivalent of the native folder
- *  picker. `os.tmpdir()` always exists, and the fake driver never touches
- *  the filesystem, so it doesn't need to be a real git repo. */
-async function registerProject(request: APIRequestContext, backend: E2EBackend): Promise<void> {
-  const res = await request.post(`${backend.apiBase}/projects`, {
-    headers: auth(backend),
-    data: { path: tmpdir() },
-  });
+async function register(request: APIRequestContext, b: E2EBackend, dir: string, name: string): Promise<void> {
+  const res = await request.post(`${b.apiBase}/projects`, { headers: auth(b), data: { path: dir, name } });
   expect(res.ok(), `POST /projects -> ${res.status()}: ${await res.text()}`).toBeTruthy();
 }
 
-/** Creates a task (isolation "none", a plain temp dir as workdir) via an
- *  authed `POST /tasks`. Returns the created row. */
-async function createTask(
-  request: APIRequestContext,
-  backend: E2EBackend,
-  title: string,
-): Promise<TaskRow> {
-  const res = await request.post(`${backend.apiBase}/tasks`, {
-    headers: auth(backend),
-    data: { title, prompt: title, isolation: "none", workdir: tmpdir() },
-  });
+async function createTask(request: APIRequestContext, b: E2EBackend, title: string): Promise<{ id: string }> {
+  const res = await request.post(`${b.apiBase}/tasks`, { headers: auth(b), data: { title, prompt: title, isolation: "none", workdir: tmpdir() } });
   expect(res.ok(), `POST /tasks -> ${res.status()}: ${await res.text()}`).toBeTruthy();
-  return (await res.json()) as TaskRow;
+  return (await res.json()) as { id: string };
 }
 
-/** Starts a task via an authed `POST /tasks/:id/start`. The backend's fake
- *  claude driver (`AGETOR_CLAUDE_DRIVER=fake`, set by fixtures.ts) means this
- *  never shells out to tmux — `startTask` still flips the task's column to
- *  "running" synchronously before returning, which is already enough for
- *  onboarding's "run" step (`RUN_DONE_COLUMNS` includes "running"). */
-async function startTask(request: APIRequestContext, backend: E2EBackend, id: string): Promise<void> {
-  const res = await request.post(`${backend.apiBase}/tasks/${id}/start`, { headers: auth(backend) });
-  expect(res.ok(), `POST /tasks/${id}/start -> ${res.status()}: ${await res.text()}`).toBeTruthy();
-}
-
-function welcome(page: Page) {
-  return page.getByTestId("onboarding-welcome");
-}
-
-function checklist(page: Page) {
-  return page.getByTestId("onboarding-checklist");
-}
-
-function step(page: Page, id: "harness" | "project" | "task" | "run") {
-  return page.getByTestId(`onboarding-step-${id}`);
-}
-
-test.describe("onboarding: fresh backend", () => {
-  test("shows the welcome dialog and checklist, with the harness step already done", async ({
-    page,
-    freshBackend,
-  }) => {
-    await gotoApp(page, freshBackend.bootBase, { seedOnboardingDismissed: false });
-
-    await expect(welcome(page)).toBeVisible();
-    await expect(checklist(page)).toBeVisible();
-
-    // The fake driver's claude-code binary probe points AGETOR_CLAUDE_BIN
-    // and AGETOR_TMUX_BIN at /bin/echo (fixtures.ts) — `checkHarness`
-    // resolves that as an existing absolute path, spawns it with
-    // `--version`, gets exit code 0, and reports `available: true`. Since
-    // claude-code is enabled by default, the harness step is already done on
-    // a totally virgin backend, before any project/task/run exists.
-    await expect(step(page, "harness")).toHaveAttribute("data-done", "true");
-    await expect(step(page, "project")).toHaveAttribute("data-done", "false");
-    await expect(step(page, "task")).toHaveAttribute("data-done", "false");
-    await expect(step(page, "run")).toHaveAttribute("data-done", "false");
+/** Non-GET requests the page makes (UI preferences and read-only discovery are not project state). */
+function recordWrites(page: Page): { all: () => string[] } {
+  const writes: string[] = [];
+  page.on("request", (req) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method())) return;
+    const url = new URL(req.url());
+    // /api/router-v2/evaluate is a read-only preview (POST only to carry a body) the AI tool settings panel asks for.
+    if (url.pathname.startsWith("/preferences/") || url.pathname === "/projects/discover" || url.pathname === "/api/router-v2/evaluate") return;
+    writes.push(`${req.method()} ${url.pathname}`);
   });
-});
+  return { all: () => writes };
+}
 
-test.describe("onboarding: skip", () => {
-  test("Skip hides onboarding immediately and the dismissal persists across reload", async ({
-    page,
-    request,
-    freshBackend,
-  }) => {
-    await gotoApp(page, freshBackend.bootBase, { seedOnboardingDismissed: false });
-    await expect(welcome(page)).toBeVisible();
+const block = (page: Page) => page.getByTestId("getting-started");
+const step = (page: Page, id: "project" | "ai-tool" | "goal") => page.getByTestId(`getting-started-step-${id}`);
 
-    await page.getByRole("button", { name: "Skip — I know my way around" }).click();
-    await expect(welcome(page)).toHaveCount(0);
-    await expect(checklist(page)).toHaveCount(0);
+async function advance(page: Page, testId: "wizard-next" | "wizard-submit" = "wizard-next"): Promise<void> {
+  await page.getByTestId(testId).click();
+}
 
-    // Reload without re-seeding (still opting out of gotoApp's default
-    // seeding) so this proves the *persisted* pref is what's keeping
-    // onboarding hidden, not a redundant seed from this navigation.
-    await gotoApp(page, freshBackend.bootBase, { seedOnboardingDismissed: false });
-    await expect(welcome(page)).toHaveCount(0);
-    await expect(checklist(page)).toHaveCount(0);
+test.describe("getting started: fresh profile", () => {
+  test.use({ backendEnv: NO_TOOLS });
 
-    const prefs = await getPreferences(request, freshBackend);
-    expect(prefs.onboardingDismissed).toBe("true");
+  test("no AI tool: a project is added first, the blocker is explained and links to AI tool settings, nothing is sent", async ({ page, request, freshBackend: b }) => {
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    const writes = recordWrites(page);
+
+    // One block, no welcome dialog, no old checklist.
+    await expect(block(page)).toBeVisible();
+    await expect(page.getByTestId("onboarding-welcome")).toHaveCount(0);
+    await expect(page.getByTestId("onboarding-checklist")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(step(page, "project")).toHaveAttribute("data-status", "todo");
+    await expect(step(page, "ai-tool")).toHaveAttribute("data-status", "todo");
+    await expect(step(page, "goal")).toHaveAttribute("data-status", "blocked");
+    await expect(page.getByTestId("getting-started-detail-ai-tool")).toContainText("No AI tool was found");
+    await expect(page.getByTestId("getting-started-progress")).toContainText("0 of 3");
+
+    // 1. Add a project: no provider is needed.
+    await page.getByTestId("getting-started-add-project").click();
+    await expect(page.getByTestId("project-wizard")).toBeVisible();
+    const dir = await projectDir(b, "fresh");
+    await page.getByTestId("wizard-name").fill("First Orbit");
+    await page.getByTestId("wizard-directory").fill(dir);
+    for (let i = 0; i < 5; i++) await advance(page);
+    await advance(page, "wizard-submit");
+    await expect(page.getByTestId("project-header-name")).toHaveText("First Orbit");
+
+    // Back on Home the project step is done; the goal step is open but names the real blocker.
+    await page.getByTestId("workspace-overview").click();
+    await expect(block(page)).toBeVisible();
+    await expect(step(page, "project")).toHaveAttribute("data-status", "done");
+    await expect(step(page, "ai-tool")).toHaveAttribute("data-status", "todo");
+    await expect(step(page, "goal")).toHaveAttribute("data-status", "todo");
+    await expect(page.getByTestId("getting-started-goal-blocker")).toHaveAttribute("data-blocker", "not-installed");
+
+    // 2. The blocker links to the AI tools panel of Settings and changes nothing.
+    const mark = writes.all().length;
+    await page.getByTestId("getting-started-goal-blocker-settings").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByTestId("settings-sub-harnesses")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // 3. The goal step only focuses the existing target select; it picks nothing.
+    await page.getByTestId("getting-started-choose-target").click();
+    await expect(page.getByTestId("home-goal-target")).toBeFocused();
+    await expect(page.getByTestId("home-goal-target")).toHaveValue("");
+    await expect(page.getByTestId("home-ask-head")).toBeDisabled();
+    await page.getByTestId("home-goal-target").selectOption({ label: "First Orbit" });
+    await page.getByTestId("home-ask-head").click();
+    await expect(page.getByTestId("head-pm-panel")).toBeVisible();
+    await expect(page.getByTestId("head-pm-scope")).toHaveValue(`project:${dir}`);
+
+    // Nothing was sent, granted or started by any of that.
+    expect(writes.all().slice(mark)).toEqual([]);
+    const forbidden = writes.all().filter((w) => /portfolio-manager\/messages|\/start$|grant|\/runs/.test(w));
+    expect(forbidden).toEqual([]);
+    expect(await (await request.get(`${b.apiBase}/tasks`, { headers: auth(b) })).json()).toEqual([]);
   });
-});
 
-test.describe("onboarding: progressive check-off", () => {
-  test("each step checks off live as harness/project/task/run land, then the checklist auto-dismisses", async ({
-    page,
-    request,
-    freshBackend,
-  }) => {
-    await gotoApp(page, freshBackend.bootBase, { seedOnboardingDismissed: false });
-    await expect(welcome(page)).toBeVisible();
+  test("the block is dismissible, the dismissal survives a reload, and Settings brings it back on Home", async ({ page, request, freshBackend: b }) => {
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(block(page)).toBeVisible();
+    await page.getByTestId("getting-started-dismiss").click();
+    await expect(block(page)).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Get started" }).click();
-    await expect(welcome(page)).toHaveCount(0);
-    await expect(checklist(page)).toBeVisible();
-    await expect(step(page, "project")).toHaveAttribute("data-done", "false");
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(page.getByTestId("global-overview")).toBeVisible();
+    await expect(block(page)).toHaveCount(0);
+    expect((await getPreferences(request, b)).onboardingDismissed).toBe("true");
 
-    await registerProject(request, freshBackend);
-    await expect(step(page, "project")).toHaveAttribute("data-done", "true", { timeout: 10_000 });
-
-    const task = await createTask(request, freshBackend, `onboarding-e2e-${Date.now()}`);
-    await expect(step(page, "task")).toHaveAttribute("data-done", "true", { timeout: 10_000 });
-
-    // Starting the task flips its column to "running" synchronously
-    // server-side (before startTask even returns) — that alone satisfies
-    // the "run" step (`RUN_DONE_COLUMNS` includes "running"), which makes
-    // all 4 steps done in the same render pass. `resolveOnboardingVisibility`
-    // hides the checklist the instant `allDone` is true (not just once the
-    // async auto-dismiss pref write lands) — so there's no window where the
-    // "run" step is visibly checked off with the checklist still on screen;
-    // the checklist disappearing IS the observable proof the run step (and
-    // therefore every step) went done. The existing-user upgrade path
-    // (`autoDismiss`) then persists the pref without any dismiss click.
-    await startTask(request, freshBackend, task.id);
-    await expect(checklist(page)).toHaveCount(0, { timeout: 10_000 });
-    await expect
-      .poll(() => getPreferences(request, freshBackend).then((p) => p.onboardingDismissed), {
-        message: "expected auto-dismiss to persist onboardingDismissed=true",
-        timeout: 10_000,
-      })
-      .toBe("true");
-  });
-});
-
-test.describe("onboarding: replay from Settings", () => {
-  test("Settings -> General -> 'Show getting started guide' brings the checklist back; dismiss hides it again", async ({
-    page,
-    request,
-    freshBackend,
-  }) => {
-    // Seed a completed setup (project + task + run) on a virgin backend, then
-    // let gotoApp's default seeding mark it dismissed — this is exactly
-    // "a seeded-dismissed backend with a completed setup" per the plan.
-    await registerProject(request, freshBackend);
-    const task = await createTask(request, freshBackend, `onboarding-replay-e2e-${Date.now()}`);
-    await startTask(request, freshBackend, task.id);
-
-    await gotoApp(page, freshBackend.bootBase);
-    await expect(welcome(page)).toHaveCount(0);
-    await expect(checklist(page)).toHaveCount(0);
-
+    // Replay from another page: it lands on Home with the block visible.
+    await openWorkspaces(page);
     const dialog = await openSettingsGeneral(page);
     await dialog.getByTestId("settings-replay-onboarding").click();
-
-    // The button's onClick awaits the preference write, then closes the
-    // dialog — App re-reads the pref on close.
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(checklist(page)).toBeVisible();
-    await expect(welcome(page)).toHaveCount(0);
+    await expect(page.getByTestId("global-overview")).toBeVisible();
+    await expect(block(page)).toBeVisible();
+    expect((await getPreferences(request, b)).onboardingDismissed).toBe("false");
 
-    // Everything was already set up before the first load, so replay shows
-    // every step already done.
-    await expect(step(page, "harness")).toHaveAttribute("data-done", "true");
-    await expect(step(page, "project")).toHaveAttribute("data-done", "true");
-    await expect(step(page, "task")).toHaveAttribute("data-done", "true");
-    await expect(step(page, "run")).toHaveAttribute("data-done", "true");
-
-    await page.getByRole("button", { name: "Dismiss — I know my way around" }).click();
-    await expect(checklist(page)).toHaveCount(0);
-
-    const prefs = await getPreferences(request, freshBackend);
-    expect(prefs.onboardingDismissed).toBe("true");
+    // It survives a reload while replaying, and dismissing again hides it.
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(block(page)).toBeVisible();
+    await page.getByTestId("getting-started-dismiss").click();
+    await expect(block(page)).toHaveCount(0);
+    expect((await getPreferences(request, b)).onboardingDismissed).toBe("true");
   });
 });
 
-test.describe("onboarding: existing-user guard", () => {
-  test("a backend that already has a completed setup before first load never shows onboarding, and auto-marks it dismissed", async ({
-    page,
-    request,
-    freshBackend,
-  }) => {
-    // Seed harness(already available)/project/task/run BEFORE the page ever
-    // loads, with the dismissal pref left untouched (absent) — the scenario
-    // an upgrading user's existing data represents.
-    await registerProject(request, freshBackend);
-    const task = await createTask(request, freshBackend, `onboarding-existing-e2e-${Date.now()}`);
-    await startTask(request, freshBackend, task.id);
+test.describe("getting started: keyboard and neighbours", () => {
+  test.use({ backendEnv: NO_TOOLS });
 
-    await gotoApp(page, freshBackend.bootBase, { seedOnboardingDismissed: false });
+  test("every action is a real button reachable by keyboard; the attention feed and Emergency Stop stay available at 800 px", async ({ page, freshBackend: b }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(block(page)).toBeVisible();
+    await expect(page.getByTestId("home-attention")).toBeVisible();
+    await expect(page.getByTestId("workspace-attention")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Emergency stop" })).toBeVisible();
 
-    // Never appears, not even for a beat — all 4 steps already derive as
-    // done on the very first render pass that has real data loaded.
-    await expect(welcome(page)).toHaveCount(0);
-    await expect(checklist(page)).toHaveCount(0);
+    // The steps are an ordered list and each action is reachable with Tab and activates with Enter.
+    await expect(block(page).getByRole("list")).toBeVisible();
+    await page.getByTestId("getting-started-dismiss").focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId("getting-started-add-project")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId("getting-started-open-ai-settings")).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog").getByTestId("settings-sub-harnesses")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByTestId("getting-started-add-project").focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("project-wizard")).toBeVisible();
+  });
+});
 
+test.describe("getting started: installed but switched off", () => {
+  test.use({ backendEnv: ONLY_DISABLED_TOOLS });
+
+  test("an installed but disabled tool is not called ready", async ({ page, request, freshBackend: b }) => {
+    const dir = await projectDir(b, "disabled");
+    await register(request, b, dir, "Disabled Orbit");
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(block(page)).toBeVisible();
+    await expect(step(page, "project")).toHaveAttribute("data-status", "done");
+    await expect(step(page, "ai-tool")).toHaveAttribute("data-status", "todo");
+    await expect(page.getByTestId("getting-started-detail-ai-tool")).toContainText("switched off");
+    await expect(page.getByTestId("getting-started-goal-blocker")).toHaveAttribute("data-blocker", "disabled");
+  });
+});
+
+test.describe("getting started: a tool whose sign-in cannot be read", () => {
+  test("is shown as installed, never as done, and does not block the goal", async ({ page, request, freshBackend: b }) => {
+    const dir = await projectDir(b, "unchecked");
+    await register(request, b, dir, "Unchecked Orbit");
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(block(page)).toBeVisible();
+    await expect(step(page, "ai-tool")).toHaveAttribute("data-status", "unchecked");
+    await expect(page.getByTestId("getting-started-status-ai-tool")).toContainText("sign-in not checked");
+    await expect(page.getByTestId("getting-started-goal-blocker")).toHaveCount(0);
+    await expect(step(page, "goal")).toHaveAttribute("data-status", "todo");
+  });
+});
+
+test.describe("getting started: established profile", () => {
+  test("a profile that already has a project and a task is never sent through setup, and the dismissal is stored once", async ({ page, request, freshBackend: b }) => {
+    await register(request, b, tmpdir(), "Existing");
+    await createTask(request, b, `m7-existing-${Date.now()}`);
+
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(page.getByTestId("global-overview")).toBeVisible();
+    await expect(block(page)).toHaveCount(0);
+    await expect(page.getByTestId("onboarding-welcome")).toHaveCount(0);
     await expect
-      .poll(() => getPreferences(request, freshBackend).then((p) => p.onboardingDismissed), {
-        message: "expected the existing-user upgrade path to auto-set onboardingDismissed=true",
-        timeout: 10_000,
-      })
+      .poll(() => getPreferences(request, b).then((p) => p.onboardingDismissed), { timeout: 10_000 })
       .toBe("true");
+  });
+
+  test("an explicit dismissal is honored even when no tool is set up", async ({ page, request, freshBackend: b }) => {
+    await request.put(`${b.apiBase}/preferences/onboardingDismissed`, { headers: auth(b), data: { value: "true" } });
+    await gotoApp(page, b.bootBase, { seedOnboardingDismissed: false });
+    await expect(page.getByTestId("global-overview")).toBeVisible();
+    await expect(block(page)).toHaveCount(0);
   });
 });

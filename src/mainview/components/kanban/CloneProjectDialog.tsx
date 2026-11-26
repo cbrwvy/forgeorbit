@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -21,13 +23,13 @@ import { TaskLaunchPickers, useTaskLaunch } from "./TaskLaunchPickers";
  *  `null` (and the row goes back to its visually-hidden, non-`busy` state)
  *  the moment its `await` settles (an error, or a close-on-cancel). */
 const CLONE_PHASE_LABEL: Record<Exclude<CloneProgressEvent["phase"], "failed" | "cancelled">, string> = {
-  starting: "Starting…",
-  counting: "Counting objects…",
-  compressing: "Compressing objects…",
-  receiving: "Receiving objects…",
-  resolving: "Resolving deltas…",
-  "checking-out": "Checking out files…",
-  done: "Finishing…",
+  get starting() { return tr("common.starting"); },
+  get counting() { return tr("common.counting_objects"); },
+  get compressing() { return tr("common.compressing_objects"); },
+  get receiving() { return tr("common.receiving_objects"); },
+  get resolving() { return tr("common.resolving_deltas"); },
+  get "checking-out"() { return tr("common.checking_out_files"); },
+  get done() { return tr("common.finishing"); },
 };
 
 /** Narrows an `ApiError`'s parsed JSON body to the shape the 409 response
@@ -100,6 +102,7 @@ const REPO_PLACEHOLDER: Record<GitProvider, string> = {
  * while.
  */
 export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
+  useUILocale();
   const launch = useTaskLaunch(open);
 
   const [url, setUrl] = useState("");
@@ -152,10 +155,10 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
   const unsupportedHost = !parsed.ok && parsed.code === "unsupported-host";
   const providerHint =
     detected !== null
-      ? `Detected from the URL: ${PROVIDER_CAPS[detected].providerName}`
+      ? tr("common.detected_from_the_url", { p0: String(PROVIDER_CAPS[detected].providerName) })
       : unsupportedHost
-        ? "Unrecognized host — only GitHub, GitLab and Bitbucket Cloud hosts are supported"
-        : "Used for owner/repo shorthand";
+        ? tr("common.unrecognized_host_only_github_gitlab_and_bitbucket_cloud")
+        : tr("common.used_for_owner_repo_shorthand");
 
   const overage = eli5
     ? promptByteOverage(
@@ -231,11 +234,11 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
       if (eli5 && result.eli5TaskId) launch.rememberPicks();
       onCloned();
       onClose();
-      toast.success(`Cloned ${result.project.name}`, {
+      toast.success(tr("common.cloned", { p0: String(result.project.name) }), {
         description: result.eli5TaskId
-          ? "Explainer task started — watch it on the board; it writes ELI5.md at the repo root."
+          ? tr("common.explainer_task_started_watch_it_on_the_board")
           : result.eli5Error
-            ? `Clone succeeded, but the explainer task failed: ${result.eli5Error}`
+            ? tr("common.clone_succeeded_but_the_explainer_task_failed", { p0: String(result.eli5Error) })
             : result.project.path,
       });
     } catch (err) {
@@ -245,7 +248,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
       // `clone-error` banner every other failure gets.
       if (err instanceof ApiError && err.status === 409 && isCancelledCloneError(err.body)) {
         onClose();
-        toast.info("Clone cancelled");
+        toast.info(tr("common.clone_cancelled"));
       } else {
         setError(err instanceof Error ? err.message : String(err));
       }
@@ -303,15 +306,13 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
        *  arbitrary data-* attributes onto the panel. */}
       <div data-testid="clone-project-dialog" className="contents">
         <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-          <h2 id="clone-project-title" className="text-sm font-semibold">
-            Clone repository
-          </h2>
+          <h2 id="clone-project-title" className="text-sm font-semibold"><I18nText id="common.clone_repository" />{" "}</h2>
           <Button
             size="icon"
             variant="ghost"
             onClick={onClose}
             disabled={busy}
-            aria-label="Close"
+            aria-label={tr("common.close")}
             className="size-7"
           >
             <X className="size-4" />
@@ -320,9 +321,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 text-sm">
           <div className="space-y-1.5">
-            <label htmlFor="clone-provider" className="text-xs font-medium text-muted-foreground">
-              Provider
-            </label>
+            <label htmlFor="clone-provider" className="text-xs font-medium text-muted-foreground"><I18nText id="common.provider" />{" "}</label>
             <Select
               id="clone-provider"
               data-testid="clone-provider"
@@ -351,9 +350,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="clone-url" className="text-xs font-medium text-muted-foreground">
-              Repository
-            </label>
+            <label htmlFor="clone-url" className="text-xs font-medium text-muted-foreground"><I18nText id="tasks.repository" />{" "}</label>
             <Input
               id="clone-url"
               data-testid="clone-url"
@@ -371,9 +368,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="clone-dest" className="text-xs font-medium text-muted-foreground">
-              Destination folder
-            </label>
+            <label htmlFor="clone-dest" className="text-xs font-medium text-muted-foreground"><I18nText id="tasks.destination_folder" />{" "}</label>
             <Input
               id="clone-dest"
               data-testid="clone-dest"
@@ -391,10 +386,8 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
 
           <label className="flex cursor-pointer items-center justify-between gap-3">
             <span className="min-w-0">
-              <span className="block text-xs font-medium">Explain this repo</span>
-              <span className="block text-[11px] text-muted-foreground">
-                Runs a task that writes an ELI5.md guide at the repo root
-              </span>
+              <span className="block text-xs font-medium"><I18nText id="tasks.explain_this_repo" /></span>
+              <span className="block text-[11px] text-muted-foreground"><I18nText id="tasks.runs_a_task_that_writes_an_eli5_md" />{" "}</span>
             </span>
             <Switch data-testid="clone-eli5-switch" checked={eli5} onCheckedChange={setEli5} disabled={busy} />
           </label>
@@ -403,8 +396,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
             <div data-testid="clone-launch" className="space-y-3">
               {launch.loading && (
                 <div role="status" className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Loading harnesses…
-                </div>
+                  <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_harnesses" />{" "}</div>
               )}
 
               {!launch.loading && launch.loadError && (
@@ -412,9 +404,7 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
                   <div className="flex items-center gap-2 text-danger">
                     <AlertCircle className="size-4 shrink-0" /> {launch.loadError}
                   </div>
-                  <div className="text-muted-foreground">
-                    Turn off "Explain this repo" above to clone without picking an agent.
-                  </div>
+                  <div className="text-muted-foreground"><I18nText id="tasks.turn_off_explain_this_repo_above_to_clone" />{" "}</div>
                 </div>
               )}
 
@@ -427,18 +417,11 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
                   <TaskLaunchPickers launch={launch} />
 
                   {!launch.effectiveStatus && (
-                    <div role="alert" className="text-[11px] text-muted-foreground">
-                      No enabled harness to run the explainer on — enable one in Settings → Harnesses,
-                      or turn off "Explain this repo" to clone without it.
-                    </div>
+                    <div role="alert" className="text-[11px] text-muted-foreground"><I18nText id="tasks.no_enabled_harness_to_run_the_explainer_on" />{" "}</div>
                   )}
 
                   {overage && (
-                    <div role="alert" className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
-                      This prompt is {Math.ceil(overage.bytes / 1024)} KB — {selectedHarnessLabel}'s
-                      one-shot launch caps prompts at {Math.floor(overage.limit / 1024)} KB. Pick
-                      another agent or harness, or turn off "Explain this repo".
-                    </div>
+                    <div role="alert" className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning"><I18nText id="tasks.this_prompt_is" />{" "}{Math.ceil(overage.bytes / 1024)}{" "}<I18nText id="tasks.kb" />{" "}{selectedHarnessLabel}<I18nText id="tasks.s_one_shot_launch_caps_prompts_at" />{" "}{Math.floor(overage.limit / 1024)}{" "}<I18nText id="tasks.kb_pick_another_agent_or_harness_or_turn" />{" "}</div>
                   )}
                 </fieldset>
               )}
@@ -479,14 +462,14 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
             }
           >
             <p aria-live="polite" className="text-xs text-muted-foreground">
-              {busy ? (progress ? cloneProgressLabel(progress) : "Starting…") : ""}
+              {busy ? (progress ? cloneProgressLabel(progress) : tr("common.starting")) : ""}
             </p>
             <progress
               data-testid="clone-progress-bar"
               max={100}
               value={busy ? progress?.percent ?? undefined : undefined}
-              aria-label="Clone progress"
-              aria-valuetext={busy ? (progress ? cloneProgressLabel(progress) : "Starting…") : undefined}
+              aria-label={tr("tasks.clone_progress")}
+              aria-valuetext={busy ? (progress ? cloneProgressLabel(progress) : tr("common.starting")) : undefined}
               className="h-1.5 w-full accent-primary"
             />
           </div>
@@ -507,15 +490,13 @@ export function CloneProjectDialog({ open, onClose, onCloned }: Props) {
               onClick={() => void cancelClone()}
               disabled={cancelling}
             >
-              {cancelling ? "Cancelling…" : "Cancel clone"}
+              {cancelling ? tr("common.cancelling") : tr("common.cancel_clone")}
             </Button>
           ) : (
-            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}><I18nText id="common.cancel" />{" "}</Button>
           )}
           <Button data-testid="clone-submit" size="sm" onClick={() => void submit()} disabled={!canSubmit}>
-            {busy ? "Cloning…" : "Clone"}
+            {busy ? tr("common.cloning") : tr("common.clone")}
           </Button>
         </div>
       </div>

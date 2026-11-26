@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2E coverage for quote-on-select in the run panel's messages list
@@ -142,7 +142,7 @@ test.describe("quote-on-select", () => {
     // the tree-walking text search below from matching another test's task.
     const responseMarker = `fake response to: ${prompt}`;
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, prompt);
 
     // Replayed over the task's unified SSE event stream regardless of

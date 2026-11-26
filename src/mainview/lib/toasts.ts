@@ -1,3 +1,5 @@
+import { staticLabel } from "@/i18n/presentation";
+import { t as tr } from "@/i18n/core";
 import { toast } from "sonner";
 import { api } from "./api";
 import { filesSentCopy, shouldNotifyOsFilesSent, shouldToastFilesSent } from "./files-sent-notify";
@@ -44,16 +46,16 @@ function maybeNotifyOS(
 ): void {
   if (args.isFocused && !opts?.force) return;
   // Fire-and-forget — failure (e.g. user denied macOS permission) is silent.
-  api.notifyOS({ title: heading, body: detail, taskId: args.taskId }).catch(() => { /* ignore */ });
+  api.notifyOS({ title: staticLabel(heading), body: detail, taskId: args.taskId }).catch(() => { /* ignore */ });
 }
 
 export function toastSuccess(args: ToastArgs): void {
   if (args.isSelected) return;
   const detail = describe(args);
-  toast.success("Task succeeded", {
+  toast.success(tr("common.task_succeeded"), {
     description: detail,
     duration: 6000,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
   });
   maybeNotifyOS(args, "Task succeeded", detail);
 }
@@ -62,10 +64,10 @@ export function toastError(args: ToastArgs & { reason?: string }): void {
   if (args.isSelected) return;
   const base = describe(args);
   const detail = args.reason ? `${base} — ${args.reason}` : base;
-  toast.error("Task failed", {
+  toast.error(tr("common.task_failed"), {
     description: detail,
     duration: Infinity,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
   });
   maybeNotifyOS(args, "Task failed", detail);
 }
@@ -92,7 +94,7 @@ function showBlockingToast(
   const id = variant.method(variant.heading, {
     description: detail,
     duration: Infinity,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
     onDismiss: () => {
       if (pendingByTask.get(args.taskId) === id) pendingByTask.delete(args.taskId);
     },
@@ -102,21 +104,21 @@ function showBlockingToast(
 }
 
 export function toastPending(args: ToastArgs): void {
-  showBlockingToast({ method: toast.warning, heading: "Waiting on you" }, args);
+  showBlockingToast({ method: toast.warning, heading: tr("common.waiting_on_you") }, args);
 }
 
 /** Variant of `toastPending` for the `blocked → api-error` transition.
  *  The heading/copy reads as a transient failure to retry rather than
  *  "the agent is waiting on your answer." */
 export function toastApiError(args: ToastArgs): void {
-  showBlockingToast({ method: toast.error, heading: "API error — retry" }, args);
+  showBlockingToast({ method: toast.error, heading: tr("common.api_error_retry") }, args);
 }
 
 /** Variant of `toastPending` for the `blocked → session-died` transition —
  *  the task's tmux session ended unexpectedly mid-run. Reads as an unexpected
  *  interruption to re-run, not "the agent is waiting on you." */
 export function toastSessionEnded(args: ToastArgs): void {
-  showBlockingToast({ method: toast.error, heading: "Session ended" }, args);
+  showBlockingToast({ method: toast.error, heading: tr("common.session_ended") }, args);
 }
 
 /** Variant of `toastPending` for the `blocked → unknown-command` transition —
@@ -125,7 +127,7 @@ export function toastSessionEnded(args: ToastArgs): void {
  *  "the agent is waiting on you." */
 export function toastUnknownCommand(args: ToastArgs): void {
   showBlockingToast(
-    { method: toast.error, heading: "Message not delivered" },
+    { method: toast.error, heading: tr("common.message_not_delivered") },
     args,
   );
 }
@@ -147,10 +149,10 @@ export function notifyWaitingInput(args: ToastArgs): void {
   const prior = pendingByTask.get(args.taskId);
   if (prior !== undefined) toast.dismiss(prior);
   const detail = describe(args);
-  const id = toast.warning("Waiting on you", {
+  const id = toast.warning(tr("common.waiting_on_you"), {
     description: detail,
     duration: Infinity,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
     onDismiss: () => {
       if (pendingByTask.get(args.taskId) === id) pendingByTask.delete(args.taskId);
     },
@@ -182,7 +184,7 @@ export function notifyFilesSent(
   if (shouldToastFilesSent({ isSelected: args.isSelected, isFocused: args.isFocused })) {
     toast.info(title, {
       description,
-      action: { label: "Open", onClick: args.onOpen },
+      action: { label: tr("common.open"), onClick: args.onOpen },
     });
   }
 }
@@ -210,11 +212,11 @@ export function toastSendFailed(
   },
 ): void {
   const base = args.subtitle ? `${args.title} · ${args.subtitle}` : args.title;
-  const tail = args.savedToBacklog ? " — saved to the task's backlog" : "";
-  toast.warning("Message not sent", {
+  const tail = args.savedToBacklog ? tr("common.saved_to_the_task_s_backlog") : "";
+  toast.warning(tr("common.message_not_sent"), {
     description: `${base} — ${args.reason}${tail}`,
     duration: 10_000,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
   });
 }
 
@@ -229,10 +231,10 @@ export function toastSendFailed(
  */
 export function toastFxAutoResumeFired(args: ToastArgs & { attempt: number; max: number }): void {
   if (args.isSelected) return;
-  toast.info(`Auto-resuming paused fx response (${args.attempt}/${args.max})…`, {
+  toast.info(tr("common.auto_resuming_paused_fx_response", { p0: String(args.attempt), p1: String(args.max) }), {
     description: describe(args),
     duration: 6000,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
   });
 }
 
@@ -245,10 +247,10 @@ export function toastFxAutoResumeFired(args: ToastArgs & { attempt: number; max:
  */
 export function toastFxAutoResumeExhausted(args: ToastArgs & { max: number }): void {
   if (args.isSelected) return;
-  toast.error(`Auto-resume gave up after ${args.max} attempts — resume manually once the limit clears`, {
+  toast.error(tr("common.auto_resume_gave_up_after_attempts_resume_manually", { p0: String(args.max) }), {
     description: describe(args),
     duration: Infinity,
-    action: { label: "Open", onClick: args.onOpen },
+    action: { label: tr("common.open"), onClick: args.onOpen },
   });
 }
 

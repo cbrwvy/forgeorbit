@@ -1,6 +1,21 @@
+import { subscribeTaskAssignmentChanged } from "@/lib/task-assignment-events";
+import { managerTaskView } from "@/lib/manager-task";
+import { onOpenAccountsRequest } from "@/lib/open-accounts";
+import { publishActivitySignal } from "@/lib/activity-events";
+import { ProfileStartupBanner } from "@/components/ProfileStartupBanner";
+import { countLabel, formatNumber, localeStore, t as tr } from "@/i18n/core";
+import { staticLabel } from "@/i18n/presentation";
+import { columnLabel } from "@/lib/status-presenters";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { DndContext, type DragEndEvent, type DragMoveEvent, type DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
+import { announceReorder, boardCollisionDetection, groupBounds, pointerOutsideBounds, reorderHint } from "@/lib/board-dnd";
+import { ReorderLive } from "@/components/kanban/ReorderLive";
+import { moveWithinGroup, normalizeUrgency, placementForMoved, planReorder, sortBoardTasks, urgencyLabelKey, type Placement } from "../shared/board-order.ts";
 import {
   AlertTriangle,
   Archive,
@@ -14,11 +29,13 @@ import {
   GitBranch,
   GitCompare,
   GitPullRequest,
+  Inbox,
   Mail,
   MailOpen,
   Play,
   PlayCircle,
   Settings,
+  Plus,
   Square,
   TimerOff,
   Trash2,
@@ -26,10 +43,12 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { api, type AgentModelMap, type HarnessModelMap } from "@/lib/api";
+import { api, type AgentModelMap, type HarnessModelMap, type UpdateSnapshot } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { canOwnerApproveDone } from "../shared/task-quality-control.ts";
 import { clampFontSizePercent, COLUMNS, USAGE_SUPPORTED_KINDS, type AgentStatus, type ColumnId, type GlobalEvent, type Harness, type HarnessQuota, type Project, type Task, type TaskType } from "../shared/types.ts";
 import { parseIssueUrl } from "../shared/issue-task.ts";
+import { FORGEORBIT_COMPANY } from "../shared/clusters/types.ts";
 import { AgentIcon } from "@/components/kanban/AgentIcon";
 import { Column } from "@/components/kanban/Column";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
@@ -37,17 +56,55 @@ import { DiffDialog } from "@/components/kanban/DiffDialog";
 import { GitHubDialog, type GitHubItemDetailPrefill, type GitHubPullPrefill } from "@/components/kanban/GitHubDialog";
 import { UsageMeter } from "@/components/usage/UsageMeter";
 import { UsagePopover } from "@/components/usage/UsagePopover";
+import { TopbarAiResources, TopbarOverflowMenu } from "@/components/usage/TopbarAiResources";
 import { visibleTopbarAgents } from "@/lib/usage";
 import { KanbanFilters } from "@/components/kanban/KanbanFilters";
 import { isMacPlatform } from "@/lib/platform";
 import { activeLeaveGuard } from "@/lib/leave-guard";
 import { FIND_SHORTCUT_BLOCKING_LAYERS, isFindShortcut } from "@/lib/find-shortcut";
 import { NewTaskForm } from "@/components/kanban/NewTaskForm";
+import { ProjectHeader } from "@/components/workspace/ProjectHeader";
+import { ClustersPage } from "@/components/workspace/clusters/ClustersPage";
+import { CompanyPage, type CompanyFocus } from "@/components/workspace/company/CompanyPage";
+import { KnowledgeBrowser } from "@/components/workspace/knowledge/KnowledgeBrowser";
+import { BrainBrowser } from "@/components/workspace/brain/BrainBrowser";
+import { BrowserComputerUse } from "@/components/workspace/browser/BrowserComputerUse";
+import { NativeComputerUse } from "@/components/workspace/native/NativeComputerUse";
+import { ProjectAnalytics } from "@/components/usage/ProjectAnalytics";
+import { ProjectWizardDialog } from "@/components/workspace/project-wizard/ProjectWizardDialog";
+import { useCompactLayout } from "@/lib/use-compact-layout";
+import { WorkspaceDraftProvider } from "@/components/workspace/WorkspaceDrafts";
+import { ShellDock } from "@/components/ShellDock";
+import { HeadOfPmDock } from "@/components/head-pm/HeadOfPmDock";
+import { AttentionPage } from "@/components/workspace/attention/AttentionPage";
+import { PageHeader } from "@/components/workspace/PageHeader";
+import { type AttentionTask } from "@/lib/attention";
+import { ownerActions } from "@/lib/owner-actions";
+import { publishProjectPermissionEvent } from "@/lib/project-permission-events";
+import { onOpenProjectSettingsRequest, publishHandsoffEvent, refreshHandsoff } from "@/lib/handsoff-events";
+import { ProjectQueueSummary } from "@/components/handsoff/ProjectQueueSummary";
+import { useOwnerActions } from "@/lib/use-owner-actions";
+import { isNewTaskShortcut, useNewTaskPinned } from "@/lib/new-task-presentation";
+import { ProjectSidebar } from "@/components/workspace/ProjectSidebar";
+import { PortfolioDashboard } from "@/components/workspace/portfolio/PortfolioDashboard";
+import { ProjectOverview } from "@/components/workspace/WorkspaceOverview";
+import { ProjectTeamPage } from "@/components/workspace/ProjectTeamPage";
+import { HomePage } from "@/components/workspace/HomePage";
+import { BoardEmptyNotice, type BoardEmptyKind } from "@/components/kanban/BoardEmptyNotice";
+import { ProjectsDirectory } from "@/components/workspace/ProjectsDirectory";
+import { SectionTabs } from "@/components/workspace/SectionTabs";
+import { navTargetFor, sectionTabsFor, type PrimaryNav } from "@/lib/navigation";
+import { EnvironmentPage } from "@/components/workspace/environment/EnvironmentPage";
+import { ProjectSettingsPage } from "@/components/workspace/settings/ProjectSettingsPage";
+import { EstimatesPage } from "@/components/workspace/estimates/EstimatesPage";
+import { RecurringTasksPage } from "@/components/recurring/RecurringTasksPage";
+import { ManagerPage } from "@/components/workspace/manager/ManagerPage";
 import { EXIT_DURATION_MS as RUN_PANEL_EXIT_MS, RunPanel } from "@/components/kanban/RunPanel";
 import { useAgentProfiles } from "@/lib/agent-profiles";
 import { pipelineAttentionStepTask, usePipelines } from "@/lib/pipelines";
 import { PipelineEditor, PipelinesPage, PipelineRunView } from "@/components/pipelines";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import type { OwnerReviewContext } from "@/components/orchestration/OwnerTrustPanel";
 import { FontSizeProvider, useFontSize } from "@/components/font-size-provider";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { TmuxInstallDialog } from "@/components/tmux/TmuxInstallDialog";
@@ -55,25 +112,50 @@ import { CoreBusyBanner } from "@/components/CoreBusyBanner";
 import { TmuxMissingBanner, errorIsTmuxMissing, isTmuxMissing } from "@/components/tmux/TmuxMissingBanner";
 import { UpdateBanner } from "@/components/updater/UpdateBanner";
 import { WorktreesDialog } from "@/components/worktrees/WorktreesDialog";
-import { WelcomeDialog } from "@/components/onboarding/WelcomeDialog";
-import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
-import type { UpdateSnapshot } from "@/lib/api";
+
 import { useConfirm } from "@/components/ui/confirm";
+import { AttentionIndicator, EmergencyStopControl } from "@/components/EmergencyStopControl";
 import { toast } from "sonner";
+import { stopToast } from "@/lib/run-termination-text";
 import { Toaster } from "@/components/ui/sonner";
 import { dismissPending, hasPendingToast, notifyFilesSent, notifyWaitingInput, toastApiError, toastError, toastFxAutoResumeExhausted, toastFxAutoResumeFired, toastPending, toastSendFailed, toastSessionEnded, toastSuccess, toastUnknownCommand, type ToastArgs } from "@/lib/toasts";
 import { PendingInputTracker } from "@/lib/pending-input-tracker";
 import { findTaskById } from "@/lib/notification-open";
 import { publishCloneProgress } from "@/lib/clone-progress";
+import { isEnvironmentEvent, publishEnvironmentEvent } from "@/lib/environment-events";
+import { publishBatchEvent } from "@/lib/batch-events";
+import { publishPortfolioRefresh } from "@/lib/portfolio-events";
+import { publishPortfolioManagerSignal } from "@/lib/portfolio-manager-events";
+import { isPortfolioRefreshEvent } from "@/lib/portfolio";
+import { publishDependencyChange, publishDependencyResync } from "@/lib/dependency-events";
 import { publishPipelineGlobalEvent } from "@/lib/pipeline-events";
 import { parseThemePreference } from "@/lib/theme";
 import { parsePullNumber } from "@/lib/pr-url";
 import { hasTextSelection, keepsNativeContextMenu } from "@/lib/context-menu";
 import { buildTaskContextMenu, type TaskMenuAction, type TaskMenuGroup } from "@/lib/task-context-menu";
 import { cn } from "@/lib/utils";
-import { ONBOARDING_DISMISSED_PREF, deriveOnboardingSteps, resolveOnboardingVisibility } from "@/lib/onboarding";
-import type { SettingsSectionId } from "@/lib/settings-dialog-view";
+import { ONBOARDING_DISMISSED_PREF, deriveAiToolReadiness, deriveGettingStartedSteps, resolveGettingStartedVisibility } from "@/lib/getting-started";
+import type { SettingsSectionId, SubsectionId } from "@/lib/settings-dialog-view";
 import { reconcileById } from "@/lib/reconcile";
+import { readCollapsed, writeCollapsed } from "@/lib/panel-collapse";
+import {
+  PROJECT_SIDEBAR_COLLAPSED_KEY,
+  activityByWorkdir,
+  emptyProjectStats,
+  includeOnBoard,
+  preferredWorkdirFor,
+  projectLabel,
+  readWorkspace,
+  projectScopeKey,
+  resolveWorkspace,
+  sameWorkspace,
+  summarizeByWorkdir,
+  visibleWorkspacePage,
+  writeWorkspace,
+  type ProjectSurfacePage,
+  type WorkspacePage,
+  type WorkspaceSelection,
+} from "@/lib/workspace";
 import { parseStickyUserMessagesPreference, STICKY_USER_MESSAGES_PREF } from "@/lib/user-message-display";
 import { FX_AUTO_RESUME_DELAY_PREF, FX_AUTO_RESUME_PREF } from "@/lib/fx-auto-resume-prefs";
 import { parseFxAutoResumePrefs } from "../shared/fx-recovery.ts";
@@ -115,6 +197,7 @@ function stepSubtitle(step: Task | undefined, parent: Task | undefined): string 
  * rapid succession of errors doesn't snap-jitter the layout.
  */
 function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () => void }) {
+  useUILocale();
   // Hold the last non-null message so the exit animation has something to
   // render after the parent clears the error.
   const [shown, setShown] = useState<string | null>(error);
@@ -146,7 +229,7 @@ function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () 
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss error"
+        aria-label={tr("navigation.dismiss_error")}
         className="shrink-0 rounded-md p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
         <X className="size-3.5" />
@@ -154,16 +237,6 @@ function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () 
     </div>
   );
 }
-
-/** Muted one-line hints shown in empty columns while onboarding's checklist
- *  is visible (see `Column`'s `emptyHint` prop). Review/done intentionally
- *  have no entry — an empty Review/Done column needs no explanation. */
-const EMPTY_COLUMN_HINT: Partial<Record<ColumnId, string>> = {
-  backlog: "Ideas you haven't queued yet",
-  ready: "Tasks return here when a run needs another go",
-  running: "Agents working right now",
-  blocked: "Needs your attention",
-};
 
 /** One icon per `TaskMenuAction`, for the task context menu built from
  *  `buildTaskContextMenu`'s pure entries (see the `taskMenuItems` memo
@@ -187,6 +260,7 @@ const ICON_BY_ACTION: Record<TaskMenuAction, LucideIcon> = {
   "mark-unread": Mail,
   "copy-branch": GitBranch,
   "copy-worktree-path": Copy,
+  "admit-inbox": Inbox,
   delete: Trash2,
 };
 
@@ -225,11 +299,14 @@ function viewMountKey(view: AppView): string {
  * wrap this component, not be called from within it.
  */
 function AppInner() {
+  const { locale: uiLocale } = useUILocale();
   const { preference: themePreference, setPreference: setThemePreference } = useTheme();
+  const reduceMotion = useReducedMotion() === true;
   const { setPercent: setFontSizePercent, percentRef: fontSizePercentRef, hasUserAdjustedRef: fontSizeUserAdjustedRef } = useFontSize();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [harnesses, setHarnesses] = useState<Harness[]>([]);
+  const [harnessInstallations, setHarnessInstallations] = useState<import("../shared/harness-installation.ts").HarnessInstallation[]>([]);
   // True once `/harnesses` has resolved at least once — lets onboarding's
   // harness step tell "not loaded yet" (skip the disabled/enabled
   // distinction) apart from "loaded, and it happens to be empty".
@@ -274,6 +351,39 @@ function AppInner() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [textQuery, setTextQuery] = useState("");
   const [repoFilter, setRepoFilter] = useState<string[]>([]);
+  // Project workspace is webview chrome (which project, overview vs board,
+  // sidebar collapse). Seeded synchronously so a reload doesn't flash the
+  // global overview over a project the user had open. See `lib/workspace.ts`.
+  const compactLayout = useCompactLayout();
+  const [compactPanel, setCompactPanel] = useState<"projects" | "task" | null>(null);
+  const closeCompactPanel = useCallback(() => {
+    const selector = compactPanel === "projects" ? '[data-testid="project-sidebar-toggle"]' : '[data-testid="new-task-panel"] > button';
+    setCompactPanel(null);
+    requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(selector)?.focus());
+  }, [compactPanel]);
+  useEffect(() => {
+    if (!compactLayout) setCompactPanel(null);
+  }, [compactLayout]);
+  useEffect(() => {
+    if (!compactLayout || !compactPanel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"], [data-popover-open]')) return;
+      event.preventDefault();
+      closeCompactPanel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [compactLayout, compactPanel, closeCompactPanel]);
+  const [workspace, setWorkspace] = useState<WorkspaceSelection>(() => readWorkspace());
+  const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(() =>
+    readCollapsed(PROJECT_SIDEBAR_COLLAPSED_KEY),
+  );
+  const [projectWizardOpen, setProjectWizardOpen] = useState(false);
+  useEffect(() => { writeWorkspace(workspace); }, [workspace]);
+  useEffect(() => {
+    writeCollapsed(PROJECT_SIDEBAR_COLLAPSED_KEY, projectSidebarCollapsed);
+  }, [projectSidebarCollapsed]);
+  const [decisionsOnly, setDecisionsOnly] = useState(false);
   const [statusFilter, setStatusFilter] = useState<ColumnId[]>([]);
   const [archivedView, setArchivedView] = useState<"active" | "all" | "archived">("active");
   const [harnessFilter, setHarnessFilter] = useState<string[]>([]);
@@ -297,6 +407,24 @@ function AppInner() {
   // pipeline subagent satellite), cleared on every close/other open path so a
   // later "Manage agents…" or gear open lands on the plain list.
   const [settingsInitialAgentId, setSettingsInitialAgentId] = useState<string | null>(null);
+  // M4: the Settings panel to scroll to, and the exact mission/task an Owner-confirmation
+  // review was opened for. Both are cleared on every close so a plain open lands on General.
+  const [settingsInitialAnchor, setSettingsInitialAnchor] = useState<SubsectionId | null>(null);
+  const [settingsOwnerContext, setSettingsOwnerContext] = useState<OwnerReviewContext | null>(null);
+  const resetSettingsEntry = useCallback(() => {
+    setSettingsInitialSection(undefined);
+    setSettingsInitialAgentId(null);
+    setSettingsInitialAnchor(null);
+    setSettingsOwnerContext(null);
+  }, []);
+  /** A link from Missions into Settings. It only opens a section: nothing is saved, confirmed or started. */
+  const openSettingsFromMissions = useCallback((target: { section: SettingsSectionId; anchor: SubsectionId; ownerContext?: OwnerReviewContext }) => {
+    setSettingsInitialSection(target.section);
+    setSettingsInitialAgentId(null);
+    setSettingsInitialAnchor(target.anchor);
+    setSettingsOwnerContext(target.ownerContext ?? null);
+    setSettingsOpen(true);
+  }, []);
   // --- Onboarding (docs/plans/onboarding-first-run.md) ---------------------
   // Server preference mirror. `undefined` = never fetched OR never set;
   // `resolveOnboardingVisibility` treats those the same (both gate on
@@ -325,9 +453,6 @@ function AppInner() {
   // keeps the compact-strip flash guard consistent: a transient poll
   // failure just delays onboarding rather than flashing it early.
   const [projectsLoaded, setProjectsLoaded] = useState(false);
-  // "Get started" in WelcomeDialog is session-only (doesn't write the
-  // server pref) — only "Skip" and the checklist's own dismiss persist.
-  const [welcomeAcknowledged, setWelcomeAcknowledged] = useState(false);
   // Nonce bumped by onboarding's "Choose a project…" / "Create your first
   // task" actions — NewTaskForm reacts to increments (expand + focus Title).
   const [newTaskFocusNonce, setNewTaskFocusNonce] = useState(0);
@@ -348,8 +473,8 @@ function AppInner() {
   const [tmuxDialogOpen, setTmuxDialogOpen] = useState(false);
   const [updateSnapshot, setUpdateSnapshot] = useState<UpdateSnapshot | null>(null);
   const [homeDir, setHomeDir] = useState<string>("");
-  // Active data dir resolved server-side (~/.agetor for the packaged .app,
-  // ~/.agetor-dev when launched via `bun run dev` / `dev:hmr`). Threaded to
+  // Active profile root resolved server-side (platform default or an explicit
+  // override, including the development root). Threaded to
   // SettingsDialog so new-harness HOME suggestions point under the current
   // data dir instead of always hard-coding the prod tree.
   const [dataDir, setDataDir] = useState<string>("");
@@ -377,6 +502,20 @@ function AppInner() {
   // that assume a stable identity.
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; }, [view]);
+  const workspaceRef = useRef(workspace);
+  useEffect(() => { workspaceRef.current = workspace; }, [workspace]);
+  // A stored Missions page now opens Settings → Execution plans. The rewrite
+  // happens once and does not authorize, resume or start anything.
+  const redirectedPlans = useRef(false);
+  useEffect(() => {
+    if (redirectedPlans.current || workspace.scope !== "all" || workspace.page !== "missions") return;
+    redirectedPlans.current = true;
+    setWorkspace({ scope: "all", page: "overview" });
+    setSettingsInitialSection("plans");
+    setSettingsInitialAnchor("execution_plans");
+    setSettingsOwnerContext(null);
+    setSettingsOpen(true);
+  }, [workspace]);
   const pipelineEditorDirtyRef = useRef(pipelineEditorDirty);
   useEffect(() => { pipelineEditorDirtyRef.current = pipelineEditorDirty; }, [pipelineEditorDirty]);
   /** The view switch behind `navigate`, past the leave guards (below): the
@@ -387,12 +526,12 @@ function AppInner() {
   const switchView = useCallback((next: AppView, onNavigated?: () => void) => {
     const current = viewRef.current;
     if (current.kind === "pipelines" && current.editing && pipelineEditorDirtyRef.current) {
-      void confirm({
-        title: "Discard unsaved pipeline changes?",
-        confirmLabel: "Discard",
-        cancelLabel: "Keep editing",
+      void confirm(() => ({
+        title: tr("common.discard_unsaved_pipeline_changes"),
+        confirmLabel: tr("common.discard"),
+        cancelLabel: tr("common.keep_editing"),
         variant: "destructive",
-      }).then((ok) => {
+      })).then((ok) => {
         if (!ok) return;
         setPipelineEditorDirty(false);
         setView(next);
@@ -421,12 +560,12 @@ function AppInner() {
     // a switch that keeps the same page mounted unmounts nothing.
     const guard = viewMountKey(next) === viewMountKey(current) ? null : activeLeaveGuard();
     if (guard) {
-      void confirm({
+      void confirm(() => ({
         title: guard.title,
         description: guard.description,
-        confirmLabel: "Discard",
+        confirmLabel: tr("common.discard"),
         variant: "destructive",
-      }).then((ok) => {
+      })).then((ok) => {
         if (!ok) return;
         // Drop the guarded work first (closes the import dialog now) so it
         // doesn't linger over the old view's exit animation.
@@ -547,6 +686,14 @@ function AppInner() {
     // stale one so it can't force the tab strip on the wrong task (M-A2).
     setFocusSubagent(null);
     setSelected(t);
+    const path = t.ownerProjectPath;
+    if (path) {
+      setWorkspace((prev) => (
+        prev.scope === "project" && prev.path === path && prev.page === "board"
+          ? prev
+          : { scope: "project", path, page: "board" }
+      ));
+    }
   }, [openPipelineRun]);
   /** The card's amber "waiting on you" button (`TaskCard`'s
    *  `onOpenAttention`): a pipeline PARENT lands on its run view plus the
@@ -596,6 +743,7 @@ function AppInner() {
   // read racing the user's own change should never win.
   useEffect(() => {
     api.listPreferences().then((prefs) => {
+      localeStore.reconcile(prefs.locale);
       const dbTheme = parseThemePreference(prefs.theme);
       if (dbTheme !== themePreference) setThemePreference(dbTheme);
       if (!fontSizeUserAdjustedRef.current) {
@@ -620,9 +768,17 @@ function AppInner() {
    *  closes so a "Show getting started guide" replay (which writes the pref
    *  server-side, then closes the dialog) is reflected without a full
    *  preferences round-trip through the boot-only effect above. */
-  const refetchOnboardingPref = useCallback(() => {
+  const onboardingPrefRef = useRef<string | undefined>(undefined);
+  onboardingPrefRef.current = onboardingDismissedPref;
+  const refetchOnboardingPref = useCallback((onReplayed?: () => void) => {
     api.listPreferences()
-      .then((prefs) => setOnboardingDismissedPref(prefs[ONBOARDING_DISMISSED_PREF]))
+      .then((prefs) => {
+        const next = prefs[ONBOARDING_DISMISSED_PREF];
+        const before = onboardingPrefRef.current;
+        setOnboardingDismissedPref(next);
+        // A replay (Settings → General) turns the stored "true" into "false"; the block lives on Home, so go there.
+        if (next === "false" && before !== "false") onReplayed?.();
+      })
       .catch(() => { /* keep last known value */ });
   }, []);
 
@@ -660,6 +816,7 @@ function AppInner() {
       const payload = await api.listHarnesses();
       setHarnesses((prev) => reconcileById(prev, payload.harnesses, (h) => h.id));
       setAgents((prev) => reconcileById(prev, payload.statuses, (a) => a.harnessId));
+      setHarnessInstallations(payload.installations ?? []);
       // Harness rows (carries `enabled`) are already fetched here for the
       // header's status dots — onboarding's harness step reuses this same
       // state instead of a second fetch, but needs to distinguish "not
@@ -733,7 +890,8 @@ function AppInner() {
       // once already true. A transient failure just delays onboarding
       // (the poll retries), which is the safe direction.
       setProjectsLoaded(true);
-    } catch { /* leave previous state; poll retries */ }
+      return list;
+    } catch { /* leave previous state; poll retries */ return undefined; }
   }, []);
   useEffect(() => {
     void refresh();
@@ -1117,6 +1275,8 @@ function AppInner() {
   // anyway" the server arms a one-shot flag and re-issues Utils.quit().
   useEffect(() => {
     const cancel = api.subscribeAppEvents((ev) => {
+      if (ev.type === "activity_event") publishActivitySignal("changed");
+      if (isPortfolioRefreshEvent(ev.type)) publishPortfolioRefresh(ev.type);
       if (ev.type === "harness_usage") {
         setUsage((prev) => ({ ...prev, [ev.quota.harnessId]: ev.quota }));
         return;
@@ -1125,6 +1285,38 @@ function AppInner() {
         // Forwarded to the module store CloneProjectDialog subscribes to —
         // never opens its own EventSource (see clone-progress.ts for why).
         publishCloneProgress(ev);
+        return;
+      }
+      if (isEnvironmentEvent(ev)) {
+        publishEnvironmentEvent(ev);
+        return;
+      }
+      if (ev.type === "execution_batch") {
+        publishBatchEvent(ev);
+        return;
+      }
+      if (ev.type === "project_permission") {
+        publishProjectPermissionEvent(ev);
+        return;
+      }
+      if (ev.type === "handsoff") {
+        publishHandsoffEvent(ev);
+        return;
+      }
+      if (ev.type === "recurring") {
+        void refresh();
+        return;
+      }
+      if (ev.type === "project_lifecycle") {
+        void refreshProjects();
+        return;
+      }
+      if (ev.type === "portfolio_delegation") {
+        publishPortfolioManagerSignal({ kind: "delegation", event: ev });
+        return;
+      }
+      if (ev.type === "task_dependencies") {
+        publishDependencyChange(ev.projectPath);
         return;
       }
       if (ev.type === "agent_models_changed") {
@@ -1177,30 +1369,35 @@ function AppInner() {
       }
       if (ev.type !== "quit_request") return;
       const n = ev.runningRunCount;
-      const noun = n === 1 ? "task is" : "tasks are";
+      const noun = n === 1 ? tr("common.task_is") : tr("common.tasks_are");
       const titlesPreview = ev.runningTaskTitles.length > 0
         ? ev.runningTaskTitles.slice(0, 3).join(", ")
           + (ev.runningTaskTitles.length > 3 ? ", …" : "")
         : null;
-      void confirm({
-        title: "Quit ForgeOrbit?",
+      void confirm(() => ({
+        title: tr("common.quit_forgeorbit"),
         description: (
           <div className="space-y-2">
             <div>
-              {n} {noun} still running. They will keep running in the background;
-              you can reconnect to them next time you open ForgeOrbit.
-            </div>
+              {n} {noun}{" "}<I18nText id="navigation.still_running_they_will_keep_running_in_the" />{" "}</div>
             {titlesPreview && (
               <div className="font-mono text-foreground/80">{titlesPreview}</div>
             )}
           </div>
         ),
-        confirmLabel: "Quit anyway",
-        cancelLabel: "Stay open",
-      }).then((ok) => {
+        confirmLabel: tr("common.quit_anyway"),
+        cancelLabel: tr("common.stay_open"),
+      })).then((ok) => {
         if (ok) void api.forceQuit().catch(() => { /* response races process exit */ });
       });
-    });
+    }, () => {
+      // (Re)connected: events sent while the stream was down are lost, so
+      // listeners whose state is event-driven re-read it from the core.
+      publishActivitySignal("connected");
+      publishDependencyResync();
+      publishPortfolioRefresh("reconnect");
+      publishPortfolioManagerSignal({ kind: "reconnect" });
+    }, () => publishActivitySignal("disconnected"));
     return cancel;
   }, [confirm, refreshAgentModels, refreshHarnessModels, openTask, openPipelineAttention]);
 
@@ -1284,7 +1481,7 @@ function AppInner() {
       // Resolve a display title from the latest tasks snapshot; fall back to
       // a short id slice if the row hasn't been polled in yet.
       const task = tasksRef.current.find((t) => t.id === ev.taskId);
-      const title = task?.title || `Task ${ev.taskId.slice(0, 7)}`;
+      const title = task?.title || tr("common.task_8144db", { p0: String(ev.taskId.slice(0, 7)) });
       const subtitle = task?.agent;
       const onOpen = () => {
         const fresh = tasksRef.current.find((t) => t.id === ev.taskId);
@@ -1313,7 +1510,7 @@ function AppInner() {
             const parent = tasksRef.current.find((t) => t.id === stepParentId);
             return {
               taskId: stepParentId,
-              title: parent?.title || stepParentTitleOf(ev) || `Pipeline ${stepParentId.slice(0, 7)}`,
+              title: parent?.title || stepParentTitleOf(ev) || tr("common.pipeline_5b7717", { p0: String(stepParentId.slice(0, 7)) }),
               subtitle: stepSubtitle(task, parent),
               isSelected: viewingTask(stepParentId),
               isFocused,
@@ -1565,37 +1762,112 @@ function AppInner() {
   // user never picked.
   const nonStepTasks = useMemo(
     () => tasks.filter((t) => t.pipelineParentId == null),
-    [tasks],
+    [tasks, uiLocale],
+  );
+
+  const projectPaths = useMemo(() => projects.map((p) => p.path), [projects, uiLocale]);
+  // A stored project that disappeared (deleted, or never loaded on this
+  // machine) falls back to the global overview once the list is known.
+  // Rendering uses this value directly so the fallback paints on the same
+  // commit the list arrives, not one effect later.
+  const effectiveWorkspace = useMemo(
+    () => resolveWorkspace(workspace, projectPaths, projectsLoaded),
+    [workspace, projectPaths, projectsLoaded, uiLocale],
+  );
+  const workspacePage = visibleWorkspacePage(effectiveWorkspace);
+  const assignmentProject = view.kind === "board" && effectiveWorkspace.scope === "project" && workspacePage === "board" ? effectiveWorkspace.path : null;
+  const [boardAssignees, setBoardAssignees] = useState<{ path: string; names: ReadonlyMap<string, string> } | null>(null);
+  useEffect(() => {
+    if (!assignmentProject) return;
+    let generation = 0;
+    const refresh = () => {
+      const request = ++generation;
+      void api.listProjectTaskAssignments(assignmentProject).then(({ assignments }) => {
+        if (request !== generation) return;
+        const names = new Map<string, string>();
+        for (const assignment of assignments) {
+          if (assignment.status === "active" && assignment.task.visibility === "in-project" && assignment.employeeName) {
+            names.set(assignment.taskId, assignment.employeeName);
+          }
+        }
+        setBoardAssignees({ path: assignmentProject, names });
+      }, () => {
+        if (request === generation) setBoardAssignees(null);
+      });
+    };
+    refresh();
+    const unsubscribe = subscribeTaskAssignmentChanged(refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      generation++;
+      unsubscribe();
+      window.removeEventListener("focus", refresh);
+    };
+  }, [assignmentProject]);
+  useEffect(() => {
+    if (!sameWorkspace(workspace, effectiveWorkspace)) setWorkspace(effectiveWorkspace);
+  }, [workspace, effectiveWorkspace]);
+  const workdirSummaries = useMemo(() => summarizeByWorkdir(tasks), [tasks, uiLocale]);
+  const workdirActivity = useMemo(() => activityByWorkdir(tasks), [tasks, uiLocale]);
+  const scopeTaskCount = useMemo(
+    () => tasks.reduce((n, t) => n + (includeOnBoard(t, effectiveWorkspace, []) ? 1 : 0), 0),
+    [tasks, effectiveWorkspace, uiLocale],
   );
 
   // Text + repo filter applied here; status filter narrows the rendered
   // columns (not the task list) so an unselected status disappears entirely
-  // rather than rendering an empty column.
+  // rather than rendering an empty column. A project workspace replaces the
+  // repo multi-select: `includeOnBoard` scopes to that directory and leaves
+  // `repoFilter` stored for the all-projects board.
+  const visibleTasksRef = useRef<Task[]>([]);
   const visibleTasks = useMemo(() => {
     const q = textQuery.trim().toLowerCase();
     return tasks.filter((t) => {
-      // Hidden pipeline STEP tasks never appear as their own board cards
-      // (D11, `docs/plans/pipelines.md`) — they're driven entirely from the
-      // pipeline run view, opened via the parent's `PipelineBadge`. `tasks`
-      // state itself still holds them (the run panel's `selected`-sync
-      // effect and `GET /tasks/:id/pipeline` both need the full list/row).
-      if (t.pipelineParentId != null) return false;
+      if (!includeOnBoard(t, effectiveWorkspace, repoFilter)) return false;
+      if (decisionsOnly && !managerTaskView(t).needsDecision) return false;
       if (q) {
         const hay = `${t.title}\n${t.prompt}\n${t.workdir}\n${t.branch ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
-      if (repoFilter.length > 0 && !repoFilter.includes(t.workdir)) return false;
       if (harnessFilter.length > 0 && !harnessFilter.includes(t.agent)) return false;
       if (typeFilter.length > 0 && !typeFilter.includes(t.taskType)) return false;
       if (archivedView === "active" && t.archivedAt != null) return false;
       if (archivedView === "archived" && t.archivedAt == null) return false;
       return true;
     });
-  }, [tasks, textQuery, repoFilter, harnessFilter, typeFilter, archivedView]);
+  }, [tasks, textQuery, repoFilter, harnessFilter, typeFilter, archivedView, effectiveWorkspace, decisionsOnly, uiLocale]);
+  visibleTasksRef.current = visibleTasks;
+
+  // Tasks board empty state (M7): nothing exists, nothing exists and there is no project, or tasks exist but the
+  // filters hide them. Nothing shows before the first tasks fetch lands (that is loading, not empty).
+  const boardFiltersActive =
+    decisionsOnly || textQuery !== ""
+    || (effectiveWorkspace.scope !== "project" && repoFilter.length > 0)
+    || statusFilter.length > 0
+    || archivedView !== "active"
+    || harnessFilter.length > 0
+    || typeFilter.length > 0;
+  const clearBoardFilters = useCallback(() => {
+    setDecisionsOnly(false);
+    setTextQuery("");
+    setRepoFilter([]);
+    setStatusFilter([]);
+    setArchivedView("active");
+    setHarnessFilter([]);
+    setTypeFilter([]);
+  }, []);
+  const boardEmptyKind: BoardEmptyKind | null =
+    !tasksLoaded || !projectsLoaded || visibleTasks.length > 0
+      ? null
+      : boardFiltersActive && scopeTaskCount > 0
+        ? "filtered"
+        : projects.length === 0 && effectiveWorkspace.scope === "all"
+          ? "no-project"
+          : "empty";
 
   const visibleColumns = useMemo(
     () => (statusFilter.length === 0 ? COLUMNS : COLUMNS.filter((c) => statusFilter.includes(c.id))),
-    [statusFilter],
+    [statusFilter, uiLocale],
   );
 
   // Distinct harness ids referenced by any (non-step) task — feeds the
@@ -1606,40 +1878,35 @@ function AppInner() {
   // visible task on.
   const taskAgentIds = useMemo(
     () => Array.from(new Set(nonStepTasks.map((t) => t.agent))),
-    [nonStepTasks],
+    [nonStepTasks, uiLocale],
   );
 
-  // --- Onboarding derivation (pure lib/onboarding.ts, thin wiring here) ---
-  const enabledHarnessIds = useMemo(
-    () => (harnessesLoaded ? new Set(harnesses.filter((h) => h.enabled).map((h) => h.id)) : null),
-    [harnessesLoaded, harnesses],
+  const { rows: ownerRows, refresh: refreshOwnerActions } = useOwnerActions();
+  // --- Getting started (pure lib/getting-started.ts, thin wiring here) ---
+  const aiToolReadiness = useMemo(
+    () => deriveAiToolReadiness(agents, harnessesLoaded ? harnesses : null),
+    [agents, harnessesLoaded, harnesses, uiLocale],
   );
-  const onboardingSteps = useMemo(
-    () => deriveOnboardingSteps({ statuses: agents, enabledHarnessIds, projectCount: projects.length, tasks }),
-    [agents, enabledHarnessIds, projects.length, tasks],
+  const gettingStartedSteps = useMemo(
+    () => deriveGettingStartedSteps({
+      projectCount: projects.length,
+      ai: aiToolReadiness,
+      taskCount: nonStepTasks.length,
+      pendingPlanCount: ownerRows?.proposals.length ?? 0,
+    }),
+    [projects.length, aiToolReadiness, nonStepTasks.length, ownerRows, uiLocale],
   );
   const onboardingVisibility = useMemo(
-    () => resolveOnboardingVisibility({
+    () => resolveGettingStartedVisibility({
       dismissedPref: onboardingDismissedPref,
-      // All four sources the derivation reads from (prefs, tasks, harnesses,
-      // projects) must have resolved at least once — otherwise the checklist
-      // can flash the compact "some steps missing" strip for an existing
-      // user whose harnesses/projects just haven't loaded yet on a slow boot.
+      // Everything the steps read (prefs, tasks, harnesses, projects) must have resolved at least once,
+      // otherwise a set-up profile could flash the block on a slow boot.
       loaded: prefsLoaded && tasksLoaded && harnessesLoaded && projectsLoaded,
-      steps: onboardingSteps,
-      taskCount: tasks.length,
-      welcomeAcknowledged,
+      steps: gettingStartedSteps,
+      projectCount: projects.length,
+      taskCount: nonStepTasks.length,
     }),
-    [
-      onboardingDismissedPref,
-      prefsLoaded,
-      tasksLoaded,
-      harnessesLoaded,
-      projectsLoaded,
-      onboardingSteps,
-      tasks.length,
-      welcomeAcknowledged,
-    ],
+    [onboardingDismissedPref, prefsLoaded, tasksLoaded, harnessesLoaded, projectsLoaded, gettingStartedSteps, projects.length, nonStepTasks.length, uiLocale],
   );
   // Existing-user upgrade path: write the dismissal pref once, the instant
   // `resolveOnboardingVisibility` signals every step already derives as
@@ -1658,14 +1925,19 @@ function AppInner() {
     });
   }, [onboardingVisibility.autoDismiss]);
 
-  // Shared by WelcomeDialog's "Skip" and OnboardingChecklist's "Dismiss" —
-  // both permanently hide onboarding.
+  // The block's dismiss button permanently hides getting started (Settings → General brings it back).
   const dismissOnboarding = useCallback(() => {
     setOnboardingDismissedPref("true");
     void api.setPreference(ONBOARDING_DISMISSED_PREF, "true").catch(() => {
       /* best-effort, matching the theme/defaultHarness write idiom elsewhere */
     });
   }, []);
+  // A link from a provider-refusal notice: open Settings on the accounts panel. Nothing is saved or launched.
+  useEffect(() => onOpenAccountsRequest(() => {
+    setSettingsInitialSection("accounts");
+    setSettingsInitialAgentId(null);
+    setSettingsOpen(true);
+  }), []);
   const openSettingsHarnesses = useCallback(() => {
     setSettingsInitialSection("harnesses");
     setSettingsInitialAgentId(null);
@@ -1693,20 +1965,230 @@ function AppInner() {
    *  gear icon stays live), so this can also be leaving a dirty editor. */
   const onSettingsOpenPipelines = useCallback((id: string | null, editing: boolean) => {
     setSettingsOpen(false);
-    setSettingsInitialAgentId(null);
-    setSettingsInitialSection(undefined);
+    resetSettingsEntry();
     navigate({ kind: "pipelines", pipelineId: id, editing });
-  }, [navigate]);
+  }, [navigate, resetSettingsEntry]);
+  // New task is a sheet by default (⌘N / the "New task" buttons) and the
+  // pinned side panel when the Owner pins it in Settings → General.
+  const newTaskPinned = useNewTaskPinned();
+  const [newTaskSheetOpen, setNewTaskSheetOpen] = useState(false);
+  const newTaskPinnedRef = useRef(newTaskPinned);
+  newTaskPinnedRef.current = newTaskPinned;
   const onFocusNewTask = useCallback(() => {
+    if (!newTaskPinnedRef.current) setNewTaskSheetOpen(true);
     setNewTaskFocusNonce((n) => n + 1);
   }, []);
-  const onOpenOnboardingTerminal = useCallback((harnessId: string) => {
-    void api.openHarnessTerminal(harnessId).catch((e: unknown) => {
-      const message = e instanceof Error ? e.message : String(e);
-      toast.error("Couldn't open terminal", { description: message });
-    });
-  }, []);
+  useEffect(() => {
+    if (newTaskPinned) setNewTaskSheetOpen(false);
+  }, [newTaskPinned]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isNewTaskShortcut(e)) return;
+      e.preventDefault();
+      // Another modal dialog is already up: it owns the keyboard.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      onFocusNewTask();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onFocusNewTask]);
+  // "Needs you": tasks already polled for the board, nothing extra fetched.
+  // The rail badge, the page and the Head of PM orb share one definition (lib/owner-actions.ts).
+  // Owner DONE removes workflow holds on the core. Refresh that read-only
+  // projection when task acceptance changes, without waiting for window focus.
+  const ownerTaskState = tasks.map((task) =>
+    `${task.id}:${task.column}:${task.archivedAt}:${task.qcState?.activeReviewId}:${task.qcState?.awaitingOwnerApproval}`).join("|");
+  useEffect(() => { refreshOwnerActions(); }, [ownerTaskState, refreshOwnerActions]);
 
+  // A signal for the Emergency Stop control: while a stop is on, the number of tasks still running changes what it
+  // reports as "not stopped", so the control re-reads the core when this number moves (no polling of its own).
+  const runningTaskSignal = useMemo(() => tasks.filter((task) => task.column === "running").length, [tasks]);
+  const attentionCount = useMemo(() => ownerActions(tasks as readonly AttentionTask[], { rows: ownerRows }).total, [tasks, ownerRows]);
+  const showWorkspaceSurface = useCallback(() => {
+    if (viewRef.current.kind !== "board") navigate({ kind: "board" });
+  }, [navigate]);
+  const commitWorkspace = useCallback((next: WorkspaceSelection) => {
+    if (sameWorkspace(workspaceRef.current, next)) {
+      showWorkspaceSurface();
+      return;
+    }
+    const guard = activeLeaveGuard();
+    const apply = () => {
+      setWorkspace(next);
+      showWorkspaceSurface();
+    };
+    if (!guard) {
+      apply();
+      return;
+    }
+    void confirm(() => ({
+      title: guard.title,
+      description: guard.description,
+      confirmLabel: tr("common.discard"),
+      cancelLabel: tr("common.keep_editing"),
+      variant: "destructive",
+    })).then((ok) => {
+      if (!ok) return;
+      guard.discard?.();
+      apply();
+    });
+  }, [confirm, showWorkspaceSurface]);
+  const openGlobalOverview = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "overview" });
+  }, [commitWorkspace]);
+  const openAllTasks = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "board" });
+  }, [commitWorkspace]);
+  const [portfolioInitialTab, setPortfolioInitialTab] = useState<"overview" | "manager">("overview");
+  const [headPmOpenRequest, setHeadPmOpenRequest] = useState<{ scope: import("../shared/head-pm-scope.ts").HeadScope } | null>(null);
+  const openHeadForProject = useCallback((projectPath: string) => setHeadPmOpenRequest({ scope: { kind: "project", path: projectPath } }), []);
+  const openWorkspaceHead = useCallback(() => setHeadPmOpenRequest({ scope: { kind: "workspace" } }), []);
+  const openPortfolioManager = useCallback(() => {
+    setPortfolioInitialTab("manager");
+    commitWorkspace({ scope: "all", page: "portfolio" });
+  }, [commitWorkspace]);
+  const openPortfolio = useCallback(() => {
+    setPortfolioInitialTab("overview");
+    commitWorkspace({ scope: "all", page: "portfolio" });
+  }, [commitWorkspace]);
+  const openClusters = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "clusters" });
+  }, [commitWorkspace]);
+  const openMissions = useCallback(() => {
+    setSettingsInitialSection("plans");
+    setSettingsInitialAgentId(null);
+    setSettingsInitialAnchor("execution_plans");
+    setSettingsOwnerContext(null);
+    setSettingsOpen(true);
+  }, []);
+  // Company page. A stored focus would reopen an old card on every visit, so
+  // the sidebar entry only asks the page to start over and a link from another
+  // page names the employee or project to show.
+  const [companyFocus, setCompanyFocus] = useState<CompanyFocus | null>(null);
+  const companyFocusNonce = useRef(0);
+  const openCompany = useCallback(() => {
+    setCompanyFocus({ reset: true, nonce: ++companyFocusNonce.current });
+    commitWorkspace({ scope: "all", page: "company" });
+  }, [commitWorkspace]);
+  const openEmployee = useCallback((id: string) => {
+    setCompanyFocus({ employeeId: id, nonce: ++companyFocusNonce.current });
+    commitWorkspace({ scope: "all", page: "company" });
+  }, [commitWorkspace]);
+  const openCompanyTeam = useCallback((projectPath: string) => {
+    setCompanyFocus({ projectPath, nonce: ++companyFocusNonce.current });
+    commitWorkspace({ scope: "all", page: "company" });
+  }, [commitWorkspace]);
+  const openCompanyActivity = useCallback((projectPath: string) => {
+    setCompanyFocus({ projectPath, activity: true, nonce: ++companyFocusNonce.current });
+    commitWorkspace({ scope: "all", page: "company" });
+  }, [commitWorkspace]);
+  const openAttentionPage = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "attention" });
+  }, [commitWorkspace]);
+  const openKnowledge = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "knowledge" });
+  }, [commitWorkspace]);
+  const openBrain = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "brain" });
+  }, [commitWorkspace]);
+  const openBrowser = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "browser" });
+  }, [commitWorkspace]);
+  const openNativeComputer = useCallback(() => {
+    commitWorkspace({ scope: "all", page: "native-computer" });
+  }, [commitWorkspace]);
+  const openCluster = useCallback((id: string) => {
+    commitWorkspace({ scope: "cluster", id, page: "clusters" });
+  }, [commitWorkspace]);
+  const openProjectPage = useCallback((path: string, page: ProjectSurfacePage) => {
+    // The portfolio page can list a project before the board poll has stored
+    // it. Selecting that path first makes resolveWorkspace treat it as
+    // deleted and bounce to the global overview. Load the registry, then
+    // select only a path that is actually registered.
+    void (async () => {
+      const list = await refreshProjects();
+      if (!list?.some((project) => project.path === path)) return;
+      commitWorkspace({ scope: "project", path, page });
+    })();
+  }, [commitWorkspace, refreshProjects]);
+  // A link from "Work independently" in the task panel: open the project's settings page. Nothing is saved or started.
+  useEffect(() => onOpenProjectSettingsRequest((path) => openProjectPage(path, "settings")), [openProjectPage]);
+  // Manager deep link: which section to land on (chat / plan & queue / runs). The request is
+  // scoped to the project and carries a nonce, so the same request twice still counts.
+  const [managerIntent, setManagerIntent] = useState<{ path: string; view: "chat" | "inbox" | "plan" | "runs"; nonce: number } | null>(null);
+  const managerIntentNonce = useRef(0);
+  const openProjectManager = useCallback((path: string, view: "chat" | "inbox" | "plan" | "runs" = "chat") => {
+    setManagerIntent({ path, view, nonce: ++managerIntentNonce.current });
+    openProjectPage(path, "manager");
+  }, [openProjectPage]);
+  const openTaskById = useCallback((taskId: string) => {
+    const known = findTaskById(tasksRef.current, taskId);
+    if (known) {
+      openTask(known);
+      return;
+    }
+    void api.listTasks().then((list) => {
+      setTasks(list);
+      const found = findTaskById(list, taskId);
+      if (found) openTask(found);
+    }).catch(() => { /* the portfolio card stays; the board poll will catch up */ });
+  }, [openTask]);
+  const openProject = useCallback((path: string) => {
+    const prev = workspaceRef.current;
+    if (prev.scope === "project" && prev.path === path && prev.page === "board") {
+      showWorkspaceSurface();
+      return;
+    }
+    commitWorkspace({ scope: "project", path, page: "board" });
+  }, [commitWorkspace, showWorkspaceSurface]);
+  const setWorkspacePage = useCallback((page: WorkspacePage) => {
+    const prev = workspaceRef.current;
+    if (prev.scope === "project") {
+      commitWorkspace(prev.page === page ? prev : { ...prev, page });
+      return;
+    }
+    if (page === "clusters") {
+      commitWorkspace({ scope: "all", page: "clusters" });
+      return;
+    }
+    commitWorkspace(prev.scope === "all" && prev.page === page ? prev : { scope: "all", page });
+  }, [commitWorkspace]);
+  const openPrimaryNav = useCallback((id: PrimaryNav) => {
+    switch (id) {
+      case "home": openGlobalOverview(); break;
+      case "workspaces": openClusters(); break;
+      case "team": openCompany(); break;
+      case "knowledge": openKnowledge(); break;
+    }
+  }, [openGlobalOverview, openClusters, openCompany, openKnowledge]);
+  // In-page tabs of a merged destination (Projects, Knowledge, Settings tools).
+  const openSectionPage = useCallback((page: WorkspacePage) => {
+    if (page === "portfolio") openPortfolio();
+    else commitWorkspace({ scope: "all", page });
+  }, [commitWorkspace, openPortfolio]);
+  const openSettingsTools = useCallback(() => {
+    setSettingsInitialSection("tools");
+    setSettingsInitialAgentId(null);
+    setSettingsOpen(true);
+  }, []);
+  const addProjectFolder = useCallback(() => {
+    setProjectWizardOpen(true);
+  }, []);
+  const onProjectCreated = useCallback((project: Project) => {
+    // The project list has to include the new path before the workspace
+    // selection is stored. Otherwise the loaded-list check treats the path
+    // as deleted and bounces back to the global overview.
+    void (async () => {
+      await refreshProjects();
+      commitWorkspace({ scope: "project", path: project.path, page: "board" });
+    })();
+  }, [refreshProjects, commitWorkspace]);
+  const onProjectRelinked = useCallback((newPath: string) => {
+    void (async () => {
+      await refreshProjects();
+      commitWorkspace({ scope: "project", path: newPath, page: workspacePage });
+    })();
+  }, [refreshProjects, commitWorkspace, workspacePage]);
   // Every handler below is wrapped in `useCallback` so it keeps a stable
   // identity across App re-renders (poll ticks, unrelated state changes,
   // etc.) — they're passed straight down to `Column`/`TaskCard`, both
@@ -1722,12 +2204,17 @@ function AppInner() {
     setError(e instanceof Error ? e.message : String(e));
   }, []);
 
-  const onDragEnd = useCallback(async (e: DragEndEvent) => {
-    const id = String(e.active.id);
-    const col = e.over?.id as ColumnId | undefined;
-    if (!col) return;
-    const t = tasksRef.current.find((x) => x.id === id);
-    if (!t || t.column === col) return;
+  /** The status drop (unchanged): moves a card to another column through the existing lifecycle checks. */
+  const moveToColumn = useCallback(async (t: Task, col: ColumnId) => {
+    const id = t.id;
+    if (t.column === col) return;
+    if (col === "done") {
+      const block = canOwnerApproveDone(t.qcState, t.column);
+      if (block) {
+        toast.error(block);
+        return;
+      }
+    }
     // A pipeline PARENT's column mirrors its run while that run is in
     // progress (the server 409s any other column patch). Once the run
     // status is `done`, dropping the card on Done is the same park the
@@ -1747,6 +2234,107 @@ function AppInner() {
       await refresh();
     }
   }, [refresh, surfaceError]);
+
+  const scopeOfTask = useCallback((id: string): string => {
+    const task = tasksRef.current.find((x) => x.id === id);
+    return task ? projectScopeKey(task) : id;
+  }, []);
+
+  /** Saves one reorder. The board already shows the new order (optimistic); the server enforces the urgency group and
+   *  the answer replaces local ranks, so a refused or stale request is redrawn from the canonical order. */
+  const commitReorder = useCallback(async (t: Task, placement: Placement): Promise<boolean> => {
+    const urgency = normalizeUrgency(t.urgency);
+    const scope = projectScopeKey(t);
+    const group = tasksRef.current
+      .filter((x) => x.column === t.column && normalizeUrgency(x.urgency) === urgency && !x.pipelineParentId && projectScopeKey(x) === scope)
+      .map((x) => ({ id: x.id, rank: x.boardRank ?? 0 }));
+    const plan = planReorder(group, t.id, placement);
+    if (typeof plan === "string") { await refresh(); return false; }
+    if (plan.writes.length > 0) {
+      const ranks = new Map(plan.writes.map((w) => [w.id, w.rank]));
+      setTasks((cur) => cur.map((x) => (ranks.has(x.id) ? { ...x, boardRank: ranks.get(x.id) } : x)));
+    }
+    try {
+      setError(null);
+      await api.reorderTask(t.id, { expectedColumn: t.column, expectedUrgency: urgency, placement });
+      await refresh();
+      refreshHandsoff();
+      return true;
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 409) toast(tr("kanban.order.refreshed"));
+      else toast.error(tr("kanban.order.failed", { message: error instanceof Error ? error.message : String(error) }));
+      await refresh();
+      return false;
+    }
+  }, [refresh]);
+
+  const visibleGroupOf = useCallback((t: Task): Task[] => {
+    const urgency = normalizeUrgency(t.urgency);
+    return sortBoardTasks(visibleTasksRef.current.filter((x) => x.column === t.column && normalizeUrgency(x.urgency) === urgency));
+  }, []);
+
+  const onKeyboardReorder = useCallback(async (t: Task, move: -1 | 1 | "start" | "end") => {
+    const current = tasksRef.current.find((x) => x.id === t.id) ?? t;
+    const group = visibleGroupOf(current);
+    const label = tr(urgencyLabelKey(normalizeUrgency(current.urgency)));
+    const moved = moveWithinGroup(group, current.id, move);
+    if (moved.every((row, i) => row.id === group[i]?.id)) {
+      announceReorder(tr("kanban.order.at_edge", { title: current.title, edge: tr(move === -1 || move === "start" ? "kanban.order.edge_top" : "kanban.order.edge_bottom"), urgency: label }));
+      return;
+    }
+    const placement = placementForMoved(moved, current.id, scopeOfTask);
+    if (!placement) return;
+    const ok = await commitReorder(current, placement);
+    if (!ok) return;
+    announceReorder(tr("kanban.order.moved", { title: current.title, position: moved.findIndex((row) => row.id === current.id) + 1, total: moved.length, urgency: label }));
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="task-card"][data-task-id="${current.id}"] [data-testid="task-card-handle"]`)?.focus({ preventScroll: true }));
+  }, [commitReorder, scopeOfTask, visibleGroupOf]);
+
+  const dragOrigin = useRef<{ x: number; y: number } | null>(null);
+  // The span the card's urgency group had when the drag began (measured before any card shifts out of the way).
+  const dragGroupBox = useRef<ReturnType<typeof groupBounds>>(null);
+  const onDragStart = useCallback((e: DragStartEvent) => {
+    const ev = e.activatorEvent as PointerEvent | undefined;
+    dragOrigin.current = ev && typeof ev.clientX === "number" ? { x: ev.clientX, y: ev.clientY } : null;
+    const t = tasksRef.current.find((x) => x.id === String(e.active.id));
+    dragGroupBox.current = t ? groupBounds(t.column, normalizeUrgency(t.urgency)) : null;
+  }, []);
+  const onDragMove = useCallback((e: DragMoveEvent) => {
+    const origin = dragOrigin.current;
+    const t = tasksRef.current.find((x) => x.id === String(e.active.id));
+    if (!origin || !t) return;
+    const point = { x: origin.x + e.delta.x, y: origin.y + e.delta.y };
+    // Only while the pointer is in this card's own column and has left its urgency group: one hint, not on every drag.
+    if (pointerOutsideBounds(point, dragGroupBox.current)) reorderHint.set(point);
+    else reorderHint.set(null);
+  }, []);
+
+  const onDragEnd = useCallback(async (e: DragEndEvent) => {
+    reorderHint.set(null);
+    dragOrigin.current = null;
+    dragGroupBox.current = null;
+    const id = String(e.active.id);
+    const overId = e.over ? String(e.over.id) : null;
+    if (!overId) return;
+    const t = tasksRef.current.find((x) => x.id === id);
+    if (!t) return;
+    if (COLUMNS.some((c) => c.id === overId)) {
+      await moveToColumn(t, overId as ColumnId);
+      return;
+    }
+    // Dropped on a card of its own group: reorder inside the urgency group. A card of another group or column can
+    // never be the target (the collision detection never offers one), and the server refuses it anyway.
+    const over = tasksRef.current.find((x) => x.id === overId);
+    if (!over || over.id === t.id || over.column !== t.column || normalizeUrgency(over.urgency) !== normalizeUrgency(t.urgency)) return;
+    const group = visibleGroupOf(t);
+    const from = group.findIndex((x) => x.id === t.id);
+    const to = group.findIndex((x) => x.id === overId);
+    if (from < 0 || to < 0 || from === to) return;
+    const placement = placementForMoved(arrayMove(group, from, to), t.id, scopeOfTask);
+    if (placement) await commitReorder(t, placement);
+  }, [commitReorder, moveToColumn, scopeOfTask, visibleGroupOf]);
+  const onDragCancel = useCallback(() => { reorderHint.set(null); dragOrigin.current = null; dragGroupBox.current = null; }, []);
 
   // `startTask` materializes the worktree, which can re-pin the branch when a
   // create-time uniqueness race is only detectable once the branch actually
@@ -1779,6 +2367,15 @@ function AppInner() {
       void refreshAgents();
     }
   }, [startAndNotifyBranch, surfaceError, refreshAgents]);
+  const admitToInbox = useCallback(async (t: Task) => {
+    try {
+      setError(null);
+      const updated = await api.admitTaskToInbox(t.id);
+      setTasks((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+    } catch (e) {
+      surfaceError(e);
+    }
+  }, [surfaceError]);
   const cancel = useCallback(async (t: Task) => {
     // A pipeline PARENT task has no `runId` of its own (only its active step
     // tasks do) — stop every active execution via the dedicated pipeline
@@ -1799,7 +2396,10 @@ function AppInner() {
     if (!t.runId) return;
     try {
       setError(null);
-      await api.cancelRun(t.runId);
+      const result = await api.cancelRun(t.runId);
+      // A request is not proof: say what the core observed about the process.
+      const outcome = stopToast(result, "running");
+      if (outcome.tone === "warning") toast.warning(tr(outcome.key)); else toast(tr(outcome.key));
     } catch (e) {
       surfaceError(e);
     }
@@ -1832,13 +2432,13 @@ function AppInner() {
   const archive = useCallback(async (t: Task) => {
     const active = t.column === "running" || t.column === "blocked";
     if (active) {
-      const ok = await confirm({
-        title: `Archive "${t.title}"?`,
+      const ok = await confirm(() => ({
+        title: tr("common.archive_e006b6", { p0: String(t.title) }),
         description:
-          "An agent is still working on this task. Archiving will stop it.",
-        confirmLabel: "Stop & archive",
+          tr("common.an_agent_is_still_working_on_this_task"),
+        confirmLabel: tr("common.stop_archive"),
         variant: "destructive",
-      });
+      }));
       if (!ok) return;
     }
     const now = Date.now();
@@ -1875,14 +2475,12 @@ function AppInner() {
       ? await api.getTaskTeardownPreview(t.id).catch(() => null)
       : null;
     const maybeDrifted = t.checkoutBranch && t.checkoutBranch !== t.branch ? t.checkoutBranch : null;
-    const ok = await confirm({
-      title: `Delete "${t.title}"?`,
+    const ok = await confirm(() => ({
+      title: tr("common.delete_988654", { p0: String(t.title) }),
       description: (
-        <>
-          The task and its run history will be removed.
-          {t.worktreePath && preview && preview.branches.length > 0 && (
+        <><I18nText id="navigation.the_task_and_its_run_history_will_be" />{" "}{t.worktreePath && preview && preview.branches.length > 0 && (
             <>
-              {" "}Its git worktree and {preview.branches.length === 1 ? "branch" : "branches"}{" "}
+              {" "}<I18nText id="navigation.its_git_worktree_and" />{" "}{preview.branches.length === 1 ? "branch" : "branches"}{" "}
               <span data-testid="delete-confirm-branches">
                 {preview.branches.map((b, i) => (
                   <span key={b}>
@@ -1890,22 +2488,15 @@ function AppInner() {
                     <span className="font-mono text-foreground/80">{b}</span>
                   </span>
                 ))}
-              </span>{" "}
-              will be torn down.
-            </>
+              </span>{" "}<I18nText id="navigation.will_be_torn_down" />{" "}</>
           )}
           {t.worktreePath && preview && preview.branches.length === 0 && (
-            <> Its git worktree will be torn down; no branches will be deleted.</>
+            <>{" "}<I18nText id="navigation.its_git_worktree_will_be_torn_down_no" /></>
           )}
           {t.worktreePath && !preview && (
             <>
-              {" "}Its git worktree (
-              <span className="font-mono text-foreground/80">{t.branch}</span>
-              ) will also be torn down
-              {maybeDrifted ? (
-                <>
-                  , and possibly the branch it was last on (
-                  <span data-testid="delete-confirm-maybe-branch" className="font-mono text-foreground/80">{maybeDrifted}</span>
+              {" "}<I18nText id="navigation.its_git_worktree" />{" "}<span className="font-mono text-foreground/80">{t.branch}</span><I18nText id="navigation.will_also_be_torn_down" />{" "}{maybeDrifted ? (
+                <><I18nText id="navigation.and_possibly_the_branch_it_was_last_on" />{" "}<span data-testid="delete-confirm-maybe-branch" className="font-mono text-foreground/80">{maybeDrifted}</span>
                   ).
                 </>
               ) : "."}
@@ -1913,9 +2504,9 @@ function AppInner() {
           )}
         </>
       ),
-      confirmLabel: "Delete",
+      confirmLabel: tr("common.delete"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     try {
       setError(null);
@@ -1959,7 +2550,7 @@ function AppInner() {
       // fall back to the plain external link rather than silently doing
       // nothing.
       void api.openExternal(prUrl).catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : "Could not open link");
+        toast.error(err instanceof Error ? err.message : tr("common.could_not_open_link"));
       });
       return;
     }
@@ -1976,7 +2567,7 @@ function AppInner() {
     const number = parseIssueUrl(issueUrl)?.number;
     if (number == null) {
       void api.openExternal(issueUrl).catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : "Could not open link");
+        toast.error(err instanceof Error ? err.message : tr("common.could_not_open_link"));
       });
       return;
     }
@@ -2024,9 +2615,9 @@ function AppInner() {
   const copyToClipboard = useCallback(async (text: string, what: "branch name" | "worktree path") => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`Copied ${what}`);
+      toast.success(tr("common.copied_0a0386", { p0: String(what) }));
     } catch {
-      toast.error("Couldn't copy to clipboard");
+      toast.error(tr("common.couldn_t_copy_to_clipboard"));
     }
   }, []);
 
@@ -2079,13 +2670,13 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
       case "resume-recovery":
         void api.resumeFxRecovery(t.id).catch((e: unknown) => {
           const message = e instanceof Error ? e.message : String(e);
-          toast.error("Couldn't resume", { description: message });
+          toast.error(tr("common.couldn_t_resume"), { description: message });
         });
         break;
       case "cancel-auto-resume":
         void api.cancelFxAutoResume(t.id).catch((e: unknown) => {
           const message = e instanceof Error ? e.message : String(e);
-          toast.error("Couldn't cancel auto-resume", { description: message });
+          toast.error(tr("common.couldn_t_cancel_auto_resume"), { description: message });
         });
         break;
       case "mark-done":
@@ -2133,6 +2724,13 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         if (worktreePath) void copyToClipboard(worktreePath, "worktree path");
         break;
       }
+      case "admit-inbox":
+        void api.admitTaskToInbox(t.id).then((updated) => {
+          setTasks((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+        }).catch((e: unknown) => {
+          toast.error(tr("uxfix.task.admitInbox"), { description: e instanceof Error ? e.message : String(e) });
+        });
+        break;
       case "delete":
         void del(t);
         break;
@@ -2168,7 +2766,7 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
       prevGroup = entry.group;
     }
     return items;
-  }, [taskMenu, runTaskMenuAction]);
+  }, [taskMenu, runTaskMenuAction, uiLocale]);
 
   // Shared by GitHubDialog's `onClose` and `onOpenSettings` (the latter also
   // opens SettingsDialog) so the three-setter teardown can't drift out of
@@ -2182,8 +2780,35 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
     setGithubItemDetailPrefill(null);
   }, []);
 
+  const pageInitial = reduceMotion ? false : { opacity: 0, y: 8 };
+  // Tabs of a merged destination (M3). Browser / Native Computer are reached from
+  // Settings, so their strip leads with the way back.
+  const sectionTabs = view.kind === "board" ? sectionTabsFor(effectiveWorkspace) : null;
+  const sectionStrip = sectionTabs && (
+    <SectionTabs
+      model={sectionTabs}
+      onSelect={openSectionPage}
+      lead={sectionTabs.group === "tools" ? (
+        <Button type="button" variant="ghost" size="sm" onClick={openSettingsTools} data-testid="tools-back-to-settings" title={tr("nav.back_to_settings")}>
+          <Settings className="size-3.5" aria-hidden />{tr("nav.tools_lead")}
+        </Button>
+      ) : undefined}
+    />
+  );
+  const pageAnimate = { opacity: 1, y: 0 };
+  const pageExit = reduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 };
+  const pageTransition = reduceMotion ? { duration: 0 } : { duration: 0.18 };
+  const headerProject = effectiveWorkspace.scope === "project"
+    ? (projects.find((p) => p.path === effectiveWorkspace.path) ?? {
+        path: effectiveWorkspace.path,
+        name: projectLabel({ name: "", path: effectiveWorkspace.path }),
+        addedAt: 0,
+        branchConfig: null,
+      })
+    : null;
+
   return (
-    <div className="flex h-screen w-screen flex-col bg-background text-foreground">
+    <div className="app-canvas flex h-screen w-screen flex-col overflow-hidden text-foreground">
       {/* Top app bar sits on the same row as the macOS traffic lights (see
           titleBarStyle: "hiddenInset" in src/bun/index.ts). `pl-20` clears the
           traffic-light cluster (≈64px wide + the 8px x-offset configured on
@@ -2198,117 +2823,86 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           badges) to match AppKit's title-bar behavior — clicking a control
           there shouldn't zoom. */}
       <header
-        className="electrobun-webkit-app-region-drag flex h-10 shrink-0 items-center justify-between border-b border-border/60 pl-20 pr-4"
+        className="shell-titlebar electrobun-webkit-app-region-drag flex h-10 shrink-0 flex-nowrap items-center justify-between gap-3 overflow-hidden pl-20 pr-3"
         onDoubleClick={(e) => {
           if ((e.target as Element).closest(".electrobun-webkit-app-region-no-drag")) return;
           void api.toggleWindowZoom().catch(() => {});
         }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
             <img src={iconUrl} alt="" className="block size-7 shrink-0 -translate-y-0.5 object-contain" />
-            <h1 className="font-geist text-base font-semibold leading-none tracking-tight">ForgeOrbit</h1>
+            <p className="font-geist text-base font-semibold leading-none tracking-tight whitespace-nowrap">ForgeOrbit</p>
           </div>
-          <div className="electrobun-webkit-app-region-no-drag flex items-center gap-2 text-xs text-muted-foreground">
-            {visibleTopbarAgents(agents, harnesses).map((a) => {
-              const harness = harnesses.find((h) => h.id === a.harnessId);
-              const displayName = harness?.label ?? a.harnessId;
-              const q = usage[a.harnessId];
-              const loggedOut = a.available && a.loggedIn === false;
-              const dot = (
-                <span
-                  className={
-                    "inline-block size-1.5 rounded-full " +
-                    (!a.available ? "bg-danger-solid" : loggedOut ? "bg-warning-solid" : "bg-success-solid")
-                  }
-                />
-              );
-              // Every chip is clickable: with a snapshot the popover shows
-              // meters; without one it explains WHY there's no data (kind
-              // unsupported / first poll pending) instead of silently
-              // rendering a bare chip — "no bar and no explanation" reads as
-              // broken.
-              const kindSupported = (USAGE_SUPPORTED_KINDS as readonly string[]).includes(a.kind);
-              const placeholder = !kindSupported
-                ? { message: "Usage tracking isn't supported for this harness yet.", canRefresh: false }
-                : { message: "No usage data yet — the first poll runs shortly, or refresh now.", canRefresh: true };
-              const chip = (
-                <span
-                  className="flex items-center gap-1"
-                  title={loggedOut ? (a.authHelp ?? "Not logged in") : (a.reason ?? a.path ?? "")}
-                >
-                  <AgentIcon kind={a.kind} className="size-3" />
-                  {displayName}
-                  {q && <UsageMeter quota={q} />}
-                  {dot}
-                </span>
-              );
-              return (
-                <UsagePopover
-                  key={a.harnessId}
-                  quota={q ?? null}
-                  harnessLabel={displayName}
-                  placeholder={placeholder}
-                  onRefresh={async () => {
-                    const fresh = await api.refreshHarnessUsage(a.harnessId);
-                    setUsage((prev) => ({ ...prev, [fresh.harnessId]: fresh }));
-                  }}
-                >
-                  {chip}
-                </UsagePopover>
-              );
-            })}
-          </div>
+          <TopbarAiResources
+            agents={agents}
+            harnesses={harnesses}
+            usage={usage}
+            installations={harnessInstallations}
+            onOpenAccounts={(harnessId) => {
+              setSettingsInitialSection("accounts");
+              setSettingsInitialAgentId(harnessId ?? null);
+              setSettingsOpen(true);
+            }}
+          />
         </div>
-        <div className="electrobun-webkit-app-region-no-drag flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {/* m4: counted over `nonStepTasks`, not raw `tasks` — a hidden
-                pipeline step must not inflate the total. */}
-            {visibleTasks.length === nonStepTasks.length
-              ? `${nonStepTasks.length} tasks`
-              : `${visibleTasks.length} of ${nonStepTasks.length} tasks`}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setGithubOpen(true)}
-            aria-label="Git"
-            title="Git pull requests and issues (GitHub, GitLab, Bitbucket)"
-          >
-            <GitPullRequest className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setWorktreesOpen(true)}
-            aria-label="Worktrees"
-            title="Worktrees"
-          >
-            <FolderGit2 className="size-4" />
-          </Button>
-          <Button
-            variant={view.kind === "pipelines" || view.kind === "pipeline-run" ? "secondary" : "ghost"}
-            size="icon"
-            data-testid="pipelines-button"
-            onClick={openPipelinesPage}
-            aria-label="Pipelines"
-            title="Pipelines"
-          >
-            <Workflow className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings className="size-4" />
-          </Button>
+        <div className="electrobun-webkit-app-region-no-drag flex shrink-0 items-center gap-2">
+          {/* One entry per place: inside a project the project header carries
+              the button (same action, same ⌘N), everywhere else this one does. */}
+          <EmergencyStopControl runningSignal={runningTaskSignal} />
+          <AttentionIndicator
+            count={attentionCount}
+            current={view.kind === "board" && effectiveWorkspace.scope === "all" && effectiveWorkspace.page === "attention"}
+            onOpen={openAttentionPage}
+          />
+          {effectiveWorkspace.scope !== "project" && (
+            <Button
+              size="sm"
+              className="h-8 min-h-8 shrink-0 whitespace-nowrap"
+              onClick={onFocusNewTask}
+              data-testid="header-new-task"
+              title={`${tr("common.new_task")} (${isMacPlatform() ? "⌘N" : "Ctrl+N"})`}
+              aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
+            >
+              <Plus className="size-3.5" aria-hidden /><I18nText id="common.new_task" />
+            </Button>
+          )}
+          <TopbarOverflowMenu
+            hasProjects={projects.length > 0}
+            pipelinesActive={view.kind === "pipelines" || view.kind === "pipeline-run"}
+            onOpenGit={() => setGithubOpen(true)}
+            onOpenWorktrees={() => setWorktreesOpen(true)}
+            onTogglePipelines={openPipelinesPage}
+          />
         </div>
       </header>
-      <div className="flex min-h-0 flex-1">
+      <ProfileStartupBanner />
+      <div className="relative flex min-h-0 flex-1">
+        {compactLayout && compactPanel && (
+          <button type="button" aria-label={tr("navigation.close_navigation_panel")} className="absolute inset-0 z-30 bg-black/30" onClick={closeCompactPanel} />
+        )}
+        <ProjectSidebar
+          projects={projects}
+          selection={effectiveWorkspace}
+          compact={compactLayout}
+          collapsed={compactLayout ? compactPanel !== "projects" : projectSidebarCollapsed}
+          onCollapsedChange={(collapsed) => compactLayout ? setCompactPanel(collapsed ? null : "projects") : setProjectSidebarCollapsed(collapsed)}
+          activity={workdirActivity}
+          active={view.kind === "board" ? navTargetFor(effectiveWorkspace) : null}
+          attentionCount={attentionCount}
+          onNavigate={(id) => { openPrimaryNav(id); setCompactPanel(null); }}
+          onOpenSettings={() => { setCompactPanel(null); setSettingsOpen(true); }}
+          onOpenProject={(path) => { openProject(path); setCompactPanel(null); }}
+          onAddFolder={addProjectFolder}
+          onProjectsChanged={() => { void refreshProjects(); }}
+        />
         <NewTaskForm
+          presentation={newTaskPinned ? "panel" : "sheet"}
+          sheetOpen={newTaskSheetOpen}
+          onSheetClose={() => setNewTaskSheetOpen(false)}
+          compact={compactLayout}
+          compactOpen={compactPanel === "task"}
+          onCompactOpenChange={(open) => setCompactPanel(open ? "task" : null)}
           agents={agents}
           harnesses={harnesses}
           profiles={profiles}
@@ -2320,6 +2914,9 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           harnessModels={harnessModels}
           onRefreshModels={onRefreshModels}
           focusNonce={newTaskFocusNonce}
+          preferredWorkdir={preferredWorkdirFor(effectiveWorkspace)}
+          projects={projects.map((project) => ({ path: project.path, name: projectLabel(project) }))}
+          onRecurringCreated={() => { void refresh(); }}
           onSubmit={async (input, { start }) => {
             try {
               setError(null);
@@ -2353,7 +2950,7 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
             }
           }}
         />
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main inert={compactLayout && compactPanel !== null} className="shell-island mb-1.5 mr-1.5 flex min-w-0 flex-1 flex-col overflow-hidden" data-testid="shell-island">
           {/* Chrome that stays mounted regardless of `view` (D5,
               docs/plans/pipelines.md): update/tmux banners and the global
               error toast + Toaster are cross-cutting concerns, not
@@ -2371,30 +2968,528 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           <ErrorToast error={error} onDismiss={() => setError(null)} />
           <Toaster panelOpen={panelMounted} />
           <AnimatePresence mode="wait">
-            {view.kind === "board" && (
+            {view.kind === "board" && workspacePage === "projects" && (
               <motion.div
-                key="board"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
+                key="workspace-projects"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {sectionStrip}
+                <ProjectsDirectory
+                  projects={projects}
+                  summaries={workdirSummaries}
+                  homeDir={homeDir}
+                  onOpenProject={openProject}
+                  onOpenCluster={openCluster}
+                  onOpenGroups={openClusters}
+                  onAddFolder={addProjectFolder}
+                  onProjectsChanged={() => { void refreshProjects(); }}
+                />
+              </motion.div>
+            )}
+            {view.kind === "board" && workspacePage === "attention" && (
+              <motion.div
+                key="workspace-attention"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <AttentionPage tasks={tasks} projects={projects} homeDir={homeDir} ownerRows={ownerRows} onOpenTask={openAttention} onOpenPortfolio={openPortfolio} onOpenProjectManager={openProjectManager} onOpenPortfolioManager={openPortfolioManager} onOpenHome={openGlobalOverview} onOwnerActionsChanged={refreshOwnerActions} />
+              </motion.div>
+            )}
+            {view.kind === "board" && workspacePage === "company" && (
+              <motion.div
+                key="workspace-company"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <CompanyPage onOpenPortfolioManager={openPortfolioManager} focus={companyFocus} onOpenProject={openProjectPage} onOpenCluster={openCluster} onOpenTask={openTaskById} />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "clusters" && (
+              <motion.div
+                key={effectiveWorkspace.scope === "cluster" ? `workspace-cluster-${effectiveWorkspace.id}` : "workspace-clusters"}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {sectionStrip}
+                <ClustersPage
+                  clusterId={effectiveWorkspace.scope === "cluster" ? effectiveWorkspace.id : null}
+                  onOpenCluster={openCluster}
+                  onOpenDirectory={openClusters}
+                  onOpenProject={openProjectPage}
+                  onOpenPortfolio={openPortfolio}
+                  onOpenCompany={openGlobalOverview}
+                  onOpenKnowledge={openKnowledge}
+                />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "usage" && headerProject && (
+              <motion.div
+                key={`workspace-usage-${headerProject.path}`}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="usage"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <ProjectAnalytics
+                  key={headerProject.path}
+                  projectPath={headerProject.path}
+                  projectLabel={projectLabel(headerProject)}
+                  tasks={tasks.filter((task) => (task.ownerProjectPath ?? task.workdir) === headerProject.path).map((task) => ({
+                    id: task.id,
+                    title: task.title,
+                    column: task.column,
+                    archivedAt: task.archivedAt,
+                    pipelineParentId: task.pipelineParentId,
+                  }))}
+                  onOpenTask={openTaskById}
+                />
+              </motion.div>
+            )}
+
+
+            {view.kind === "board" && workspacePage === "knowledge" && (
+              <motion.div
+                key={effectiveWorkspace.scope === "project" ? `workspace-knowledge-${effectiveWorkspace.path}` : "workspace-knowledge"}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {headerProject ? (
+                  <>
+                    <ProjectHeader
+                      project={headerProject}
+                      onOpenHead={openHeadForProject}
+                      page="knowledge"
+                      homeDir={homeDir}
+                      onPageChange={setWorkspacePage}
+                      onNewTask={onFocusNewTask}
+                      onOpenCluster={openCluster}
+                      onOpenOverview={openClusters}
+                      onRelink={onProjectRelinked}
+                      onOpenGit={() => setGithubOpen(true)}
+                    />
+                    <KnowledgeBrowser
+                      key={headerProject.path}
+                      owner={{ kind: "project", id: headerProject.path }}
+                      heading={tr("common.knowledge_7c44c5", { p0: String(projectLabel(headerProject)) })}
+                      contextNote={tr("common.these_notes_belong_to_this_registered_project_moving")}
+                    />
+                  </>
+                ) : (
+                  <>
+                  {sectionStrip}
+                  <KnowledgeBrowser
+                    owner={{ kind: "company", id: FORGEORBIT_COMPANY.id }}
+                    heading={tr("common.company_knowledge")}
+                    contextNote={tr("common.company_notes_are_the_shared_library_for_forgeorbit")}
+                  />
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "browser" && (
+              <motion.div
+                key="workspace-browser"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {sectionStrip}
+                <BrowserComputerUse />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "native-computer" && (
+              <motion.div
+                key="workspace-native-computer"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {sectionStrip}
+                <NativeComputerUse />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "brain" && (
+              <motion.div
+                key={effectiveWorkspace.scope === "project" ? `workspace-brain-${effectiveWorkspace.path}` : "workspace-brain"}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {headerProject ? (
+                  <>
+                    <ProjectHeader
+                      project={headerProject}
+                      onOpenHead={openHeadForProject}
+                      page="brain"
+                      homeDir={homeDir}
+                      onPageChange={setWorkspacePage}
+                      onNewTask={onFocusNewTask}
+                      onOpenCluster={openCluster}
+                      onOpenOverview={openClusters}
+                      onRelink={onProjectRelinked}
+                      onOpenGit={() => setGithubOpen(true)}
+                    />
+                    <BrainBrowser
+                      key={headerProject.path}
+                      scope={{ kind: "project", projectPath: headerProject.path }}
+                      heading={tr("brain.project_title", { name: String(projectLabel(headerProject)) })}
+                    />
+                  </>
+                ) : (
+                  <>
+                  {sectionStrip}
+                  <BrainBrowser
+                    scope={{ kind: "company" }}
+                    heading={tr("brain.company_title")}
+                  />
+                  </>
+                )}
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "portfolio" && (
+              <motion.div
+                key="workspace-portfolio"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                {sectionStrip}
+                <PortfolioDashboard onOpenHead={openWorkspaceHead} initialTab={portfolioInitialTab} onOpenProject={openProjectPage} onOpenTask={openTaskById} onOpenSettingsAgents={openSettingsAgents} onOpenAccounts={() => { setSettingsInitialSection("accounts"); setSettingsInitialAgentId(null); setSettingsOpen(true); }} onOpenBrowser={openBrowser} onOpenNativeComputer={openNativeComputer} />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "overview" && (
+              <motion.div
+                key="workspace-overview"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
                 className="flex min-h-0 flex-1 flex-col"
               >
-                {onboardingVisibility.showChecklist && tasks.length > 0 && (
-                  <div className="px-4 pt-3">
-                    <OnboardingChecklist
-                      steps={onboardingSteps}
-                      statuses={agents}
-                      harnessRows={harnessesLoaded ? harnesses : null}
-                      compact
-                      onOpenSettingsHarnesses={openSettingsHarnesses}
-                      onFocusNewTask={onFocusNewTask}
-                      onOpenTerminal={onOpenOnboardingTerminal}
-                      onDismiss={dismissOnboarding}
+                {headerProject ? (
+                  <>
+                    <ProjectHeader
+                      project={headerProject}
+                      onOpenHead={openHeadForProject}
+                      page="overview"
+                      homeDir={homeDir}
+                      onPageChange={setWorkspacePage}
+                      onNewTask={onFocusNewTask}
+                      onOpenCluster={openCluster}
+                      onOpenOverview={openClusters}
+                      onRelink={onProjectRelinked}
+                      onOpenGit={() => setGithubOpen(true)}
                     />
-                  </div>
+                    <ProjectOverview
+                      project={headerProject}
+                      stats={workdirSummaries.get(headerProject.path) ?? emptyProjectStats<Task>()}
+                      tasks={tasks}
+                      homeDir={homeDir}
+                      onOpenBoard={() => setWorkspacePage("board")}
+                      onOpenEnvironment={() => setWorkspacePage("environment")}
+                      onOpenTask={openTask}
+                      onOpenActivity={openCompanyActivity}
+                      onOpenProjectTeam={() => setWorkspacePage("team")}
+                    />
+                  </>
+                ) : (
+                  <HomePage
+                    tasks={tasks}
+                    projects={projects}
+                    summaries={workdirSummaries}
+                    homeDir={homeDir}
+                    attentionCount={attentionCount}
+                    onOpenAttention={openAttentionPage}
+                    onOpenAttentionTask={openAttention}
+                    onOpenTask={openTask}
+                    onOpenProject={(path) => { openProject(path); setCompactPanel(null); }}
+                    onOpenProjects={openClusters}
+                    onOpenAllTasks={() => { openAllTasks(); setCompactPanel(null); }}
+                    onOpenMissions={openMissions}
+                    onAddFolder={addProjectFolder}
+                    onOpenHead={(path) => (path ? openHeadForProject(path) : openWorkspaceHead())}
+                    ownerRows={ownerRows}
+                    onReviewPlan={(path) => openProjectManager(path, "inbox")}
+                    gettingStarted={onboardingVisibility.show ? { steps: gettingStartedSteps, ai: aiToolReadiness, onAddProject: addProjectFolder, onOpenAiSettings: openSettingsHarnesses, onDismiss: dismissOnboarding } : null}
+                  />
+                )}
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "team" && headerProject && (
+              <motion.div
+                key="workspace-team"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="team"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <ProjectTeamPage
+                  key={headerProject.path}
+                  project={headerProject}
+                  onOpenEmployee={openEmployee}
+                  onOpenTeam={openCompanyTeam}
+                  onOpenTask={(taskId) => {
+                    const task = tasks.find((item) => item.id === taskId);
+                    if (task) openTask(task);
+                  }}
+                />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "recurring" && headerProject && (
+              <motion.div
+                key="workspace-recurring"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="recurring"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <RecurringTasksPage
+                  key={headerProject.path}
+                  project={headerProject}
+                  onOpenTask={(taskId) => {
+                    const existing = tasks.find((t) => t.id === taskId);
+                    if (existing) {
+                      setSelected(existing);
+                    } else {
+                      void api.getTask(taskId).then((fetched) => setSelected(fetched)).catch(() => {});
+                    }
+                    setWorkspacePage("board");
+                  }}
+                  onTasksChanged={() => { void refresh(); }}
+                />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "estimates" && headerProject && (
+              <motion.div
+                key="workspace-estimates"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="estimates"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <EstimatesPage key={headerProject.path} project={headerProject} tasks={tasks} />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "environment" && headerProject && (
+              <motion.div
+                key="workspace-environment"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="environment"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <EnvironmentPage key={headerProject.path} project={headerProject} />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "settings" && headerProject && (
+              <motion.div
+                key="workspace-settings"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="settings"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <ProjectSettingsPage key={headerProject.path} project={headerProject} />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "manager" && headerProject && (
+              <motion.div
+                key="workspace-manager"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+              >
+                <ProjectHeader
+                  project={headerProject}
+                  onOpenHead={openHeadForProject}
+                  page="manager"
+                  homeDir={homeDir}
+                  onPageChange={setWorkspacePage}
+                  onNewTask={onFocusNewTask}
+                  onOpenCluster={openCluster}
+                  onOpenOverview={openClusters}
+                  onRelink={onProjectRelinked}
+                  onOpenGit={() => setGithubOpen(true)}
+                />
+                <ManagerPage
+                  key={headerProject.path}
+                  project={headerProject}
+                  tasks={tasks}
+                  onOpenTask={openTask}
+                  onOpenSettingsAgents={openSettingsAgents}
+                  onOpenEmployee={openEmployee}
+                  onOpenHead={() => openHeadForProject(headerProject.path)}
+                  intent={managerIntent && managerIntent.path === headerProject.path ? managerIntent : null}
+                  onOpenBrain={() => setWorkspacePage("brain")}
+                  onOpenBrowser={openBrowser}
+                  onOpenNativeComputer={openNativeComputer}
+                />
+              </motion.div>
+            )}
+
+            {view.kind === "board" && workspacePage === "board" && (
+              <motion.div
+                key="workspace-board"
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                {headerProject ? (
+                  <ProjectHeader
+                    project={headerProject}
+                    onOpenHead={openHeadForProject}
+                    page="board"
+                    homeDir={homeDir}
+                    onPageChange={setWorkspacePage}
+                    onNewTask={onFocusNewTask}
+                    onOpenCluster={openCluster}
+                    onOpenOverview={openClusters}
+                    onRelink={onProjectRelinked}
+                  />
+                ) : (
+                  <PageHeader
+                    testId="all-tasks-bar"
+                    className="pb-2"
+                    title={<I18nText id="common.all_tasks" />}
+                    subtitle={<I18nText id="common.all_projects" />}
+                  >
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setGithubOpen(true)}
+                      aria-label="Git"
+                      title={tr("navigation.git_pull_requests_and_issues_github_gitlab_bitbucket")}
+                      data-testid="board-open-git"
+                    >
+                      <GitPullRequest className="size-3.5" aria-hidden />Git
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={openGlobalOverview}><I18nText id="common.overview" />{" "}</Button>
+                  </PageHeader>
                 )}
                 <KanbanFilters
+                  decisionFilter={<Button size="sm" variant={decisionsOnly ? "secondary" : "ghost"} aria-pressed={decisionsOnly} data-testid="board-decisions-filter" onClick={() => { setDecisionsOnly((value) => !value); setStatusFilter([]); }}>
+                    {decisionsOnly ? tr("manager.all-tasks") : tr("manager.show-decisions", { count: tasks.filter((task) => includeOnBoard(task, effectiveWorkspace, repoFilter) && managerTaskView(task).needsDecision).length })}
+                  </Button>}
                   searchInputRef={boardSearchRef}
                   textQuery={textQuery}
                   onTextQueryChange={setTextQuery}
@@ -2411,7 +3506,20 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
                   projects={projects}
                   harnesses={harnesses}
                   taskAgentIds={taskAgentIds}
+                  hideRepoFilter={effectiveWorkspace.scope === "project"}
+                  visibleCount={visibleTasks.length}
+                  totalCount={scopeTaskCount}
                 />
+                {effectiveWorkspace.scope === "project" && (
+                  <ProjectQueueSummary
+                    projectPath={effectiveWorkspace.path}
+                    variant="board"
+                    onOpenTaskId={(taskId) => {
+                      const found = tasksRef.current.find((item) => item.id === taskId);
+                      if (found) openTask(found);
+                    }}
+                  />
+                )}
                 {/* Kanban gets all remaining vertical space and scrolls horizontally
                     on its own — the bottom bar stays anchored regardless of column
                     count. */}
@@ -2423,16 +3531,18 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
                     scrolls along with it — the previous bug). */}
                 <div className="relative flex-1">
                   <div className="kanban-scroll absolute inset-0 overflow-x-scroll">
-                    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-                      <div className="flex gap-3 p-4">
+                    <DndContext sensors={sensors} collisionDetection={boardCollisionDetection} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
+                      <div className="flex gap-3 px-4 pt-4 pb-[calc(1rem+var(--shell-dock-clearance))]">
                         {visibleColumns.map((c) => (
                           <Column
                             key={c.id}
                             id={c.id}
-                            label={c.label}
+                            label={columnLabel(c.id)}
                             tasks={visibleTasks.filter((t) => t.column === c.id)}
                             homeDir={homeDir}
+                            assignees={boardAssignees?.path === assignmentProject ? boardAssignees?.names : undefined}
                             onStart={start}
+                            onAdmitInbox={admitToInbox}
                             onCancel={cancel}
                             onDelete={del}
                             onOpen={openTask}
@@ -2441,36 +3551,17 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
                             onMarkDone={markDone}
                             onArchive={archive}
                             onUnarchive={unarchive}
-                            emptyHint={onboardingVisibility.showChecklist ? EMPTY_COLUMN_HINT[c.id] : undefined}
                             selectedTaskId={selected?.id ?? null}
                             onContextMenu={openTaskMenu}
+                            onKeyboardReorder={onKeyboardReorder}
                           />
                         ))}
                       </div>
+                      <ReorderLive />
                     </DndContext>
                   </div>
-                  {/* Zero-task state: the full onboarding card sits above the
-                      (still-visible, still-empty) column grid rather than
-                      replacing it — dnd-kit's drop zones stay mounted underneath.
-                      Positioned against the outer `relative flex-1` div (a sibling
-                      of `.kanban-scroll`, not a descendant of it), so it stays
-                      visually centered over the viewport regardless of how far
-                      the board is scrolled horizontally. */}
-                  {onboardingVisibility.showChecklist && tasks.length === 0 && (
-                    <div className="pointer-events-none absolute inset-x-0 top-6 z-10 flex justify-center px-4">
-                      <div className="pointer-events-auto">
-                        <OnboardingChecklist
-                          steps={onboardingSteps}
-                          statuses={agents}
-                          harnessRows={harnessesLoaded ? harnesses : null}
-                          compact={false}
-                          onOpenSettingsHarnesses={openSettingsHarnesses}
-                          onFocusNewTask={onFocusNewTask}
-                          onOpenTerminal={onOpenOnboardingTerminal}
-                          onDismiss={dismissOnboarding}
-                        />
-                      </div>
-                    </div>
+                  {boardEmptyKind && (
+                    <BoardEmptyNotice kind={boardEmptyKind} onCreateTask={onFocusNewTask} onAddProject={addProjectFolder} onClearFilters={clearBoardFilters} />
                   )}
                 </div>
               </motion.div>
@@ -2479,10 +3570,10 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
             {view.kind === "pipelines" && !view.editing && (
               <motion.div
                 key={viewMountKey(view)}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <PipelinesPage
@@ -2504,10 +3595,10 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
             {view.kind === "pipelines" && view.editing && (
               <motion.div
                 key={viewMountKey(view)}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <PipelineEditor
@@ -2537,10 +3628,10 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
             {view.kind === "pipeline-run" && (
               <motion.div
                 key={viewMountKey(view)}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.18 }}
+                initial={pageInitial}
+                animate={pageAnimate}
+                exit={pageExit}
+                transition={pageTransition}
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <PipelineRunView
@@ -2558,6 +3649,26 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           </AnimatePresence>
         </main>
       </div>
+      {/* Bottom-right dock: the Head of PM (FO-PM01). Outside <main> so the compact-layout inert on <main> doesn't disable it. */}
+      <ShellDock panelOpen={panelMounted && !compactLayout}>
+        <HeadOfPmDock
+          openRequest={headPmOpenRequest}
+          workspace={effectiveWorkspace}
+          projects={projects}
+          tasks={tasks}
+          hidden={compactLayout && (panelMounted || compactPanel !== null)}
+          onOpenProjectManager={openProjectManager}
+          onOpenPortfolioManager={openPortfolioManager}
+          onOpenBrowser={openBrowser}
+          onOpenNativeComputer={openNativeComputer}
+          onOpenProject={(path) => openProjectPage(path, "overview")}
+          onOpenTask={openTask}
+          onOpenNeedsYou={openAttentionPage}
+          ownerRows={ownerRows}
+          onOwnerActionsChanged={refreshOwnerActions}
+          suspended={newTaskSheetOpen}
+        />
+      </ShellDock>
       <RunPanel
         task={selected}
         stickyUserMessages={stickyUserMessages}
@@ -2565,6 +3676,7 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         harnesses={harnesses}
         profiles={profilesLoaded ? profiles : null}
         onOpenSettingsAgents={openSettingsAgents}
+        onOpenProjectTeam={(projectPath) => { setSelected(null); openCompanyTeam(projectPath); }}
         agentModels={agentModels}
         harnessModels={harnessModels}
         onRefreshModels={onRefreshModels}
@@ -2601,13 +3713,13 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         y={taskMenu?.y ?? 0}
         items={taskMenuItems}
         onClose={closeTaskMenu}
-        label="Task actions"
+        label={tr("navigation.task_actions")}
         testId="task-context-menu"
       />
       <GitHubDialog
         open={githubOpen}
         projects={projects}
-        initialProjectPath={githubItemDetailPrefill?.projectPath ?? githubPullPrefill?.projectPath ?? repoFilter[0] ?? selected?.workdir ?? tasks[0]?.workdir ?? null}
+        initialProjectPath={githubItemDetailPrefill?.projectPath ?? githubPullPrefill?.projectPath ?? (effectiveWorkspace.scope === "project" ? effectiveWorkspace.path : null) ?? repoFilter[0] ?? selected?.workdir ?? tasks[0]?.workdir ?? null}
         pullPrefill={githubPullPrefill}
         itemDetailPrefill={githubItemDetailPrefill}
         onClose={closeGithubDialog}
@@ -2628,6 +3740,12 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           // else to the run panel — same decision the board's cards make.
           openTask(t);
         }}
+      />
+      <ProjectWizardDialog
+        open={projectWizardOpen}
+        homeDir={homeDir}
+        onClose={() => setProjectWizardOpen(false)}
+        onCreated={onProjectCreated}
       />
       <SettingsDialog
         open={settingsOpen}
@@ -2666,13 +3784,12 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
           setSettingsOpen(false);
           // Clear the deep-link so a later plain gear-icon open lands back
           // on General instead of wherever onboarding last sent it.
-          setSettingsInitialSection(undefined);
-          setSettingsInitialAgentId(null);
+          resetSettingsEntry();
           // Reflects a "Show getting started guide" replay (General section
           // writes the pref server-side, then calls this same onClose) —
           // simplest correct option without threading a dedicated callback
           // through SettingsDialog.
-          refetchOnboardingPref();
+          refetchOnboardingPref(openGlobalOverview);
           // Same posture as harnesses/saved-prompts (A4: no SSE broadcast for
           // profile CRUD) — refetch once on close so an already-open picker
           // elsewhere (NewTaskForm, RunPanel) picks up a create/edit/delete
@@ -2684,17 +3801,21 @@ const runTaskMenuAction = useCallback((action: TaskMenuAction, snapshot: Task) =
         dataDir={dataDir}
         initialSection={settingsInitialSection}
         initialAgentProfileId={settingsInitialAgentId}
+        initialAnchor={settingsInitialAnchor}
+        ownerContext={settingsOwnerContext}
+        onOpenPortfolio={() => { setSettingsOpen(false); resetSettingsEntry(); openPortfolio(); }}
+        onOpenTool={(tool) => { setSettingsOpen(false); resetSettingsEntry(); if (tool === "browser") openBrowser(); else openNativeComputer(); }}
+        onOpenMissions={openMissions}
+        onOpenProjectPage={(path, page) => { setSettingsOpen(false); resetSettingsEntry(); openProjectPage(path, page); }}
+        onOpenTask={(id) => { setSettingsOpen(false); resetSettingsEntry(); openTaskById(id); }}
+        onOpenMissionSettings={openSettingsFromMissions}
+        onOpenWorktrees={() => { setSettingsOpen(false); resetSettingsEntry(); setWorktreesOpen(true); }}
         onOpenPipelines={onSettingsOpenPipelines}
       />
       <TmuxInstallDialog
         open={tmuxDialogOpen}
         onClose={() => setTmuxDialogOpen(false)}
         onResolved={refreshAgents}
-      />
-      <WelcomeDialog
-        open={onboardingVisibility.showWelcome}
-        onAcknowledge={() => setWelcomeAcknowledged(true)}
-        onSkip={dismissOnboarding}
       />
     </div>
   );
@@ -2707,7 +3828,7 @@ export default function App() {
   return (
     <ThemeProvider>
       <FontSizeProvider>
-        <AppInner />
+        <WorkspaceDraftProvider><AppInner /></WorkspaceDraftProvider>
       </FontSizeProvider>
     </ThemeProvider>
   );

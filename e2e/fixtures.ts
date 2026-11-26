@@ -1,19 +1,13 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  type WriteStream,
-  chmodSync,
-  createWriteStream,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-} from "node:fs";
+import { type WriteStream, createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test as base } from "@playwright/test";
-import { E2E_BASE_URL } from "../playwright.config";
+import { E2E_BASE_URL, E2E_API_PORT_OFFSET } from "../playwright.config";
+import { isolatedCoreEnv, seedIsolatedHarnessHomes, writeFxStubBin } from "./isolated-env";
 
 export { expect } from "@playwright/test";
 export type { APIRequestContext, Locator, Page } from "@playwright/test";
@@ -61,7 +55,7 @@ const REPO_ROOT = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "..
 
 // Disjoint from 4317 (packaged app default), 4318 (legacy single-shared e2e
 // port), and 4399-4531 (bun unit tests, one static port per file).
-const BASE_API_PORT = 4600;
+const BASE_API_PORT = 4600 + E2E_API_PORT_OFFSET;
 
 // Overridable so a slow/loaded machine (many concurrent worker backends
 // booting at once) can widen the budget without editing source — mirrors the
@@ -79,76 +73,9 @@ export const E2E_FX_AUTO_RESUME_DELAY_MS = 6_000;
 const FINAL_KILL_WAIT_MS = 2_000;
 const PREFLIGHT_TIMEOUT_MS = 2_000;
 
-/**
- * fx's availability probe (`checkHarness` in src/bun/agent-status.ts) is a
- * DUAL probe — `--version` (generic, same as every other harness) AND
- * `--help`, whose output must contain "coding agent" — because the bare
- * name `fx` collides with an unrelated npm JSON-viewer CLI, and `--version`
- * alone can't tell them apart. That probe runs regardless of
- * `AGETOR_FX_DRIVER=fake` (the driver override only replaces `spawnAgent`'s
- * fx branch, not the separate start-task pre-flight), so a bare `/bin/echo`
- * — good enough for claude's probe below — would fail fx's `--help` check
- * and `startTask` would reject every fx run before the fake driver ever ran.
- * This stub script mirrors the one `src/bun/orchestrator-fx.test.ts` writes
- * for the identical reason.
- *
- * Written inside the given `dataDir` (a subdirectory, so it can't collide
- * with anything `headless.ts` itself creates there) rather than at its own
- * module-scope temp dir — `dataDir` is already `rm -rf`'d by
- * `provisionBackend`'s teardown (both the success and pre-health-check
- * failure paths), so the stub is cleaned up for free instead of leaking a
- * bare `mkdtempSync` directory per importing process for the lifetime of the
- * machine. Callers must invoke this after `dataDir` exists but before
- * spawning the backend, since `AGETOR_FX_BIN` must already point at an
- * executable file by the time `headless.ts` starts probing it.
- *
- * Also answers `fx models --json` (`src/bun/agent-discovery.ts`'s
- * `discoverFx`, added by `docs/plans/fx-model-catalog-refresh.md`), which
- * every enabled fx harness gets probed with — at boot, on enable, on manual
- * ↻, and periodically. Without a real answer here that probe would resolve
- * to an empty catalog (a malformed/non-JSON response degrades to `[]`,
- * never a throw — see `parseFxModels`), which would make every fx-model-
- * picker e2e assertion trivially true against an empty list instead of
- * proving the account-scoped merge (`mergeModelOptions`,
- * curated ∩ discovered + discovered-only) actually happened. The three ids
- * below are deliberately a small, fixed catalog independent of the real
- * fx.sh Gateway catalog: two overlap curated `AGENT_OPTIONS.fx.models` rows
- * (`zai/glm-5.3-flash` — the curated default — and `openai/gpt-5.2`) to
- * exercise the "curated ∩ discovered" intersection, and one
- * (`e2e/discovered-only`) has no curated row at all, to exercise the
- * discovered-only-id append path. Deliberately still NOT implementing
- * `status --json` — that keeps the pre-flight auth check failing OPEN
- * (`loggedIn: null`) against this stub, exactly as documented above and in
- * CLAUDE.md's fx bullet, so no e2e spec (this file's callers included) is
- * ever blocked by the auth pre-flight.
- */
-function writeFxStubBin(dataDir: string): string {
-  const binDir = path.join(dataDir, "fx-stub-bin");
-  mkdirSync(binDir, { recursive: true });
-  const binPath = path.join(binDir, "fx");
-  writeFileSync(
-    binPath,
-    [
-      "#!/bin/sh",
-      'if [ "$1" = "--help" ]; then',
-      '  echo "Fast, native coding agent for the terminal"',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "--version" ]; then',
-      '  echo "0.0.4-fake"',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "models" ] && [ "$2" = "--json" ]; then',
-      '  echo \'{"kind":"models","count":3,"shown_count":3,"more_count":0,"private_models_hidden":false,"ids":["zai/glm-5.3-flash","openai/gpt-5.2","e2e/discovered-only"]}\'',
-      "  exit 0",
-      "fi",
-      "exit 0",
-      "",
-    ].join("\n"),
-  );
-  chmodSync(binPath, 0o755);
-  return binPath;
-}
+// Harness homes, the fx stub, `HOME` and the core's env all come from
+// `e2e/isolated-env.ts` — shared with specs that boot their own core.
+export { seedIsolatedHarnessHomes } from "./isolated-env";
 
 async function tailFile(filePath: string, maxBytes = 4_000): Promise<string> {
   if (!existsSync(filePath)) return `<${filePath} not found>`;
@@ -298,99 +225,69 @@ async function provisionBackend(
     logStream.once("error", reject);
   });
 
+  const seed = seedIsolatedHarnessHomes(dataDir, fxStubBinPath);
+  if (!seed.ok) {
+    logStream.end();
+    await rm(dataDir, { recursive: true, force: true });
+    throw new Error(`could not initialize isolated test accounts: ${seed.stderr}`);
+  }
+
   const child = spawn("bun", ["src/bun/headless.ts"], {
     cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      AGETOR_DATA_DIR: dataDir,
-      AGETOR_API_PORT: String(apiPort),
-      AGETOR_API_TOKEN: apiToken,
-      // 10 min, not disabled (0): the idle-shutdown loop in headless.ts
-      // only fires once there's been no running run AND no attached
-      // client for the whole timeout, so it can't trip during an active
-      // suite. What it buys us: if this fixture's own teardown ever
-      // fails to kill the child (crash, bug), the backend self-reaps
-      // instead of squatting on its port forever.
-      AGETOR_DAEMON_IDLE_MS: "600000",
-      // Same fake-driver combo orchestrator.test.ts uses: with
-      // AGETOR_CLAUDE_DRIVER=fake, spawnAgent's claude-code branch
-      // returns an in-process fake agent instead of shelling out to
-      // tmux. checkHarness (the start-task pre-flight) is a separate
-      // code path that doesn't know about the driver override — it
-      // still resolves a claude-shaped binary AND a tmux binary
-      // regardless — so AGETOR_CLAUDE_BIN/AGETOR_TMUX_BIN point both at
-      // `/bin/echo` (always present) purely to satisfy that probe;
-      // AGETOR_CLAUDE_ARGS is cleared so buildCommand's argv (recorded
-      // by the fake but never executed) isn't polluted by an inherited
-      // shell override. Required by quote.spec.ts; inert for the other
-      // specs, which never start a run.
-      AGETOR_CLAUDE_DRIVER: "fake",
-      AGETOR_CLAUDE_BIN: "/bin/echo",
-      AGETOR_TMUX_BIN: "/bin/echo",
-      AGETOR_CLAUDE_ARGS: "",
-      // fx routes through the in-process fake driver (spawnAgent's fx
-      // branch) exactly like claude-code above, and e2e/fx-interactions
-      // .spec.ts exercises it — this is not inert. Unlike claude, whose
-      // start-task pre-flight is satisfied by a binary-shaped `/bin/echo`,
-      // fx's `checkHarness` (agent-status.ts) dual-probes `--version` AND
-      // `--help`, requiring "coding agent" in the `--help` output to
-      // disambiguate Vercel's fx from an unrelated npm JSON-viewer CLI of
-      // the same name — that probe runs regardless of the driver override,
-      // so `AGETOR_FX_BIN` points at the stub script written into this
-      // backend's own `dataDir` above (mirrors
-      // `src/bun/orchestrator-fx.test.ts`'s) instead of `/bin/echo`. Note:
-      // codex/cursor/gemini have no equivalent fake-driver wiring in this
-      // fixture — no spec here starts a run on any of them.
-      AGETOR_FX_DRIVER: "fake",
-      AGETOR_FX_BIN: fxStubBinPath,
-      // Test seam for the fx auto-resume engine (`docs/plans/fx-recovery-
-      // follow-ups.md` §3, `orchestrator.ts`'s `fxAutoResumePrefs`) — shrinks
-      // the auto-resume delay from the 120s default down to 2s so
-      // `e2e/fx-recovery.spec.ts` can observe a scheduled/cancelled/fired
-      // auto-resume within a normal test timeout instead of waiting out the
-      // production default. Read once per schedule/re-arm, so it applies to
-      // every fx task this worker's backend ever runs, not just one spec's
-      // tasks — no other spec file in this fixture starts an fx run.
-      // 6s rather than the 2s it once was: the spec has to see the countdown
-      // and click Cancel inside this window, and a loaded machine (load ~40)
-      // spent most of 2s on the panel's poll round-trips alone.
-      AGETOR_FX_AUTO_RESUME_DELAY_MS: String(E2E_FX_AUTO_RESUME_DELAY_MS),
-      // Test seam for the fake fx storm (`src/bun/agents.ts`,
-      // `fakeFxRecoveryPauseMs`): pause at 6s instead of 1.5s, so the live
-      // "retrying" notice `e2e/fx-recovery.spec.ts` asserts stays up long
-      // enough to be seen under load. Only that spec runs the storm.
-      AGETOR_FAKE_FX_RECOVERY_PAUSE_MS: String(E2E_FX_STORM_PAUSE_MS),
-      // Test seam for the fake fx driver's recovery scenario (`src/bun/
-      // agents.ts`'s `FAKE_FX_RECOVERY_URL_PROMPT_MARKER` doc comment) —
-      // process-wide equivalent of the per-task prompt marker, so every
-      // `active`/`paused` recovery message this worker's fake fx driver
-      // emits carries a fake Gateway URL suffix
-      // (" · upgrade at https://example.invalid/upgrade"), letting
-      // `e2e/fx-recovery.spec.ts` exercise the notice's clickable-link
-      // rendering without a real Gateway URL. Off (unset) would leave every
-      // such message byte-identical to before this constant existed — on
-      // is what this spec's tests are written against.
-      AGETOR_FAKE_FX_RECOVERY_URL: "1",
-      // Points every GitHub REST/GraphQL call this backend makes at a local
-      // stub server instead of the real api.github.com (see
-      // src/bun/github.ts's `GITHUB_API_BASE` seam and e2e/github-stub.ts).
-      // Specs that never open the Git dialog never hit this — it's inert
-      // until something calls startGitHubStub(backend.githubStubPort, ...).
-      AGETOR_GITHUB_API_BASE: `http://127.0.0.1:${githubStubPort}`,
-      // Test seam for `/refs/pick` (src/bun/server.ts) — see fakePickDir
-      // above. Never set in production launches.
-      AGETOR_FAKE_PICK_REFS_DIR: fakePickDir,
-      // Test seam for the bundle export's Save to Downloads — see
-      // downloadsDir above. Never set in production launches.
-      AGETOR_DOWNLOADS_DIR: downloadsDir,
-      // So `githubToken()` resolves this literal token from env and never
-      // shells out to `gh auth token` on the dev machine (which could hang,
-      // fail, or leak a real token into a test run).
-      GITHUB_TOKEN: "e2e-github-token",
-      // Spec-supplied overrides/additions (see `extraEnv`'s doc above) —
-      // spread last so they can override any of the defaults above too.
-      ...extraEnv,
-    },
+    // Own SQLite, own HOME, every harness/tmux binary stubbed, fake drivers,
+    // usage poller offline, and nothing FORGEORBIT_*/AGETOR_*/credential-like
+    // inherited from the shell (see `isolatedCoreEnv`).
+    env: isolatedCoreEnv({
+      dataDir,
+      apiPort,
+      apiToken,
+      fxBin: fxStubBinPath,
+      extra: {
+        // Test seam for the fx auto-resume engine (`docs/plans/fx-recovery-
+        // follow-ups.md` §3, `orchestrator.ts`'s `fxAutoResumePrefs`) — shrinks
+        // the auto-resume delay from the 120s default down to 2s so
+        // `e2e/fx-recovery.spec.ts` can observe a scheduled/cancelled/fired
+        // auto-resume within a normal test timeout instead of waiting out the
+        // production default. Read once per schedule/re-arm, so it applies to
+        // every fx task this worker's backend ever runs, not just one spec's
+        // tasks — no other spec file in this fixture starts an fx run.
+        // 6s rather than the 2s it once was: the spec has to see the countdown
+        // and click Cancel inside this window, and a loaded machine (load ~40)
+        // spent most of 2s on the panel's poll round-trips alone.
+        AGETOR_FX_AUTO_RESUME_DELAY_MS: String(E2E_FX_AUTO_RESUME_DELAY_MS),
+        // Test seam for the fake fx storm (`src/bun/agents.ts`,
+        // `fakeFxRecoveryPauseMs`): pause at 6s instead of 1.5s, so the live
+        // "retrying" notice `e2e/fx-recovery.spec.ts` asserts stays up long
+        // enough to be seen under load. Only that spec runs the storm.
+        AGETOR_FAKE_FX_RECOVERY_PAUSE_MS: String(E2E_FX_STORM_PAUSE_MS),
+        // Test seam for the fake fx driver's recovery scenario (`src/bun/
+        // agents.ts`'s `FAKE_FX_RECOVERY_URL_PROMPT_MARKER` doc comment) —
+        // process-wide equivalent of the per-task prompt marker, so every
+        // `active`/`paused` recovery message this worker's fake fx driver
+        // emits carries a fake Gateway URL suffix
+        // (" · upgrade at https://example.invalid/upgrade"), letting
+        // `e2e/fx-recovery.spec.ts` exercise the notice's clickable-link
+        // rendering without a real Gateway URL. Off (unset) would leave every
+        // such message byte-identical to before this constant existed — on
+        // is what this spec's tests are written against.
+        AGETOR_FAKE_FX_RECOVERY_URL: "1",
+        // Points every GitHub REST/GraphQL call this backend makes at a local
+        // stub server instead of the real api.github.com (see
+        // src/bun/github.ts's `GITHUB_API_BASE` seam and e2e/github-stub.ts).
+        // Specs that never open the Git dialog never hit this — it's inert
+        // until something calls startGitHubStub(backend.githubStubPort, ...).
+        AGETOR_GITHUB_API_BASE: `http://127.0.0.1:${githubStubPort}`,
+        // Test seam for `/refs/pick` (src/bun/server.ts) — see fakePickDir
+        // above. Never set in production launches.
+        AGETOR_FAKE_PICK_REFS_DIR: fakePickDir,
+        // Test seam for the bundle export's Save to Downloads — see
+        // downloadsDir above. Never set in production launches.
+        AGETOR_DOWNLOADS_DIR: downloadsDir,
+        // Spec-supplied overrides/additions (see `extraEnv`'s doc above) —
+        // spread last so they can override any of the defaults above too.
+        ...extraEnv,
+      },
+    }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout?.pipe(logStream);
@@ -502,14 +399,14 @@ async function provisionBackend(
 // Disjoint from BASE_API_PORT's worker range (4600 + up to ~workers) with a
 // wide gap — `freshBackend` below is test-scoped, so at most a handful of
 // these run concurrently even on a many-worker machine.
-const FRESH_BASE_API_PORT = 4700;
+const FRESH_BASE_API_PORT = 4700 + E2E_API_PORT_OFFSET;
 
 // Disjoint from BASE_API_PORT (4600+) and FRESH_BASE_API_PORT (4700+) above —
 // each worker's (and each freshBackend test's) stub GitHub API server gets
 // its own port so parallel workers/tests never collide on it, mirroring how
 // the two API-port ranges stay disjoint from each other.
-const GITHUB_STUB_BASE_PORT = 4800;
-const FRESH_GITHUB_STUB_BASE_PORT = 4900;
+const GITHUB_STUB_BASE_PORT = 4800 + E2E_API_PORT_OFFSET;
+const FRESH_GITHUB_STUB_BASE_PORT = 4900 + E2E_API_PORT_OFFSET;
 
 export const test = base.extend<
   { freshBackend: E2EBackend; backendEnv: Record<string, string> },

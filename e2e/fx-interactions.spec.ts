@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * Mirrors three prompt-embedded fake-driver markers exported from
@@ -168,11 +168,10 @@ async function openTask(page: Page, title: string) {
   return panel;
 }
 
-/** The New Task form's `<aside>` — mounted first in App.tsx's JSX, ahead of
- *  the run panel's own `<aside>` (`runPanel` above uses `.last()`). Mirrors
- *  e2e/fx-models.spec.ts's identical helper. */
+/** The New Task form, by its test id. Mirrors e2e/fx-models.spec.ts's
+ *  identical helper. */
 function newTaskFormPanel(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 /** Clicks the given harness's button in the New Task form's Harness picker.
@@ -353,7 +352,7 @@ test.describe("fx interactions", () => {
     const title = `fx-todo-e2e ${randomUUID()}`;
     await createAndStartFakeFxTask(request, backend, title, FAKE_CLAUDE_TODOS_PROMPT_MARKER);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     // Proof the whole canned turn streamed and was persisted, replayed here
@@ -381,7 +380,7 @@ test.describe("fx interactions", () => {
     // `opts.mode` doc comment above.
     await createAndStartFakeFxTask(request, backend, title, FAKE_FX_PERMISSION_PROMPT_MARKER, { mode: "ask" });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     await expect(panel.getByText("Fx is requesting permission")).toBeVisible();
@@ -408,7 +407,7 @@ test.describe("fx interactions", () => {
     // registers a card.
     await createAndStartFakeFxTask(request, backend, title, FAKE_FX_PERMISSION_PROMPT_MARKER, { mode: "ask" });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     await expect(panel.getByText("Fx is requesting permission")).toBeVisible();
@@ -436,7 +435,7 @@ test.describe("fx interactions", () => {
     // nothing else.
     await createAndStartFakeFxTask(request, backend, title);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     // Proof the turn actually ran and completed via the generic echo
@@ -479,7 +478,7 @@ test.describe("fx interactions", () => {
     // the chip assertions, not a race against them.
     await createAndStartFakeFxTask(request, backend, title);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     await expect(panel.getByText(`fake response to: ${title}`, { exact: true })).toBeVisible();
@@ -535,7 +534,7 @@ test.describe("fx interactions", () => {
     const projectName = `fx-mode-e2e-project-${randomUUID()}`;
     await registerDataDirProject(backend, projectName);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const form = newTaskFormPanel(page);
 
     await selectHarness(page, "fx.sh");
@@ -611,7 +610,7 @@ test.describe("fx interactions", () => {
     request,
     backend,
   }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     await selectHarness(page, "fx.sh");
 
@@ -713,7 +712,7 @@ test.describe("fx interactions", () => {
       effort: "high",
     });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     // Readiness wait: the generic fallback scenario's turn-settling timer

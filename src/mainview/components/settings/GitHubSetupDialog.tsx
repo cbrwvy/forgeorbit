@@ -1,3 +1,6 @@
+import { staticLabel } from "@/i18n/presentation";
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -25,27 +28,20 @@ import {
  *  created "with scopes" and have the Bitbucket scopes below selected. */
 const BITBUCKET_CREATE_STEPS: GuideStep[] = [
   {
-    title: "Open id.atlassian.com → Security",
-    detail: "Sign in at id.atlassian.com, then choose \"Security\" in the left sidebar.",
+    get title() { return tr("common.open_id_atlassian_com_security"); },
+    get detail() { return tr("common.sign_in_at_id_atlassian_com_then_choose"); },
   },
   {
-    title: "Create an API token with scopes",
-    detail:
-      "Under \"API tokens\", click \"Create API token with scopes\" (NOT the plain, scopeless " +
-      "\"Create API token\" — a scopeless token works for Jira/Confluence but api.bitbucket.org " +
-      "rejects it). Give it a name, then select \"Bitbucket\" and tick the scopes listed below.",
+    get title() { return tr("common.create_an_api_token_with_scopes"); },
+    get detail() { return tr("settings.under_api_tokens_click_create_api_token_921140"); },
   },
   {
-    title: "Copy the token",
-    detail: "Click \"Create\" and copy the generated token — it's shown only once.",
+    get title() { return tr("common.copy_the_token"); },
+    get detail() { return tr("common.click_create_and_copy_the_generated_token_it"); },
   },
   {
-    title: "Save it as email:api_token",
-    detail:
-      "Back in the Git host tokens section, enter the host (bitbucket.org, or your ssh " +
-      "alias host) and put your Atlassian account email, a colon, then the API token in " +
-      "the token field — e.g. \"jane@example.com:ATATT3x…\". Bitbucket app passwords were " +
-      "retired on 2026-06-09; replace any saved app password with a token in this format.",
+    get title() { return tr("common.save_it_as_email_api_token"); },
+    get detail() { return tr("settings.back_in_the_git_host_tokens_section_91fba9"); },
   },
 ];
 
@@ -57,42 +53,35 @@ const BITBUCKET_CREATE_STEPS: GuideStep[] = [
 const BITBUCKET_SCOPES: GuideScopeRow[] = [
   {
     scope: "Repositories: Read, Write",
-    usedFor: "Listing repos, reading diffs/commit statuses, and merging pull requests.",
+    get usedFor() { return tr("settings.listing_repos_reading_diffs_commit_statuses_and_edc5b7"); },
   },
   {
     scope: "Pull requests: Read, Write",
-    usedFor:
-      "Listing, creating, merging, declining, and reviewing PRs; PR and line comments; " +
-      "merge-conflict detection.",
+    get usedFor() { return tr("settings.listing_creating_merging_declining_and_reviewing_prs_80e6a6"); },
   },
   {
     scope: "Issues: Read, Write",
-    usedFor: "The repository issue tracker — listing, creating, updating, and commenting.",
+    get usedFor() { return tr("settings.the_repository_issue_tracker_listing_creating_updating_5184d8"); },
   },
   {
     scope: "Account: Read",
-    usedFor: "Resolving the signed-in account, used for \"assigned to me\"/\"created by me\" filters.",
+    get usedFor() { return tr("settings.resolving_the_signed_in_account_used_for_9fb471"); },
   },
 ];
 
 /** Click-path to create a GitLab personal access token. */
 const GITLAB_CREATE_STEPS: GuideStep[] = [
   {
-    title: "Open GitLab → Edit profile → Access tokens",
-    detail:
-      "From your GitLab avatar, go to \"Edit profile\", then \"Access tokens\" in the left " +
-      "sidebar.",
+    get title() { return tr("common.open_gitlab_edit_profile_access_tokens"); },
+    get detail() { return tr("settings.from_your_gitlab_avatar_go_to_edit_b86358"); },
   },
   {
-    title: "Name, expiration, and scope",
-    detail: "Give the token a name and expiration, then select the \"api\" scope.",
+    get title() { return tr("common.name_expiration_and_scope"); },
+    get detail() { return tr("common.give_the_token_a_name_and_expiration_then"); },
   },
   {
-    title: "Create and save it in ForgeOrbit",
-    detail:
-      "Click \"Create personal access token\" and copy it — it's shown only once. Back in " +
-      "the Git host tokens section, enter the host (gitlab.com, or your ssh alias host) and " +
-      "the token itself.",
+    get title() { return tr("common.create_and_save_it_in_forgeorbit"); },
+    get detail() { return tr("settings.click_create_personal_access_token_and_copy_a9a905"); },
   },
 ];
 
@@ -110,6 +99,7 @@ const GITLAB_TOKENS_URL = "https://gitlab.com/-/user_settings/personal_access_to
  * headings/intro sentences and layout.
  */
 export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useUILocale();
   return (
     <Dialog
       open={open}
@@ -119,36 +109,23 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
       describedBy="github-setup-dialog-desc"
     >
       <div className="flex items-center justify-between border-b border-border/60 pb-3">
-        <h2 id="github-setup-dialog-title" className="text-base font-semibold">
-          Connect ForgeOrbit to a git host
-        </h2>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+        <h2 id="github-setup-dialog-title" className="text-base font-semibold"><I18nText id="settings.connect_forgeorbit_to_a_git_host" />{" "}</h2>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
           <X className="size-4" />
         </Button>
       </div>
 
       <div className="max-h-[70vh] space-y-5 overflow-y-auto pt-3 text-sm">
         <section className="space-y-1">
-          <p id="github-setup-dialog-desc" className="text-[11px] leading-snug text-muted-foreground">
-            ForgeOrbit talks to GitHub, GitLab, and Bitbucket using a token or credential that you
-            create and paste into the Git host tokens Settings section. For GitHub, the
-            integration covers pull requests, issues, reviews, checks, Actions, releases,
-            Projects, Discussions, and notifications — how much of that works depends on which
-            permissions the token you save actually has. Set up whichever host(s) apply to you
-            below.
-          </p>
+          <p id="github-setup-dialog-desc" className="text-[11px] leading-snug text-muted-foreground"><I18nText id="settings.forgeorbit_talks_to_github_gitlab_and_bitbucket_using" />{" "}</p>
         </section>
 
         <GuideSection heading="GitHub: how ForgeOrbit finds a token">
           <StepList steps={AUTH_RESOLUTION_STEPS} />
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Bitbucket and GitLab resolve the same way minus the CLI-login step: Bitbucket tries a
-            stored host entry, then the bitbucket.org entry, then the{" "}
+          <p className="text-[11px] leading-snug text-muted-foreground"><I18nText id="settings.bitbucket_and_gitlab_resolve_the_same_way_minus" />{" "}
             <code className="font-mono">BITBUCKET_TOKEN</code>/
-            <code className="font-mono">BITBUCKET_EMAIL</code> environment variables; GitLab tries a
-            stored entry, then <code className="font-mono">GITLAB_TOKEN</code>, then a stored{" "}
-            <code className="font-mono">glab</code> CLI login.
-          </p>
+            <code className="font-mono">BITBUCKET_EMAIL</code>{" "}<I18nText id="settings.environment_variables_gitlab_tries_a_stored_entry_then" />{" "}<code className="font-mono">GITLAB_TOKEN</code><I18nText id="settings.then_a_stored" />{" "}
+            <code className="font-mono">glab</code>{" "}<I18nText id="settings.cli_login" />{" "}</p>
         </GuideSection>
 
         <GuideSection heading="GitHub — recommended: classic token (full access)">
@@ -162,9 +139,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
             ))}
           </div>
           <div className="flex justify-end">
-            <Button size="sm" variant="outline" onClick={() => void api.openExternal(GITHUB_URLS.classicTokens)}>
-              Open GitHub → Tokens (classic)
-            </Button>
+            <Button size="sm" variant="outline" onClick={() => void api.openExternal(GITHUB_URLS.classicTokens)}><I18nText id="settings.open_github_tokens_classic" />{" "}</Button>
           </div>
         </GuideSection>
 
@@ -175,16 +150,14 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
               <div key={row.name} className="rounded-md border border-border/60 px-3 py-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{row.name}</span>
-                  <span className="text-[10px] uppercase text-muted-foreground">{row.level}</span>
+                  <span className="text-[10px] uppercase text-muted-foreground">{staticLabel(row.level)}</span>
                 </div>
                 <div className="text-[11px] leading-snug text-muted-foreground">{row.usedFor}</div>
               </div>
             ))}
           </div>
           <div className="space-y-1 rounded-md border border-border/60 px-3 py-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-warning">
-              Not available with fine-grained tokens
-            </p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-warning"><I18nText id="settings.not_available_with_fine_grained_tokens" />{" "}</p>
             <ul className="list-disc space-y-1 pl-4 text-[11px] leading-snug text-muted-foreground">
               {FINE_GRAINED_LIMITATIONS.map((item) => (
                 <li key={item}>{item}</li>
@@ -196,9 +169,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
               size="sm"
               variant="outline"
               onClick={() => void api.openExternal(GITHUB_URLS.fineGrainedTokens)}
-            >
-              Open GitHub → Fine-grained tokens
-            </Button>
+            ><I18nText id="settings.open_github_fine_grained_tokens" />{" "}</Button>
           </div>
         </GuideSection>
 
@@ -229,9 +200,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
               size="sm"
               variant="outline"
               onClick={() => void api.openExternal(BITBUCKET_TOKENS_URL)}
-            >
-              Open Atlassian → API tokens
-            </Button>
+            ><I18nText id="settings.open_atlassian_api_tokens" />{" "}</Button>
           </div>
         </GuideSection>
 
@@ -242,28 +211,19 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
               size="sm"
               variant="outline"
               onClick={() => void api.openExternal(GITLAB_TOKENS_URL)}
-            >
-              Open GitLab → Access tokens
-            </Button>
+            ><I18nText id="settings.open_gitlab_access_tokens" />{" "}</Button>
           </div>
         </GuideSection>
 
         <GuideSection heading="Save the credential in ForgeOrbit">
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Back in this Settings section, paste the host (github.com, gitlab.com,
-            bitbucket.org, or your ssh alias host), an optional label, and the token — or, for
-            Bitbucket, the <code className="font-mono">email:api_token</code> string — into the
-            fields below, then click Save token.
-          </p>
+          <p className="text-[11px] leading-snug text-muted-foreground"><I18nText id="settings.back_in_this_settings_section_paste_the_host" />{" "}<code className="font-mono">email:api_token</code>{" "}<I18nText id="settings.string_into_the_fields_below_then_click_save" />{" "}</p>
           <div className="flex justify-end">
             <Button
               size="sm"
               variant="link"
               className="h-auto p-0"
               onClick={() => void api.openExternal(GITHUB_URLS.tokenDocs)}
-            >
-              GitHub's token documentation
-            </Button>
+            ><I18nText id="settings.github_s_token_documentation" />{" "}</Button>
           </div>
         </GuideSection>
       </div>
@@ -272,6 +232,7 @@ export function GitHubSetupDialog({ open, onClose }: { open: boolean; onClose: (
 }
 
 function GuideSection({ heading, children }: { heading: string; children: ReactNode }) {
+  useUILocale();
   return (
     <section className="space-y-2">
       <h3 className="text-xs font-medium">{heading}</h3>
@@ -281,6 +242,7 @@ function GuideSection({ heading, children }: { heading: string; children: ReactN
 }
 
 function StepList({ steps }: { steps: GuideStep[] }) {
+  useUILocale();
   return (
     <ol className="space-y-1.5">
       {steps.map((step, i) => (

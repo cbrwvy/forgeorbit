@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -33,12 +33,13 @@ const GIT_TIMEOUT_MS = 30_000;
  * A hard kill fires after `timeoutMs` (default 30 s) so a hung credential
  * prompt or a stalled pack-objects can't block agetor indefinitely.
  */
-async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS): Promise<GitResult> {
+async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS, env?: NodeJS.ProcessEnv): Promise<GitResult> {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    ...(env ? { env } : {}),
   });
   const timer = setTimeout(() => proc.kill(), timeoutMs);
   try {
@@ -427,6 +428,37 @@ export function planTeardownBranches(input: {
 // a null (not-a-repo) result is left uncached so a mid-session `git init` is
 // still picked up on the next call.
 const repoRootCache = new Map<string, string>();
+
+export type GitWorkingTreeCapability =
+  | { kind: "git"; root: string }
+  | { kind: "non-git" }
+  | { kind: "unknown" };
+
+/** Fresh, read-only capability probe. Only a definitive not-a-repository
+ * result permits choosing no isolation; unavailable Git, invalid metadata,
+ * unsafe ownership, missing directories and timeouts must fail closed.
+ * Unlike discovery's repoRoot cache, approval must see current state. */
+export async function gitWorkingTreeCapability(dir: string): Promise<GitWorkingTreeCapability> {
+  try {
+    const result = await git(["rev-parse", "--show-toplevel"], dir, 5_000, { ...process.env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" });
+    if (result.ok && path.isAbsolute(result.stdout)) return { kind: "git", root: result.stdout };
+    if (result.exitCode === 128 && /^fatal: not a git repository \(or any (?:of the )?parent(?: directories| up to mount point [^\n]+)\): \.git(?:\n|$)/.test(result.stderr)) {
+      // Git can print the same error for an empty/corrupt .git directory
+      // or a broken metadata symlink. Those are not proof of a plain folder.
+      for (let current = realpathSync(dir); ; current = path.dirname(current)) {
+        try {
+          lstatSync(path.join(current, ".git"));
+          return { kind: "unknown" };
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { kind: "unknown" };
+        }
+        if (path.dirname(current) === current) break;
+      }
+      return { kind: "non-git" };
+    }
+  } catch { /* Unknown capability never authorizes a weaker isolation mode. */ }
+  return { kind: "unknown" };
+}
 
 /**
  * Return the absolute path of the repo root for `dir`, or null if `dir`

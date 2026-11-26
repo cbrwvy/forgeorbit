@@ -1,3 +1,4 @@
+import { intlLocale } from "@/i18n/core";
 // Pure helpers for fx's usage/cost sentinel (`FX_USAGE_STATUS_PREFIX`, see
 // src/shared/types.ts for the wire shape and the two sources that feed it —
 // the ACP `usage_update` notification's `{used, size, cost?}` and the
@@ -123,7 +124,7 @@ export function fxUsageTitle(u: FxUsagePayload): string {
   const segments: string[] = [];
 
   if (typeof u.used === "number" && typeof u.size === "number") {
-    let usageSegment = `fx usage: ${u.used.toLocaleString()}/${u.size.toLocaleString()} tokens`;
+    let usageSegment = `fx usage: ${u.used.toLocaleString(intlLocale())}/${u.size.toLocaleString(intlLocale())} tokens`;
     if (u.cost) usageSegment += ` · ${u.cost.amount} ${u.cost.currency}`;
     segments.push(usageSegment);
   }

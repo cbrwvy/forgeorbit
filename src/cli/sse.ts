@@ -1,4 +1,6 @@
 import { discoverCore } from "./api-client.ts";
+import { resolveCoreDiscoveryTarget } from "../bun/profile-activation-state.ts";
+import { ProfileActivationError } from "../bun/profile-activation-errors.ts";
 
 /**
  * Minimal Server-Sent-Events reader over `fetch`. EventSource can't set the
@@ -30,24 +32,36 @@ export function streamSse<T>(
   async function loop() {
     let attempt = 0;
     while (!closed) {
-      const core = await discoverCore(opts.dataDir);
-      if (core) {
-        const sep = pathname.includes("?") ? "&" : "?";
-        const url = `http://127.0.0.1:${core.port}${pathname}${sep}token=${core.token}`;
-        try {
-          const res = await fetch(url, {
-            signal: ac.signal,
-            headers: { accept: "text/event-stream" },
-          });
-          if (!res.ok || !res.body) throw new Error(`SSE ${pathname} → ${res.status}`);
-          opts.onOpen?.();
-          attempt = 0;
-          await pump(res.body, onEvent);
-          // Stream ended cleanly (server closed / core swapped) → reconnect.
-        } catch (err) {
-          if (closed) return;
-          opts.onError?.(err);
+      try {
+        const target = resolveCoreDiscoveryTarget(opts.dataDir);
+        const core = await discoverCore(target.activeDataDir, {
+          expectedProfileIdentity: target.expectedProfileIdentity,
+        });
+        if (core) {
+          const sep = pathname.includes("?") ? "&" : "?";
+          const url = `http://127.0.0.1:${core.port}${pathname}${sep}token=${core.token}`;
+          try {
+            const res = await fetch(url, {
+              signal: ac.signal,
+              headers: { accept: "text/event-stream" },
+            });
+            if (!res.ok || !res.body) throw new Error(`SSE ${pathname} → ${res.status}`);
+            opts.onOpen?.();
+            attempt = 0;
+            await pump(res.body, onEvent);
+            // Stream ended cleanly (server closed / core swapped) → reconnect.
+          } catch (err) {
+            if (closed) return;
+            opts.onError?.(err);
+          }
         }
+      } catch (err) {
+        if (closed) return;
+        if (err instanceof ProfileActivationError) {
+          opts.onError?.(err);
+          return;
+        }
+        opts.onError?.(err);
       }
       if (closed) return;
       attempt++;

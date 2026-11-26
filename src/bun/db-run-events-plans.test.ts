@@ -229,6 +229,8 @@ function invocationTable(s: Seed): Record<string, Invocation[]> {
     "runs.events": [{ label: "events(runId)", run: () => runs.events(s.runId) }],
     "runs.lastEventData": [{ label: "lastEventData(runId)", run: () => runs.lastEventData(s.runId) }],
     "runs.lastToolUseData": [{ label: "lastToolUseData(runId)", run: () => runs.lastToolUseData(s.runId) }],
+    "runs.lastAssistantData": [{ label: "lastAssistantData(runId)", run: () => runs.lastAssistantData(s.runId) }],
+    "runs.recentStatusLines": [{ label: "recentStatusLines(runId, 8)", run: () => runs.recentStatusLines(s.runId, 8) }],
     "runs.findToolUseEvent": [
       { label: "findToolUseEvent(runId, id)", run: () => runs.findToolUseEvent(s.runId, "toolu_0") },
     ],
@@ -282,6 +284,9 @@ function invocationTable(s: Seed): Record<string, Invocation[]> {
     ],
     "runs.seenLineUuidsForTask": [
       { label: "seenLineUuidsForTask(taskId)", run: () => runs.seenLineUuidsForTask(s.taskId) },
+    ],
+    "runs.mainStreamLineUuidsForRun": [
+      { label: "mainStreamLineUuidsForRun(runId)", run: () => runs.mainStreamLineUuidsForRun(s.runId) },
     ],
     "runs.seenLineUuidsForSubagent": [
       {
@@ -433,6 +438,7 @@ describe("run_events query-plan guard", () => {
     for (const known of [
       "runs.eventsForTask",
       "runs.seenLineUuidsForSubagent",
+      "runs.mainStreamLineUuidsForRun",
       "runs.hasLineUuidPrefixForSubagent",
       "runs.hasPriorApiErrorStatus",
       "runs.lastToolUseData",
@@ -531,7 +537,13 @@ describe("run_events query-plan guard", () => {
   });
 
   test("lastToolUseData / hasPriorApiErrorStatus / lastStatusDataWithPrefix walk idx_run_events_run", () => {
-    for (const method of ["runs.lastToolUseData", "runs.hasPriorApiErrorStatus", "runs.lastStatusDataWithPrefix"]) {
+    for (const method of [
+      "runs.lastToolUseData",
+      "runs.hasPriorApiErrorStatus",
+      "runs.lastStatusDataWithPrefix",
+      "runs.lastAssistantData",
+      "runs.recentStatusLines",
+    ]) {
       const plan = planOf(method);
       expect(
         plan.some((d) => d.includes("idx_run_events_run")),

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp, openSettingsGeneral, seedHarnessUsage } from "./helpers";
+import { gotoBoard, openSettingsGeneral, seedHarnessUsage } from "./helpers";
 import type { HarnessQuota } from "../src/shared/types.ts";
 
 /**
@@ -88,7 +88,7 @@ async function createAndStartFakeClaudeTask(
   const auth = { authorization: `Bearer ${backend.apiToken}` };
   const createRes = await request.post(`${backend.apiBase}/tasks`, {
     headers: auth,
-    data: { title: prompt, prompt, isolation: "none", workdir: tmpdir() },
+    data: { title: prompt, prompt, isolation: "none", workdir: tmpdir(), column: "ready" },
   });
   expect(createRes.ok(), `POST /tasks -> ${createRes.status()}: ${await createRes.text()}`).toBeTruthy();
   const task = (await createRes.json()) as TaskRow;
@@ -104,9 +104,9 @@ async function createAndStartFakeClaudeTask(
   return task;
 }
 
-/** The New Task sidebar — always the first `<aside>` in DOM order. */
+/** The New Task sidebar (its test id — the project sidebar is also an `<aside>`). */
 function newTaskForm(page: Page): Locator {
-  return page.locator("aside").first();
+  return page.getByTestId("new-task-panel");
 }
 
 /** The run panel's slide-over `<aside>` — the later one in DOM order once a
@@ -196,7 +196,7 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
     page,
     backend,
   }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const box = boardSearchBox(page);
 
     await box.fill("hello");
@@ -215,7 +215,7 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
   });
 
   test("(b) chord from the New Task prompt textarea still jumps to the board box", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const textarea = newTaskForm(page).getByTestId("prompt-textarea");
 
     await textarea.click();
@@ -235,7 +235,7 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
     const prompt = `board-search-e2e ${randomUUID()}`;
     await createAndStartFakeClaudeTask(request, backend, prompt);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, prompt);
     const mod = await shortcutModifier(page);
 
@@ -253,7 +253,7 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
   });
 
   test("(d) an open modal dialog blocks the chord on the board", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const dialog = await openSettingsGeneral(page);
     const mod = await shortcutModifier(page);
 
@@ -270,7 +270,7 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
   });
 
   test("(e) Escape blurs the focused board box but keeps the typed query", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const box = boardSearchBox(page);
     const mod = await shortcutModifier(page);
 
@@ -296,11 +296,11 @@ test.describe("board search: Cmd/Ctrl+F focus", () => {
     // guard, so the box must yield the first Escape to it and only blur on
     // the second.
     seedHarnessUsage(backend, claudeCodeQuota());
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
-    const chip = page.getByRole("banner").getByRole("button", { name: "Claude Code", exact: true });
+    const chip = page.getByTestId("topbar-service-claude");
     await chip.click();
-    const popover = page.getByRole("dialog", { name: "Claude Code usage" });
+    const popover = page.getByTestId("topbar-service-panel");
     await expect(popover).toBeVisible();
 
     const box = boardSearchBox(page);

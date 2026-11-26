@@ -94,13 +94,16 @@ export class ApiError extends Error {
 /**
  * Discover the running core via the creds file and verify it's alive + ours.
  * Returns null when nothing is running (or the creds are stale). `dataDir`
- * defaults to `$AGETOR_DATA_DIR` (or `~/.agetor`); pass it to target a
+ * defaults to the shared ForgeOrbit profile resolver; pass it to target a
  * specific data tree (e.g. the dev `~/.agetor-dev`).
  */
-export async function discoverCore(dataDir?: string): Promise<CoreInfo | null> {
+export async function discoverCore(
+  dataDir?: string,
+  options?: { expectedProfileIdentity?: string },
+): Promise<CoreInfo | null> {
   const creds = readCoreCreds(dataDir);
   if (!creds) return null;
-  return (await probeLiveCore(creds)) ? creds : null;
+  return (await probeLiveCore(creds, 800, options)) ? creds : null;
 }
 
 /** Thin typed client over the localhost HTTP API. One per discovered core. */

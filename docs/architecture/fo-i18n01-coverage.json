@@ -1,0 +1,391 @@
+{
+  "auditedTsxFiles": 157,
+  "dictionaryKeys": 4164,
+  "localeKeyParity": true,
+  "jsxTranslationReferences": 4654,
+  "rawInvariantOccurrences": 58,
+  "rawInvariantUnique": 47,
+  "untranslatedStatic": [],
+  "namespaces": {
+    "accounts": 129,
+    "activity": 2,
+    "approvals": 164,
+    "bundle": 29,
+    "clusters": 45,
+    "common": 1792,
+    "count": 52,
+    "employees": 218,
+    "environment": 26,
+    "errors": 50,
+    "estimates": 115,
+    "evidence": 5,
+    "execution": 76,
+    "git": 2,
+    "hiring": 2,
+    "infrastructure": 4,
+    "knowledge": 50,
+    "metadata": 33,
+    "models": 184,
+    "navigation": 18,
+    "notifications": 1,
+    "phase": 11,
+    "pipelines": 60,
+    "portfolio": 94,
+    "projects": 219,
+    "resources": 83,
+    "settings": 142,
+    "status": 97,
+    "tasks": 431,
+    "turns": 30
+  },
+  "invariantInventory": [
+    {
+      "file": "src/mainview/App.tsx",
+      "line": 2458,
+      "kind": "text",
+      "text": "ForgeOrbit"
+    },
+    {
+      "file": "src/mainview/App.tsx",
+      "line": 2524,
+      "kind": "attribute",
+      "text": "Git"
+    },
+    {
+      "file": "src/mainview/components/onboarding/OnboardingChecklist.tsx",
+      "line": 57,
+      "kind": "text",
+      "text": "fx login codex"
+    },
+    {
+      "file": "src/mainview/components/onboarding/OnboardingChecklist.tsx",
+      "line": 58,
+      "kind": "text",
+      "text": "fx login grok"
+    },
+    {
+      "file": "src/mainview/components/onboarding/OnboardingChecklist.tsx",
+      "line": 172,
+      "kind": "text",
+      "text": "gemini"
+    },
+    {
+      "file": "src/mainview/components/tmux/TmuxInstallDialog.tsx",
+      "line": 162,
+      "kind": "text",
+      "text": "tmux"
+    },
+    {
+      "file": "src/mainview/components/tmux/TmuxInstallDialog.tsx",
+      "line": 162,
+      "kind": "text",
+      "text": "tmux"
+    },
+    {
+      "file": "src/mainview/components/tmux/TmuxInstallDialog.tsx",
+      "line": 162,
+      "kind": "text",
+      "text": "PATH"
+    },
+    {
+      "file": "src/mainview/components/kanban/RunPanel.tsx",
+      "line": 6254,
+      "kind": "text",
+      "text": "mcp ·"
+    },
+    {
+      "file": "src/mainview/components/kanban/RunPanel.tsx",
+      "line": 7331,
+      "kind": "text",
+      "text": "Tmux"
+    },
+    {
+      "file": "src/mainview/components/kanban/ResolveConflictsDialog.tsx",
+      "line": 144,
+      "kind": "text",
+      "text": "PR #"
+    },
+    {
+      "file": "src/mainview/components/kanban/ResolveConflictsDialog.tsx",
+      "line": 181,
+      "kind": "text",
+      "text": "origin/"
+    },
+    {
+      "file": "src/mainview/components/kanban/EmployeeRunPanel.tsx",
+      "line": 275,
+      "kind": "attribute",
+      "text": "Run ID"
+    },
+    {
+      "file": "src/mainview/components/kanban/BranchPicker.tsx",
+      "line": 291,
+      "kind": "attribute",
+      "text": "HEAD"
+    },
+    {
+      "file": "src/mainview/components/kanban/GitHubDialog.tsx",
+      "line": 3700,
+      "kind": "text",
+      "text": "GH"
+    },
+    {
+      "file": "src/mainview/components/kanban/GitHubDialog.tsx",
+      "line": 5906,
+      "kind": "text",
+      "text": "PR"
+    },
+    {
+      "file": "src/mainview/components/kanban/WorktreeOptions.tsx",
+      "line": 317,
+      "kind": "attribute",
+      "text": "feature/my-task"
+    },
+    {
+      "file": "src/mainview/components/bundle/ImportBundleDialog.tsx",
+      "line": 976,
+      "kind": "attribute",
+      "text": "{ \"format\": \"agetor-bundle\", \"version\": 1, … }"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 178,
+      "kind": "attribute",
+      "text": "/Users/you/Projects/orbit"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 242,
+      "kind": "attribute",
+      "text": "README"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 246,
+      "kind": "attribute",
+      "text": "AGENTS.md"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 247,
+      "kind": "attribute",
+      "text": "CLAUDE.md"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 385,
+      "kind": "attribute",
+      "text": "IDEA.md"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 395,
+      "kind": "attribute",
+      "text": "PRD.md"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/WizardPanels.tsx",
+      "line": 446,
+      "kind": "attribute",
+      "text": "Git"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 238,
+      "kind": "attribute",
+      "text": "bun"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 272,
+      "kind": "text",
+      "text": "SIGTERM"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 273,
+      "kind": "text",
+      "text": "SIGINT"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 318,
+      "kind": "attribute",
+      "text": "http://127.0.0.1:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 340,
+      "kind": "attribute",
+      "text": "http://127.0.0.1:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 344,
+      "kind": "attribute",
+      "text": "API"
+    },
+    {
+      "file": "src/mainview/components/workspace/project-wizard/LaunchProfileStep.tsx",
+      "line": 351,
+      "kind": "attribute",
+      "text": "http://127.0.0.1:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 137,
+      "kind": "attribute",
+      "text": "bun"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 171,
+      "kind": "text",
+      "text": "SIGTERM"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 172,
+      "kind": "text",
+      "text": "SIGINT"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 205,
+      "kind": "attribute",
+      "text": "http://127.0.0.1:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 211,
+      "kind": "attribute",
+      "text": "http://localhost:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 213,
+      "kind": "attribute",
+      "text": "API"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/ProfileForm.tsx",
+      "line": 214,
+      "kind": "attribute",
+      "text": "http://127.0.0.1:3000/"
+    },
+    {
+      "file": "src/mainview/components/workspace/environment/EnvironmentPage.tsx",
+      "line": 317,
+      "kind": "text",
+      "text": "PID"
+    },
+    {
+      "file": "src/mainview/components/workspace/knowledge/KnowledgeBrowser.tsx",
+      "line": 568,
+      "kind": "attribute",
+      "text": "custom-category"
+    },
+    {
+      "file": "src/mainview/components/workspace/clusters/ClusterFormDialog.tsx",
+      "line": 107,
+      "kind": "attribute",
+      "text": "optional-slug"
+    },
+    {
+      "file": "src/mainview/components/workspace/clusters/ClusterFormDialog.tsx",
+      "line": 134,
+      "kind": "attribute",
+      "text": "layers"
+    },
+    {
+      "file": "src/mainview/components/settings/BranchNamingDialog.tsx",
+      "line": 150,
+      "kind": "attribute",
+      "text": "feature/"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubSetupDialog.tsx",
+      "line": 126,
+      "kind": "text",
+      "text": "BITBUCKET_TOKEN"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubSetupDialog.tsx",
+      "line": 127,
+      "kind": "text",
+      "text": "BITBUCKET_EMAIL"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubSetupDialog.tsx",
+      "line": 127,
+      "kind": "text",
+      "text": "GITLAB_TOKEN"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubSetupDialog.tsx",
+      "line": 128,
+      "kind": "text",
+      "text": "glab"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubSetupDialog.tsx",
+      "line": 219,
+      "kind": "text",
+      "text": "email:api_token"
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 623,
+      "kind": "text",
+      "text": "v"
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 1119,
+      "kind": "text",
+      "text": "English"
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 1414,
+      "kind": "text",
+      "text": "· HOME="
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 1747,
+      "kind": "attribute",
+      "text": "claude-work"
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 1810,
+      "kind": "attribute",
+      "text": "/opt/homebrew/bin/claude"
+    },
+    {
+      "file": "src/mainview/components/settings/SettingsDialog.tsx",
+      "line": 1824,
+      "kind": "text",
+      "text": "KEY=value"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubTokensSection.tsx",
+      "line": 115,
+      "kind": "text",
+      "text": "email:api_token"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubTokensSection.tsx",
+      "line": 198,
+      "kind": "attribute",
+      "text": "github.com / gitlab.com / bitbucket.org"
+    },
+    {
+      "file": "src/mainview/components/settings/GitHubTokensSection.tsx",
+      "line": 222,
+      "kind": "attribute",
+      "text": "ghp_… / glpat-… / email:api_token"
+    }
+  ]
+}

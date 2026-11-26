@@ -223,7 +223,7 @@ async function createDiffTask(
  *  this feature ships no `data-testid`s. Titles carry a `randomUUID()` per
  *  test so `hasText` substring matching can't cross-match another task. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator('[class*="cursor-grab"]').filter({ hasText: title });
+  return page.locator('[data-testid="task-card"]').filter({ hasText: title });
 }
 
 /** Click a task card's "View changes (git diff)" icon button (present on

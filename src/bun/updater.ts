@@ -1,6 +1,15 @@
 import { Updater } from "electrobun/bun";
 import { publishGlobalEvent } from "./orchestrator.ts";
 import type { UpdateStatus } from "../shared/types.ts";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { validateBuildMetadata } from "../shared/release-version.ts";
+import { installUpdateGuard, updatesEnabled } from "./update-policy.ts";
+
+function guardedUpdater() {
+  return installUpdateGuard(Updater, () => validateBuildMetadata(JSON.parse(readFileSync(
+    path.join(path.dirname(process.execPath), "../Resources/forgeorbit-build.json"), "utf8"))));
+}
 
 /**
  * Wraps Electrobun's `Updater` with the tiny surface our UI needs:
@@ -81,10 +90,7 @@ export function isAllowedUpdateBaseUrl(baseUrl: string | null | undefined): bool
  * race otherwise.
  */
 export async function checkForUpdate(): Promise<void> {
-  if (
-    process.env.FORGEORBIT_DISABLE_UPDATES === "1" ||
-    process.env.AGETOR_DISABLE_UPDATES === "1"
-  ) {
+  if (!updatesEnabled(process.env)) {
     setStatus("idle");
     return;
   }
@@ -98,6 +104,7 @@ export async function checkForUpdate(): Promise<void> {
         setStatus("idle");
         return;
       }
+      guardedUpdater().beginCheck();
       const info = await Updater.checkForUpdate();
       if (info.error) {
         // Before the first release is published on cbrwvy/forgeorbit, GitHub
@@ -154,6 +161,8 @@ export async function checkForUpdate(): Promise<void> {
  * back to the client at that point.
  */
 export async function applyUpdate(): Promise<void> {
+  if (!updatesEnabled(process.env) || snapshot.status !== "ready") throw new Error("Updates disabled or no accepted staged update");
+  guardedUpdater();
   const baseUrl = await Updater.localInfo.baseUrl();
   if (!isAllowedUpdateBaseUrl(baseUrl)) {
     throw new Error(
@@ -169,6 +178,7 @@ export async function applyUpdate(): Promise<void> {
  * don't end up with two timers running.
  */
 export function startUpdaterLoop(): void {
+  if (!updatesEnabled(process.env)) return;
   if (pollTimer) return;
   // Defer the first check past app-start critical-path so it doesn't slow
   // window open / DB warmup. 5 s is well under the user's first interaction.

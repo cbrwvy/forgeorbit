@@ -585,7 +585,8 @@ test("codex with defaults emits --model + reasoning effort + structured-stream f
     "--model", "gpt-6-astra",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -598,7 +599,8 @@ test("codex 'ask' mode uses --sandbox read-only so codex can't change anything",
     "--model", "gpt-6-astra",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "read-only",
+    "--sandbox", "read-only", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -610,7 +612,8 @@ test("codex model 'gpt-6-astra' passes through verbatim as --model", () => {
     "--model", "gpt-6-astra",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -622,7 +625,8 @@ test("codex model 'gpt-6-astra-aeon' passes through verbatim as --model", () => 
     "--model", "gpt-6-astra-aeon",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -634,7 +638,8 @@ test("codex model 'gpt-6.1-sol' passes through verbatim as --model", () => {
     "--model", "gpt-6.1-sol",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -646,7 +651,8 @@ test("codex model 'gpt-6-sol' passes through verbatim as --model", () => {
     "--model", "gpt-6-sol",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -658,7 +664,8 @@ test("codex model 'gpt-6-luna' passes through verbatim as --model", () => {
     "--model", "gpt-6-luna",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -670,7 +677,8 @@ test("codex model 'gpt-5.5' passes through verbatim as --model", () => {
     "--model", "gpt-5.5",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -682,7 +690,8 @@ test("codex model 'gpt-5.6-sol' passes through verbatim as --model", () => {
     "--model", "gpt-5.6-sol",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -694,7 +703,8 @@ test("codex model 'gpt-5.6-cyber' passes through verbatim as --model", () => {
     "--model", "gpt-5.6-cyber",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -706,7 +716,8 @@ test("codex model 'gpt-5' adds --model gpt-5", () => {
     "--model", "gpt-5",
     "-c", "model_reasoning_effort=high",
     "--json", "--color", "never", "--skip-git-repo-check",
-    "--sandbox", "workspace-write",
+    "--sandbox", "workspace-write", "-c", "approval_policy=never",
+    "-c", "sandbox_workspace_write.writable_roots=[]", "-c", "sandbox_workspace_write.network_access=false",
     "-",
   ]);
 });
@@ -718,7 +729,7 @@ test("codex resume injects the `resume <thread_id>` subcommand before the stdin 
   expect(cmd.indexOf("--json")).toBeLessThan(cmd.indexOf("resume"));
 });
 
-test("codex auto with external git dirs escalates to danger-full-access + approval_policy=never", () => {
+test("codex auto with external git dirs never escalates", () => {
   const { cmd } = buildCommand(builtin("codex"), "hi", {
     ...codexDefaults,
     mode: "auto",
@@ -726,17 +737,17 @@ test("codex auto with external git dirs escalates to danger-full-access + approv
   });
   // Sandbox is dropped to full access (workspace-write can't reach the external
   // .git), paired with approval_policy=never so headless exec never stalls.
-  expect(cmd).toContain("danger-full-access");
-  expect(cmd).not.toContain("workspace-write");
+  expect(cmd).not.toContain("danger-full-access");
+  expect(cmd).toContain("workspace-write");
   const ap = cmd.indexOf("approval_policy=never");
   expect(ap).toBeGreaterThan(-1);
   expect(cmd[ap - 1]).toBe("-c");
 });
 
-test("codex auto + external git dirs keeps the escalation before the `resume` subcommand", () => {
+test("codex explicit full access is emitted before resume", () => {
   const { cmd } = buildCommand(builtin("codex"), "hi", {
     ...codexDefaults,
-    mode: "auto",
+    mode: "full-access",
     codexExternalGitDirs: ["/repo/.git"],
     resumeSessionId: "thread-xyz",
   });
@@ -749,14 +760,14 @@ test("codex 'ask' mode stays read-only even when external git dirs are present",
   const { cmd } = buildCommand(builtin("codex"), "hi", { ...codexDefaults, mode: "ask", codexExternalGitDirs: ["/repo/.git"] });
   expect(cmd).toContain("read-only");
   expect(cmd).not.toContain("danger-full-access");
-  expect(cmd).not.toContain("approval_policy=never");
+  expect(cmd).toContain("approval_policy=never");
 });
 
 test("codex auto with no external git dirs stays on workspace-write (ordinary checkout)", () => {
   const { cmd } = buildCommand(builtin("codex"), "hi", { ...codexDefaults, mode: "auto", codexExternalGitDirs: [] });
   expect(cmd).toContain("workspace-write");
   expect(cmd).not.toContain("danger-full-access");
-  expect(cmd).not.toContain("approval_policy=never");
+  expect(cmd).toContain("approval_policy=never");
 });
 
 test("codex effort 'high' adds -c model_reasoning_effort=high", () => {
@@ -1057,8 +1068,7 @@ test("AGETOR_CURSOR_ARGS extra args land after the mode flags and before --resum
   ]);
 });
 
-// Prompt rides in argv (`-p <prompt>`) — see GEMINI_PROMPT_ARGV_MAX_BYTES's
-// doc comment for why this differs from codex's stdin delivery.
+// Empty -p selects headless mode; user bytes are carried by stdinPrompt.
 test("gemini with defaults emits -m + stream-json + --yolo + --skip-trust, prompt via -p", () => {
   const { cmd } = buildCommand(builtin("gemini"), "hi", { ...geminiDefaults });
   expect(cmd).toEqual([
@@ -1067,7 +1077,7 @@ test("gemini with defaults emits -m + stream-json + --yolo + --skip-trust, promp
     "--output-format", "stream-json",
     "--yolo",
     "--skip-trust",
-    "-p", "hi",
+    "-p", "",
   ]);
 });
 
@@ -1079,7 +1089,7 @@ test("gemini-4-argon model id is emitted verbatim via -m", () => {
     "--output-format", "stream-json",
     "--yolo",
     "--skip-trust",
-    "-p", "hi",
+    "-p", "",
   ]);
 });
 
@@ -1091,7 +1101,7 @@ test("gemini-3.8-flash model id is emitted verbatim via -m", () => {
     "--output-format", "stream-json",
     "--yolo",
     "--skip-trust",
-    "-p", "hi",
+    "-p", "",
   ]);
 });
 
@@ -1103,7 +1113,7 @@ test("gemini-3.8-flash-cyber (Fairwind-gated) model id is emitted verbatim via -
     "--output-format", "stream-json",
     "--yolo",
     "--skip-trust",
-    "-p", "hi",
+    "-p", "",
   ]);
 });
 
@@ -1215,7 +1225,7 @@ test("gemini 'ask' mode uses --approval-mode plan instead of --yolo", () => {
     "--output-format", "stream-json",
     "--approval-mode", "plan",
     "--skip-trust",
-    "-p", "hi",
+    "-p", "",
   ]);
 });
 
@@ -1273,27 +1283,28 @@ test("gemini never requires effort — no flag emitted, no throw, even when omit
 test("gemini throws when the prompt is missing", () => {
   expect(() =>
     buildCommand(builtin("gemini"), "", { ...geminiDefaults }),
-  ).toThrow(/prompt is required/);
+  ).toThrow(/Gemini stdin payload/);
 });
 
-test("gemini throws above GEMINI_PROMPT_ARGV_MAX_BYTES — no deferred-paste fallback exists", () => {
-  const prompt = "a".repeat(GEMINI_PROMPT_ARGV_MAX_BYTES + 1);
+test("gemini rejects above the audited stdin byte budget", () => {
+  const prompt = "a".repeat(4 * 1024 * 1024 + 1);
   expect(() =>
     buildCommand(builtin("gemini"), prompt, { ...geminiDefaults }),
-  ).toThrow(/exceeds .* bytes/);
+  ).toThrow(/prompt exceeds .* bytes/);
 });
 
 test("gemini stays within GEMINI_PROMPT_ARGV_MAX_BYTES for an at-budget prompt", () => {
   const prompt = "a".repeat(GEMINI_PROMPT_ARGV_MAX_BYTES);
   const { cmd } = buildCommand(builtin("gemini"), prompt, { ...geminiDefaults });
-  expect(cmd).toContain(prompt);
+  expect(cmd).not.toContain(prompt);
+  expect(buildCommand(builtin("gemini"), prompt, { ...geminiDefaults }).stdinPrompt).toBe(prompt);
 });
 
 test("AGETOR_GEMINI_ARGS extra args land before -p", () => {
   process.env.AGETOR_GEMINI_ARGS = "--include-directories /tmp/extra";
   const { cmd } = buildCommand(builtin("gemini"), "hi", { ...geminiDefaults });
   expect(cmd.indexOf("--include-directories")).toBeLessThan(cmd.indexOf("-p"));
-  expect(cmd.slice(-2)).toEqual(["-p", "hi"]);
+  expect(cmd.slice(-2)).toEqual(["-p", ""]);
 });
 
 test("aliased gemini with a home override emits GEMINI_CLI_HOME (not HOME)", () => {
@@ -2134,10 +2145,9 @@ test("AGETOR_CLAUDE_ARGS extra args land before the prompt (and before the `--` 
   expect(cmd.slice(-4)).toEqual(["--verbose", "--foo", "--", "p"]);
 });
 
-test("AGETOR_CODEX_ARGS extra args land before the stdin sentinel", () => {
-  process.env.AGETOR_CODEX_ARGS = "--verbose --foo";
-  const { cmd } = buildCommand(builtin("codex"), "p", { ...codexDefaults });
-  expect(cmd.slice(-3)).toEqual(["--verbose", "--foo", "-"]);
+test("AGETOR_CODEX_ARGS cannot override reviewed permissions", () => {
+  process.env.AGETOR_CODEX_ARGS = "--sandbox danger-full-access";
+  expect(() => buildCommand(builtin("codex"), "hi", codexDefaults)).toThrow("managed Codex permissions");
 });
 
 // Invariant test for AGENT_OPTIONS — guards against re-introducing the

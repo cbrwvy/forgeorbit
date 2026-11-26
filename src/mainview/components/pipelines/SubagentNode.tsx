@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Bot, Check, Loader2 } from "lucide-react";
@@ -30,23 +32,24 @@ const VISUAL_CLASSES: Record<SubagentVisualState, string> = {
 };
 
 function SubagentNodeImpl({ data }: NodeProps<SubagentFlowNode>) {
+  useUILocale();
   const { stepId, kind, profileId, subagentId, label, visual = "idle", instanceCount = 0 } = data;
   const { resolveProfile } = usePipelineCanvasContext();
   const { profile, profileDeleted } = kind === "profile" ? resolveProfile(profileId ?? null) : { profile: null, profileDeleted: false };
-  const name = kind === "live" ? (label ?? "Subagent") : (profile?.name ?? (profileDeleted ? "Deleted agent" : "Unknown agent"));
+  const name = kind === "live" ? (label ?? tr("common.subagent_d6cb41")) : (profile?.name ?? (profileDeleted ? tr("pipelines.deleted_agent") : tr("common.unknown_agent")));
   // A frozen snapshot carries `harnessLabel`; a live `AgentProfile` only
   // its harness id — either reads fine as the small secondary line.
   const sub = kind === "live"
-    ? "live subagent"
+    ? tr("common.live_subagent")
     : profile
       ? ("harnessLabel" in profile ? profile.harnessLabel : profile.harness)
       : null;
   const title =
     visual === "working"
-      ? `${name} — working now`
+      ? tr("common.working_now", { p0: String(name) })
       : visual === "done"
-        ? `${name} — finished`
-        : `${name} — this step may delegate to it`;
+        ? tr("common.finished_72561d", { p0: String(name) })
+        : tr("common.this_step_may_delegate_to_it", { p0: String(name) });
 
   return (
     <div
@@ -74,22 +77,22 @@ function SubagentNodeImpl({ data }: NodeProps<SubagentFlowNode>) {
       />
       <span className="flex size-4 shrink-0 items-center justify-center">
         {visual === "working" ? (
-          <Loader2 className="size-3.5 animate-spin text-info" aria-label="Working" />
+          <Loader2 className="size-3.5 animate-spin text-info" aria-label={tr("pipelines.working")} />
         ) : visual === "done" ? (
-          <Check className="size-3.5 text-success" aria-label="Finished" />
+          <Check className="size-3.5 text-success" aria-label={tr("common.finished")} />
         ) : (
           <Bot className="size-3.5" aria-hidden />
         )}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate font-medium leading-tight">{name}</span>
-        {sub && <span className="block truncate text-[10px] leading-tight text-muted-foreground">{sub}</span>}
+        {sub && <span className="block truncate text-[length:var(--text-caption)] leading-tight text-muted-foreground">{sub}</span>}
       </span>
       {instanceCount > 1 && (
         <span
           data-testid="pipeline-subagent-count"
-          className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground"
-          title={`${instanceCount} helpers spawned for this persona`}
+          className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[length:var(--text-caption)] leading-none text-muted-foreground"
+          title={tr("common.helpers_spawned_for_this_persona", { p0: String(instanceCount) })}
         >
           ×{instanceCount}
         </span>

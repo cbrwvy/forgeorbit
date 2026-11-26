@@ -1,17 +1,20 @@
-import { Antigravity, ClaudeCode, Codex, Cursor, GeminiCLI, Vercel } from "@lobehub/icons";
+import { useLocale as useUILocale } from "@/i18n/react";
+import { Antigravity, ClaudeCode, Codex, Cursor, DeepSeek, GeminiCLI, Vercel } from "@lobehub/icons";
 import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentKind } from "../../../shared/types.ts";
 
 type IconProps = { size?: number | string; className?: string; "aria-hidden"?: boolean };
 
-const ICONS: Record<AgentKind, ComponentType<IconProps>> = {
+const ICONS: Record<AgentKind | "deepseek" | "deepseek-dsh", ComponentType<IconProps>> = {
   "claude-code": ClaudeCode.Color,
   "codex": Codex.Color,
   // @lobehub/icons ships no `.Color` variant for Cursor (its mark is
   // monochrome by design) — the plain (Mono) export is the closest
   // equivalent to Claude/Codex's colored glyphs here.
   "cursor": Cursor,
+  "deepseek": DeepSeek.Color,
+  "deepseek-dsh": DeepSeek.Color,
   "gemini": GeminiCLI.Color,
   "antigravity": Antigravity.Color,
   // Same story as Cursor above — @lobehub/icons ships no `.Color` variant
@@ -27,6 +30,7 @@ const ICONS: Record<AgentKind, ComponentType<IconProps>> = {
  * safer than throwing on an unknown alias mid-render.
  */
 export function AgentIcon({ kind, className }: { kind: AgentKind | string; className?: string }) {
-  const Icon = ICONS[kind as AgentKind] ?? ICONS["claude-code"];
+  useUILocale();
+  const Icon = ICONS[kind as keyof typeof ICONS] ?? ICONS["claude-code"];
   return <Icon size="1em" className={cn("size-3.5", className)} aria-hidden />;
 }

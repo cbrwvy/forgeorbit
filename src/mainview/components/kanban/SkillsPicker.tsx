@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { api, type AvailableExtension } from "@/lib/api";
@@ -57,6 +59,7 @@ interface SkillsPickerProps {
  * {@link AGENT_PROFILE_LIMITS.skills}).
  */
 export function SkillsPicker({ value, onChange, harnessId, disabled, className }: SkillsPickerProps) {
+  const { locale: uiLocale } = useUILocale();
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
   // -1 = no row highlighted — Tab/Enter then commits the typed text, never a
@@ -103,13 +106,13 @@ export function SkillsPicker({ value, onChange, harnessId, disabled, className }
     };
   }, [open]);
 
-  const valueSet = useMemo(() => new Set(value), [value]);
+  const valueSet = useMemo(() => new Set(value), [value, uiLocale]);
   const filtered = useMemo(() => {
     const q = skillQueryText(inputValue);
     return suggestions
       .filter((s) => !valueSet.has(s.name))
       .filter((s) => !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
-  }, [suggestions, inputValue, valueSet]);
+  }, [suggestions, inputValue, valueSet, uiLocale]);
 
   // Reset the highlight whenever the candidate rows change identity (a new
   // typed query, a fresh suggestion fetch, …) — see the "reset active row on
@@ -194,7 +197,7 @@ export function SkillsPicker({ value, onChange, harnessId, disabled, className }
               data-testid="skills-picker-remove"
               onClick={() => removeChip(skill)}
               disabled={disabled}
-              title="Remove"
+              title={tr("common.remove")}
               className="-mr-0.5 ml-0.5 rounded-sm p-0.5 text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
             >
               <X className="size-3" aria-hidden />
@@ -221,14 +224,12 @@ export function SkillsPicker({ value, onChange, harnessId, disabled, className }
             if (harnessId) void fetchSkillSuggestions(harnessId).then(setSuggestions);
           }}
           onKeyDown={onKeyDown}
-          placeholder={atLimit ? "" : "Add a skill…"}
+          placeholder={atLimit ? "" : tr("common.add_a_skill")}
           className="min-w-[8ch] flex-1 border-0 bg-transparent p-0.5 text-xs outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
         />
       </div>
       {atLimit && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Maximum {AGENT_PROFILE_LIMITS.skills} skills reached.
-        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground"><I18nText id="tasks.maximum" />{" "}{AGENT_PROFILE_LIMITS.skills}{" "}<I18nText id="tasks.skills_reached" />{" "}</p>
       )}
       {open && !atLimit && filtered.length > 0 && (
         <div

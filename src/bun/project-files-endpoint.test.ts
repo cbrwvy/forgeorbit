@@ -1,5 +1,5 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -168,4 +168,30 @@ test("GET /files/index — an empty q= still counts as search mode (present, not
   // README.md is a depth-0 file — with no query, `sortListingOrder`'s
   // blank-query ordering surfaces it in the default-50 window.
   expect(body.files).toContain("README.md");
+});
+
+test("registered non-Git roots support live/search only, with HTTP scope and project isolation", async () => {
+  const root = mkdtempSync(path.join(DATA_DIR, "nongit-"));
+  const other = mkdtempSync(path.join(DATA_DIR, "other-"));
+  const child = path.join(root, "child"); mkdirSync(child);
+  writeFileSync(path.join(root, "safe.txt"), "not read");
+  writeFileSync(path.join(other, "outside-only.txt"), "not read");
+  writeFileSync(path.join(child, "child-only.txt"), "not read");
+  symlinkSync(other, path.join(root, "outside"));
+  for (const dir of [root, other, child]) expect((await call("/projects", { method: "POST", body: JSON.stringify({ path: dir }) })).status).toBe(200);
+  const route = (dir: string, query = "") => `/files/index?dir=${encodeURIComponent(dir)}${query}`;
+  expect(await (await call(route(root))).json()).toEqual({ files: ["safe.txt"], truncated: false });
+  expect(await (await call(route(root, "&q=safe&limit=1"))).json()).toEqual({ files: ["safe.txt"], truncated: false });
+  expect(await (await call(route(other))).json()).toEqual({ files: ["outside-only.txt"], truncated: false });
+  for (const query of ["../outside-only", path.join(other, "outside-only.txt")]) {
+    expect(await (await call(route(root, `&q=${encodeURIComponent(query)}`))).json()).toEqual({ files: [], truncated: false });
+  }
+  expect((await call(route(root, "&ref=HEAD"))).status).toBe(400);
+  expect((await callNoAuth(route(root))).status).toBe(401);
+  mkdirSync(path.join(root, "unregistered"));
+  expect((await call(route(path.join(root, "unregistered"), `&nonGitRoot=${encodeURIComponent(root)}`))).status).toBe(400);
+  expect((await call(route(`${root}/../${path.basename(other)}`))).status).toBe(400);
+  await call("/projects", { method: "DELETE", body: JSON.stringify({ path: root }) });
+  expect((await call(route(root, "&q=safe"))).status).toBe(400);
+  rmSync(other, { recursive: true }); expect((await call(route(other))).status).toBe(400);
 });

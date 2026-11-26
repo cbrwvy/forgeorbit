@@ -1,4 +1,6 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import * as React from "react";
+import { tabbables } from "@/lib/tab-order";
 import { cn } from "@/lib/utils";
 
 interface DialogProps {
@@ -17,26 +19,8 @@ interface DialogProps {
    * stacked open()s, the dialog re-applies focus.
    */
   initialFocusRef?: React.RefObject<HTMLElement | null>;
-}
-
-const FOCUSABLE_SELECTOR = [
-  "button:not([disabled])",
-  "[href]",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-  // A <details> disclosure's toggle is focusable without a tabindex.
-  "details > summary:first-of-type",
-].join(",");
-
-/** The panel's tabbable elements, in DOM order. A form control disabled by
- *  an ancestor `<fieldset disabled>` carries no `disabled` attribute of its
- *  own, so the selector alone would trap focus onto it; `:disabled` is the
- *  browser's own answer, and it already exempts controls in the fieldset's
- *  first `<legend>` (links and summaries are never disabled by a fieldset). */
-function tabbables(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((el) => !el.matches(":disabled"));
+  /** Explicit opener for dialogs mounted after an async, disabled action. */
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 // Dialogs can nest (Settings → GitHub setup guide, confirm.tsx overlays over
@@ -71,9 +55,13 @@ export function Dialog({
   labelledBy,
   describedBy,
   initialFocusRef,
+  returnFocusRef,
 }: DialogProps) {
+  useUILocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const onCloseRef = React.useRef(onClose);
+  const returnFocus = React.useRef(returnFocusRef);
+  returnFocus.current = returnFocusRef;
   // Keep the ref current without making it a dep of the effect below.
   onCloseRef.current = onClose;
 
@@ -157,15 +145,16 @@ export function Dialog({
         root.focus();
         return;
       }
-      const first = items[0]!;
-      const last = items[items.length - 1]!;
       const active = document.activeElement as HTMLElement | null;
-      const inside = !!active && root.contains(active);
-      if (e.shiftKey) {
-        if (!inside || active === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (!inside || active === last) { e.preventDefault(); first.focus(); }
-      }
+      const index = active ? items.indexOf(active) : -1;
+      // WKWebView follows macOS keyboard preferences and may skip buttons
+      // between these boundaries. Own every modal Tab step so Confirm and
+      // other controls remain reachable and focus cannot escape to body.
+      e.preventDefault();
+      const next = index < 0
+        ? (e.shiftKey ? items.length - 1 : 0)
+        : (index + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+      items[next]!.focus();
     };
 
     document.addEventListener("keydown", onKey);
@@ -181,7 +170,8 @@ export function Dialog({
       }
       // Return focus to whatever opened us. Guard against the trigger having
       // been removed from the DOM in the meantime.
-      if (trigger && document.contains(trigger)) trigger.focus();
+      const restore = returnFocus.current?.current ?? trigger;
+      if (restore && document.contains(restore)) restore.focus();
     };
   }, [open]);
 
@@ -202,14 +192,14 @@ export function Dialog({
       aria-modal="true"
       aria-labelledby={labelledBy}
       aria-describedby={describedBy}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 motion-safe:animate-fade-in"
       onClick={() => onCloseRef.current()}
     >
       <div
         ref={panelRef}
         tabIndex={-1}
         className={cn(
-          "w-full max-w-lg rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg outline-none",
+          "glass-elevated max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg overflow-y-auto rounded-xl border border-border bg-card p-4 text-card-foreground shadow-2xl outline-none motion-safe:animate-fade-in",
           className,
         )}
         onClick={(e) => e.stopPropagation()}

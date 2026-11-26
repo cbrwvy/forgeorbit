@@ -49,6 +49,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { resolveDataDir } from "../src/bun/data-dir.ts";
 
 // ── Safety: refuse the production data dir ───────────────────────────────────
 
@@ -79,14 +80,19 @@ if (!rawDataDir || rawDataDir.trim() === "") {
     "FORGEORBIT_DATA_DIR / AGETOR_DATA_DIR is required (point it at ~/.agetor-dev holding a `.backup` copy of the production DB — see the header of this file)",
   );
 }
-const prodLexical = path.resolve(homedir(), ".agetor");
-const prodReal = realpathOr(prodLexical);
+// This copy-only maintenance tool must protect the independent default as
+// well as the legacy profile. Ignore the tool's explicit data override when
+// calculating the production default it is forbidden to measure in place.
+const protectedRoots = [resolveDataDir({ env: {
+  XDG_DATA_HOME: process.env.XDG_DATA_HOME, LOCALAPPDATA: process.env.LOCALAPPDATA,
+} }), path.resolve(homedir(), ".agetor")];
+const protectedPaths = new Set(protectedRoots.flatMap(root => [path.resolve(root), realpathOr(root)]));
 const dataLexical = path.resolve(rawDataDir);
 const dataReal = realpathOr(dataLexical);
-for (const prod of new Set([prodLexical, prodReal])) {
+for (const prod of protectedPaths) {
   for (const cand of new Set([dataLexical, dataReal])) {
     if (isInsideOrEqual(prod, cand)) {
-      refuse(`data dir (${rawDataDir}) is or is inside the production data dir ${prodLexical}`);
+      refuse(`data dir (${rawDataDir}) is or is inside the production data dir ${prod}`);
     }
   }
 }
@@ -96,7 +102,7 @@ if (!existsSync(sqlitePath)) {
 }
 // A symlinked agetor.sqlite could still lead into the production dir.
 const sqliteReal = realpathOr(sqlitePath);
-for (const prod of new Set([prodLexical, prodReal])) {
+for (const prod of protectedPaths) {
   if (isInsideOrEqual(prod, sqliteReal)) {
     refuse(`${sqlitePath} resolves into the production data dir (${sqliteReal})`);
   }

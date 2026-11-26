@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 // Shared `react-markdown` `img` override that renders a markdown
 // `![alt](src)` reference as a real inline image when `src` resolves to a
 // local file, and degrades to a labeled chip otherwise (missing file,
@@ -42,10 +44,10 @@
 // down still finds the file via the source repo (D5). `MdImage` tries each
 // absolute candidate as an `<img src>` in turn via `onError`, falling back
 // to a warning chip only once every candidate has failed.
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, type KeyboardEvent, type MouseEvent, useContext, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type React from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+
 import { ImageOff } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -102,8 +104,9 @@ function isActivationKey(e: KeyboardEvent): boolean {
 }
 
 export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, node: _node }) => {
+  const { locale: uiLocale } = useUILocale();
   const { taskId, roots, allowLocal } = useContext(MdImageScopeContext);
-  const source = useMemo(() => classifyMdImageSrc(src, roots), [src, roots]);
+  const source = useMemo(() => classifyMdImageSrc(src, roots), [src, roots, uiLocale]);
 
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -124,7 +127,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
     try {
       const result = await api.openPath({ path, taskId });
       if (!result.opened) {
-        setOpenError({ path, message: "The OS declined to open this file." });
+        setOpenError({ path, message: tr("common.the_os_declined_to_open_this_file") });
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) {
@@ -138,7 +141,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
 
   const openRemote = (url: string) => {
     void api.openExternal(url).catch((err: unknown) => {
-      toast.error(err instanceof Error ? err.message : "Could not open link");
+      toast.error(err instanceof Error ? err.message : tr("common.could_not_open_link"));
     });
   };
 
@@ -158,7 +161,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
         <button
           type="button"
           data-testid="md-image-fallback"
-          title={`Image not found: ${source.url}`}
+          title={tr("common.image_not_found", { p0: String(source.url) })}
           onClick={(e) => stopAnd(e, () => openRemote(source.url))}
           className={FALLBACK_CHIP_CLASS}
         >
@@ -175,7 +178,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
             src={source.url}
             alt={alt ?? ""}
             title={title ?? source.url}
-            aria-label={alt || `Open ${refBasename(source.url)}`}
+            aria-label={alt || tr("common.open_8f12e5", { p0: String(refBasename(source.url)) })}
             loading="lazy"
             decoding="async"
             role="button"
@@ -207,7 +210,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
     content = (
       <span
         data-testid="md-image-file"
-        title={`Local file (not rendered here): ${source.path}`}
+        title={tr("common.local_file_not_rendered_here", { p0: String(source.path) })}
         className={FILE_CHIP_CLASS}
       >
         <Icon className="size-3 shrink-0" aria-hidden />
@@ -239,7 +242,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
         <button
           type="button"
           data-testid="md-image-fallback"
-          title={`Image not found: ${path}`}
+          title={tr("common.image_not_found", { p0: String(path) })}
           onClick={(e) =>
             stopAnd(e, () => void openLocalPath(source.candidates[0] ?? path))
           }
@@ -261,7 +264,7 @@ export const MdImage: NonNullable<MdComponents["img"]> = ({ src, alt, title, nod
             src={api.filePreviewUrl(currentPath)}
             alt={alt ?? ""}
             title={title ?? currentPath}
-            aria-label={alt || `Open ${refBasename(currentPath)}`}
+            aria-label={alt || tr("common.open_8f12e5", { p0: String(refBasename(currentPath)) })}
             loading="lazy"
             decoding="async"
             role="button"

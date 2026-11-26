@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeOrbit UX02-D — варианты IA</title>
+<meta name="description" content="Демонстрационный прототип FO-UX02-D: сравнение четырёх вариантов информационной архитектуры, поиск функции с подсчётом кликов и сводка выбора для Owner. Данные вымышлены, production-код не затронут.">
+<script>
+(function(){var m="auto";try{m=localStorage.getItem("fo-ux02d:theme")||"auto"}catch(e){}
+var d=m==="dark"||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches);
+document.documentElement.dataset.theme=d?"dark":"light";document.documentElement.dataset.mode=m;})();
+</script>
+<style>
+:root,[data-theme="light"]{color-scheme:light;--canvas:#e9edf5;--glow1:rgba(120,100,220,.12);--glow2:rgba(70,120,220,.10);--surface:#fff;--surface-2:#f4f6fa;--surface-3:#e8ebf2;--text:#14161c;--text-2:#424a5a;--text-3:#5b6372;--border:rgba(20,24,36,.12);--border-strong:rgba(20,24,36,.24);--brand:#5844a7;--brand-fg:#fff;--brand-soft:rgba(88,68,167,.12);--ok:#0f7a4d;--ok-soft:rgba(15,122,77,.12);--warn:#8a5200;--warn-soft:rgba(196,118,0,.15);--bad:#b3203a;--bad-soft:rgba(179,32,58,.11);--glass:rgba(255,255,255,.9);--glass-line:rgba(20,24,36,.10);--shadow:0 1px 2px rgba(20,24,36,.06);--shadow-2:0 8px 28px rgba(20,24,36,.14)}
+[data-theme="dark"]{color-scheme:dark;--canvas:#09090b;--glow1:rgba(150,130,240,.14);--glow2:rgba(80,130,230,.12);--surface:#18181b;--surface-2:#1f1f24;--surface-3:#2a2a31;--text:#fafafa;--text-2:#c3c6cf;--text-3:#a1a5b1;--border:rgba(255,255,255,.10);--border-strong:rgba(255,255,255,.24);--brand:#afa0ee;--brand-fg:#18181b;--brand-soft:rgba(175,160,238,.16);--ok:#4fdc9f;--ok-soft:rgba(79,220,159,.14);--warn:#f6bb52;--warn-soft:rgba(246,187,82,.15);--bad:#ff8696;--bad-soft:rgba(255,134,150,.15);--glass:rgba(24,24,27,.9);--glass-line:rgba(255,255,255,.10);--shadow:0 1px 2px rgba(0,0,0,.4);--shadow-2:0 10px 30px rgba(0,0,0,.55)}
+*{box-sizing:border-box}
+body{margin:0;font:400 14px/20px -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;color:var(--text);background:radial-gradient(900px 500px at 0 -10%,var(--glow1),transparent 60%),radial-gradient(800px 500px at 100% 110%,var(--glow2),transparent 60%),var(--canvas);min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.wrap{max-width:1240px;margin:0 auto;padding:16px 16px 64px}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:16px;background:var(--glass);border:1px solid var(--glass-line);box-shadow:var(--shadow)}
+h1{margin:0;font-size:18px;line-height:24px;letter-spacing:-.01em}h2{margin:0 0 4px;font-size:16px;line-height:24px}
+.demo{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-soft);border:1px solid var(--warn)}
+.muted{color:var(--text-3)}.small{font-size:12px;line-height:16px}
+.btn{height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);font-weight:550}.btn:hover{background:var(--surface-2)}.btn.sm{height:32px;padding:0 12px}
+.btn.primary{background:var(--brand);color:var(--brand-fg);border-color:transparent}
+select,input[type=search]{height:36px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface);padding:0 10px}
+section.panel{margin-top:16px;padding:16px;border-radius:16px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow)}
+.tabs{display:inline-flex;max-width:100%;overflow-x:auto;gap:4px;padding:4px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
+.tab{flex:none;min-height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;font-weight:500;color:var(--text-2);white-space:nowrap}
+.tab:hover{background:var(--surface-3)}.tab[aria-selected="true"]{background:var(--brand-soft);color:var(--text);font-weight:650}
+.rec{font-size:11px;font-weight:700;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--ok-soft);color:var(--text);box-shadow:inset 0 0 0 1px var(--ok)}
+.cols{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px;margin-top:12px}
+@media(max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
+/* wireframe */
+.shot{position:relative;border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:var(--canvas);min-height:420px;display:grid;grid-template-rows:36px 1fr}
+.shot .bar{display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--glass);border-bottom:1px solid var(--glass-line);font-size:12px}
+.shot .bar b{font-size:13px}.ico{display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:6px;background:var(--surface-3);font-size:11px;font-weight:600;padding:0 4px}
+.shot .body{display:grid;grid-template-columns:168px minmax(0,1fr);min-height:0}
+.rail{background:var(--glass);border-right:1px solid var(--glass-line);padding:8px;display:flex;flex-direction:column;gap:2px;font-size:13px}
+.rail button{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;min-height:32px;padding:0 8px;text-align:left;border:0;border-radius:8px;background:transparent}
+.rail button:hover{background:var(--surface-3)}.rail button[aria-current="true"]{background:var(--brand-soft);font-weight:650}
+.rail .grp{margin:8px 8px 2px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+.badge{font-size:11px;font-weight:700;min-width:18px;text-align:center;padding:0 5px;border-radius:999px;background:var(--warn-soft);color:var(--text);box-shadow:inset 0 0 0 1px var(--warn)}
+.main{display:flex;flex-direction:column;min-width:0;padding:12px}
+.crumb{font-size:12px;color:var(--text-3)}.ptitle{font-size:18px;font-weight:650;margin:2px 0 8px}
+.ptabs{display:flex;gap:4px;overflow-x:auto;padding:4px;border:1px solid var(--border);border-radius:12px;align-self:flex-start;max-width:100%;background:var(--surface)}
+.ptabs button{flex:none;min-height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;font-size:13px;white-space:nowrap}.ptabs button:hover{background:var(--surface-3)}
+.ptabs button[aria-selected="true"]{background:var(--brand-soft);font-weight:650}
+.card{overflow-wrap:anywhere;margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{padding:2px 8px;border-radius:999px;font-size:12px;background:var(--surface-3);color:var(--text-2)}.chip.new{background:var(--ok-soft);color:var(--ok)}.chip.moved{background:var(--brand-soft);color:var(--text)}
+.orb{position:absolute;right:14px;bottom:14px;width:40px;height:40px;border-radius:50%;background:conic-gradient(from 210deg,#6a5bd6,#4a8fe0,#8a63ff,#6a5bd6);box-shadow:0 6px 18px rgba(60,60,170,.4);display:grid;place-items:center}
+.orb::after{content:"";width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.92)}
+.orbnote{position:absolute;right:62px;bottom:20px;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-line)}
+.sheetnote{margin-top:8px;font-size:12px;color:var(--text-2)}
+/* table */
+.tw{overflow-x:auto;margin-top:8px}
+table{border-collapse:collapse;width:100%;min-width:860px;font-size:13px}
+th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+th{font-size:12px;color:var(--text-3);font-weight:600;position:sticky;top:0;background:var(--surface)}
+td.cell .n{display:inline-block;min-width:22px;text-align:center;font-weight:700;border-radius:6px;padding:0 6px;background:var(--surface-3);margin-right:6px}
+td.best .n{background:var(--ok-soft);color:var(--ok);box-shadow:inset 0 0 0 1px var(--ok)}td.worst .n{background:var(--bad-soft);color:var(--text);box-shadow:inset 0 0 0 1px var(--bad)}
+tfoot td{font-weight:650;background:var(--surface-2)}
+.path{color:var(--text-2)}
+.dec{display:grid;gap:12px}.dec fieldset{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:0}
+.dec legend{font-weight:650;padding:0 6px}.dec label{display:block;padding:4px 0}
+textarea{width:100%;min-height:150px;border-radius:8px;border:1px solid var(--border-strong);background:var(--surface-2);padding:8px;font:12px/16px ui-monospace,Menlo,monospace}
+.cost{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px;margin-top:8px}
+.cost .card{margin:0}.big{font-size:24px;font-weight:700;line-height:32px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div><h1>FO-UX02-D — варианты информационной архитектуры</h1><span class="muted small">Выберите вариант и ответьте на решения внизу. Ничего не мигрировано: это только прототип.</span></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="demo" title="Данные вымышлены, production-код не затронут">ДЕМО · production не затронут</span>
+  <label class="small muted" for="theme">Тема</label><select id="theme"><option value="auto">Авто</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select></div>
+</header>
+
+<section class="panel" aria-labelledby="h-var">
+  <h2 id="h-var">1. Как выглядит каждый вариант</h2>
+  <div class="tabs" role="tablist" aria-label="Варианты IA" id="vtabs"></div>
+  <p class="small muted" id="vdesc" style="margin:8px 0 0"></p>
+  <div class="cols">
+    <div class="shot" id="shot" aria-label="Схематичный макет выбранного варианта"></div>
+    <div id="detail" aria-live="polite"></div>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="h-find">
+  <h2 id="h-find">2. «Где найти…?» — число кликов по вариантам</h2>
+  <p class="muted small" style="margin:0 0 8px">Клик = переход или открытие элемента от стартового экрана приложения. Текущая структура проверена по коду и живому UI; пути в новых вариантах — проектные. Веса частоты — моё предположение (3 — ежедневно, 1 — редко), поправьте при необходимости. Плавающий Head of PM (PM01) сокращает чат с менеджерами до 1–2 кликов в любом варианте, поэтому в таблице чаты посчитаны без орба.</p>
+  <label class="sr-only" for="q">Фильтр функций</label><input id="q" type="search" placeholder="Фильтр: очередь, пакет, журнал…" style="width:min(320px,100%)">
+  <div class="tw"><table><thead><tr><th>Функция</th><th>Частота</th><th>Текущая</th><th>A</th><th>B</th><th>C</th></tr></thead><tbody id="ftb"></tbody><tfoot id="ftf"></tfoot></table></div>
+</section>
+
+<section class="panel" aria-labelledby="h-dec">
+  <h2 id="h-dec">3. Решения Owner</h2>
+  <div class="cols"><div class="dec" id="dec"></div><div><h2 style="font-size:14px">Сводка выбора</h2><p class="small muted" style="margin:0 0 6px">Обновляется по ответам; скопируйте и пришлите.</p><textarea id="sum" readonly aria-label="Сводка выбора"></textarea><div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm primary" id="copy" type="button">Скопировать</button><span class="small muted" id="copied" role="status"></span></div></div></div>
+</section>
+
+<section class="panel" aria-labelledby="h-cost">
+  <h2 id="h-cost">4. Цена миграции</h2>
+  <p class="muted small" style="margin:0">Оценка по <code>data-testid</code> в <code>e2e/</code> (104 спека): сколько спеков упоминают элементы, которые меняют место. Это верхняя граница — часть спеков удастся сохранить, оставив те же testid на новых местах.</p>
+  <div class="cost" id="cost"></div>
+</section>
+</div>
+
+<script>
+"use strict";
+/*DATA*/
+const FUNCS = [
+ // [id, name, weight, cur, A, B, C]  each path = array of clicks ([] = already on screen at start)
+ ["new","Поставить новую задачу",3,["Заполнить панель New task (открыта всегда)"],["⌘N или «＋ Новая задача» → лист"],["⌘N или «＋ Новая задача» → лист"],["⌘N или «＋ Новая задача» → лист"]],
+ ["need","Увидеть, что ждёт моего решения",3,["Портфель","Attention required"],["Нужно вам"],["Нужно вам"],[]],
+ ["rev","Проверить результат (Review)",3,["Проект","Доска","Карточка в Review"],["Нужно вам","Карточка"],["Нужно вам","Карточка"],["Карточка на Главной"]],
+ ["queue","Очередь задач проекта",2,["Проект","Manager","Найти предложение с планом","Show plan"],["Проект","Manager","План и очередь"],["Проект","План и очередь"],["Проект","Работа","Очередь"]],
+ ["batch","Пакеты запуска (Execution batches)",2,["Проект","Manager","Autonomous Execution"],["Проект","Manager","Запуски"],["Проект","Запуски"],["Проект","Запуски"]],
+ ["bapprove","Одобрить и запустить пакет",2,["Проект","Manager","Autonomous Execution","Пакет"],["Проект","Manager","Запуски","Пакет"],["Проект","Запуски","Пакет"],["Проект","Запуски","Пакет"]],
+ ["auto","Автономный режим (Autonomy grant)",1,["Проект","Manager","Autonomous Execution","Пакет","Autonomy"],["Проект","Manager","Запуски","Пакет","Autonomy"],["Проект","Запуски","Пакет","Autonomy"],["Проект","Запуски","Пакет","Autonomy"]],
+ ["journal","Журнал активности проекта",1,["Проект","Кнопка Activity Journal"],["Проект","Кнопка «Журнал»"],["Проект","Запуски","Журнал"],["Проект","Запуски","Журнал"]],
+ ["pm","Чат с менеджером проекта (без орба)",3,["Проект","Manager"],["Проект","Manager"],["Проект","План и очередь"],["Проект","Работа","Чат"]],
+ ["pf","Спросить обо всех проектах (без орба)",2,["Портфель","Portfolio Manager"],["Портфель","Portfolio Manager"],["Портфель","Менеджер портфеля"],["Отчёты","Менеджер портфеля"]],
+ ["env","Окружение проекта",1,["Проект","Environment"],["Проект","Environment"],["Проект","Настройка","Окружение"],["Проект","Настройка","Окружение"]],
+ ["est","Оценки (Estimates)",1,["Проект","Estimates"],["Проект","Estimates"],["Проект","Настройка","Оценки"],["Проект","Настройка","Оценки"]],
+ ["know","Знания проекта",1,["Проект","Knowledge"],["Проект","Knowledge"],["Проект","Настройка","Знания"],["Проект","Настройка","Знания"]],
+ ["docs","Документы проекта (IDEA/PRD)",1,["Проект"],["Проект"],["Проект"],["Проект","Настройка","Документы"]],
+ ["team","Команда проекта и назначения",1,["Проект"],["Проект"],["Проект","Команда"],["Проект","Команда"]],
+ ["git","Git: PR и issues",2,["Иконка Git"],["Иконка Git"],["Иконка Git"],["Иконка Git"]],
+ ["wt","Worktrees",1,["Иконка Worktrees"],["Иконка Worktrees"],["Иконка Worktrees"],["Иконка Worktrees"]],
+ ["pipe","Pipelines",1,["Иконка Pipelines"],["Иконка Pipelines"],["Иконка Pipelines"],["Иконка Pipelines"]],
+ ["alltasks","Все задачи (глобальная доска)",2,["All tasks"],["All tasks"],["Главная","Все задачи"],["Главная","Все задачи"]],
+ ["clusters","Кластеры",1,["Clusters"],["Clusters"],["Портфель","Кластеры"],["Отчёты","Кластеры"]],
+ ["settings","Настройки приложения",1,["⚙"],["⚙"],["⚙"],["⚙"]],
+ ["addproj","Добавить / клонировать проект",1,["Низ rail"],["Низ rail"],["Низ rail"],["Низ rail"]],
+];
+const VARIANTS = {
+ cur:{name:"Текущая (после UX02-C)",tag:"",desc:"Что есть сегодня. Постоянная панель New task 320 px, rail из 6 глобальных пунктов, 6 вкладок проекта; план и очередь спрятаны внутри карточки предложения менеджера.",
+  rail:[["Overview","Список проектов, сводка"],["Company","Дашборд · Организация · Люди · Журнал"],["Portfolio","Обзор · Portfolio Manager · Accounts & Resources"],["Clusters","Кластеры и их дашборды"],["Knowledge","Заметки компании и кластеров"],["All tasks","Глобальная доска"]],
+  icons:["Git","Worktrees","Pipelines","⚙"],newTask:"Постоянная панель New task слева от контента (сворачивается, 320 px).",
+  tabs:[["Overview",["Статистика","Журнал активности","Окружение","Документы","Команда","Предложения назначений","Последние задачи"],[]],["Board",["Колонки, фильтры, карточки"],[]],["Estimates",["Оценки проекта"],[]],["Environment",["Окружение проекта"],[]],["Manager",["Чат · Autonomous Execution","Hiring Proposals","Execute a task","Sources","План и очередь — только внутри карточки предложения (>1 пункта)"],[]],["Knowledge",["Заметки проекта"],[]]],
+  orb:"PM01: орб в правом нижнем углу"},
+ A:{name:"A · Консервативная",tag:"рекомендую",desc:"Rail и вкладки проекта те же. Добавляем «Нужно вам», лист New task по ⌘N, выносим «План и очередь» и «Запуски» внутрь вкладки Manager отдельными разделами.",
+  rail:[["Overview","Список проектов, сводка"],["Нужно вам","Review, ответы, блокировки, fx-пауза, holds","new"],["Company","Дашборд · Организация · Люди · Журнал"],["Portfolio","Обзор · Portfolio Manager · Accounts & Resources"],["Clusters","Кластеры"],["Knowledge","Заметки"],["All tasks","Глобальная доска"]],
+  icons:["Git","Worktrees","Pipelines","⚙"],newTask:"Лист по ⌘N и кнопке «＋ Новая задача»; панель можно закрепить (опция).",
+  tabs:[["Overview",["Как сейчас"],[]],["Board",["Как сейчас"],[]],["Estimates",["Как сейчас"],[]],["Environment",["Как сейчас"],[]],["Manager",["Чат","План и очередь (раздел, не карточка)","Запуски (бывш. Autonomous Execution)","Hiring Proposals · Execute · Sources"],[["План и очередь","new"],["Запуски","moved"]]],["Knowledge",["Как сейчас"],[]]],
+  orb:"PM01: орб; контекст = выбранный проект / Все проекты"},
+ B:{name:"B · Новая структура",tag:"вторым этапом",desc:"Rail из 5 пунктов, 6 вкладок проекта по задачам Owner: Обзор · Доска · План и очередь · Запуски · Команда · Настройка. Иконки Git/Worktrees/Pipelines остаются в шапке (клики не растут).",
+  rail:[["Главная","Сводка · Все задачи","moved"],["Нужно вам","Review, ответы, блокировки, fx-пауза, holds","new"],["Команда","Дашборд · Организация · Люди · Журнал"],["Портфель","Обзор · Portfolio Manager · Accounts & Resources · Кластеры","moved"],["Знания","Заметки компании и кластеров"]],
+  icons:["Git","Worktrees","Pipelines","⌘K","⚙"],newTask:"Лист по ⌘N и кнопке «＋ Новая задача»; закреплённая панель — опция.",
+  tabs:[["Обзор",["Статистика","Окружение (сводка)","Документы","Предложения назначений","Последние задачи"],[]],["Доска",["Как сейчас"],[]],["План и очередь",["Предложения и планы","Очередь задач","Hiring Proposals","Execute a task"],[["Очередь","moved"]]],["Запуски",["Execution batches","Autonomy grant","Журнал активности","Результаты запусков"],[["Журнал","moved"],["Autonomous Execution","moved"]]],["Команда",["Сотрудники проекта","Предложения назначений","Исполнитель на задаче"],[["Команда из Обзора","moved"]]],["Настройка",["Окружение","Оценки","Знания проекта","Документы","Контекст Head of PM"],[["Estimates","moved"],["Environment","moved"],["Knowledge","moved"]]]],
+  orb:"PM01: орб в ShellDock, не перекрывает RunPanel; Project ↔ Global"},
+ C:{name:"C · Командный центр",tag:"для сравнения",desc:"Главная начинается с «Нужно вам». Rail из 4 пунктов; у проекта 4 вкладки (Работа · Запуски · Команда · Настройка). Самая большая миграция.",
+  rail:[["Главная","Нужно вам (первым блоком) · Сводка · Все задачи","new"],["Проекты","Список проектов (раскрывается)","moved"],["Команда","Company"],["Отчёты","Портфель · Кластеры · Знания","moved"]],
+  icons:["Git","Worktrees","Pipelines","⌘K","⚙"],newTask:"Лист по ⌘N; закрепление не предусмотрено.",
+  tabs:[["Работа",["Доска ⇄ План и очередь (переключатель)","Обзор — сводка в шапке проекта"],[["Очередь","moved"]]],["Запуски",["Пакеты","Autonomy","Журнал"],[["Autonomous Execution","moved"]]],["Команда",["Сотрудники","Назначения"],[]],["Настройка",["Окружение","Оценки","Знания","Документы"],[["Environment","moved"],["Estimates","moved"],["Knowledge","moved"]]]],
+  orb:"PM01: орб; «Нужно вам» продублирован состоянием Needs Owner"},
+};
+const DECISIONS = [
+ ["d1","Вариант IA",[["A","A · Консервативная (минимум миграции; затем решить про B)"],["B","B · Новая структура (rail 5, вкладки проекта по задачам)"],["C","C · Командный центр"],["cur","Оставить как есть"]]],
+ ["d2","New task",[["sheet","Лист по ⌘N, без постоянной панели"],["opt","Лист + опция «Закрепить панель»"],["keep","Оставить панель, только добавить ⌘N"]]],
+ ["d3","«Нужно вам»",[["rail","Пункт в rail + бейдж"],["home","Блок на Главной + бейдж в орбе"],["both","Оба"]]],
+ ["d4","Иконки Git / Worktrees / Pipelines в шапке",[["keep","Оставить в шапке (рекомендую: клики не растут)"],["move","Перенести в Настройка/Запуски (+⌘K)"]]],
+ ["d5","Estimates / Environment / Knowledge проекта",[["setup","В «Настройку» (−1 уровень первого ряда, +1 клик)"],["keep","Оставить отдельными вкладками"]]],
+ ["d6","Названия (EN в скобках)",[["a","Нужно вам · План и очередь · Запуски · Настройка (Needs you · Plan & Queue · Runs · Setup)"],["b","Входящие · План · Выполнение · Конфигурация (Inbox · Plan · Execution · Configuration)"]]],
+ ["d7","Порядок внедрения",[["stage","Поэтапно (A сейчас, B позже), каждый этап — отдельный коммит"],["big","Одним этапом"]]],
+];
+/*END*/
+const $=(s,r=document)=>r.querySelector(s);const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const KEYS=["cur","A","B","C"];const IDX={cur:3,A:4,B:5,C:6};
+let vk="B";let sel={rail:null,tab:null};
+const answers=JSON.parse(JSON.stringify(Object.fromEntries(DECISIONS.map(d=>[d[0],d[2][0][0]]))));
+// theme
+$("#theme").value=document.documentElement.dataset.mode;
+$("#theme").onchange=e=>{const m=e.target.value;try{localStorage.setItem("fo-ux02d:theme",m)}catch{}const d=m==="dark"||(m==="auto"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light"};
+// variant tabs
+function drawTabs(){const t=$("#vtabs");t.innerHTML=KEYS.map(k=>`<button class="tab" role="tab" id="vt-${k}" aria-selected="${k===vk}" tabindex="${k===vk?0:-1}" data-k="${k}">${esc(VARIANTS[k].name)}${VARIANTS[k].tag==="рекомендую"?'<span class="rec">рекомендую</span>':""}</button>`).join("");}
+$("#vtabs").addEventListener("click",e=>{const b=e.target.closest("[data-k]");if(b){vk=b.dataset.k;sel={rail:null,tab:null};draw();$("#vt-"+vk).focus()}});
+$("#vtabs").addEventListener("keydown",e=>{const i=KEYS.indexOf(vk);let n=null;if(e.key==="ArrowRight")n=(i+1)%4;else if(e.key==="ArrowLeft")n=(i+3)%4;else if(e.key==="Home")n=0;else if(e.key==="End")n=3;if(n!=null){e.preventDefault();vk=KEYS[n];sel={rail:null,tab:null};draw();$("#vt-"+vk).focus()}});
+function drawShot(){const v=VARIANTS[vk];const tabSel=sel.tab??0;const t=v.tabs[tabSel];
+ $("#shot").innerHTML=`<div class="bar"><b>ForgeOrbit</b><span class="muted">Claude Code · Codex</span><span style="flex:1"></span>${v.icons.map(i=>`<span class="ico">${esc(i)}</span>`).join("")}</div>
+ <div class="body"><nav class="rail" aria-label="Rail варианта">${v.rail.map((r,i)=>`<button type="button" data-r="${i}" ${sel.rail===i?'aria-current="true"':""}><span>${esc(r[0])}</span>${r[2]==="new"?'<span class="badge">нов.</span>':r[2]==="moved"?'<span class="badge" style="box-shadow:inset 0 0 0 1px var(--brand);background:var(--brand-soft)">изм.</span>':""}</button>`).join("")}<div class="grp">Проекты</div><button type="button">Atlas Billing</button><button type="button">Orbit Mobile</button></nav>
+ <div class="main"><div class="crumb">Проекты › Atlas Billing › ${esc(sel.rail!=null?v.rail[sel.rail][0]:t[0])}</div><div class="ptitle">${sel.rail!=null?esc(v.rail[sel.rail][0]):"Atlas Billing"}</div>
+ ${sel.rail==null?`<div class="ptabs" role="tablist" aria-label="Вкладки проекта">${v.tabs.map((x,i)=>`<button type="button" role="tab" data-t="${i}" aria-selected="${i===tabSel}">${esc(x[0])}</button>`).join("")}</div>`:""}
+ <div class="card"><b>${sel.rail!=null?"Что внутри":esc(t[0])}</b><div class="chips">${(sel.rail!=null?[v.rail[sel.rail][1]]:t[1]).map(c=>`<span class="chip">${esc(c)}</span>`).join("")}${sel.rail==null?t[2].map(c=>`<span class="chip ${c[1]}">${esc(c[0])} · ${c[1]==="new"?"новое место":"перенесено сюда"}</span>`).join(""):""}</div></div>
+ <div class="sheetnote"><b>New task:</b> ${esc(v.newTask)}</div></div></div>
+ <span class="orbnote">Head of PM · PM01</span><div class="orb" title="Head of PM (PM01, не реализован)"></div>`;
+ $("#shot").onclick=e=>{const r=e.target.closest("[data-r]");const t=e.target.closest("[data-t]");if(r){sel.rail=+r.dataset.r;drawShot()}else if(t){sel.rail=null;sel.tab=+t.dataset.t;drawShot()}};}
+function drawDetail(){const v=VARIANTS[vk];const better=FUNCS.filter(f=>f[IDX[vk]].length<f[3].length).length,worse=FUNCS.filter(f=>f[IDX[vk]].length>f[3].length).length;
+ $("#detail").innerHTML=`<div class="card" style="margin:0"><b>${esc(v.name)}</b><p class="small" style="margin:6px 0">${esc(v.desc)}</p>
+ <p class="small" style="margin:6px 0"><b>Rail:</b> ${v.rail.length} пунктов · <b>Вкладок проекта:</b> ${v.tabs.length} · <b>Иконок в шапке:</b> ${v.icons.length}</p>
+ <p class="small" style="margin:6px 0"><b>Клики vs текущая:</b> короче у ${better} функций, длиннее у ${worse}, одинаково у ${FUNCS.length-better-worse}.</p>
+ <p class="small" style="margin:6px 0"><b>Head of PM:</b> ${esc(v.orb)}</p></div>`;
+ $("#vdesc").textContent=v.desc;}
+function drawFinder(){const q=$("#q").value.toLowerCase();const rows=FUNCS.filter(f=>f[1].toLowerCase().includes(q));
+ $("#ftb").innerHTML=rows.map(f=>{const lens=KEYS.map(k=>f[IDX[k]].length);const min=Math.min(...lens),max=Math.max(...lens);
+  return `<tr><td>${esc(f[1])}</td><td class="muted">${"●".repeat(f[2])}${"○".repeat(3-f[2])}</td>${KEYS.map((k,i)=>{const n=lens[i];const cls=min!==max&&n===min?"best":min!==max&&n===max?"worst":"";const p=f[IDX[k]];
+  return `<td class="cell ${cls}"><span class="n" aria-label="${n} кликов">${n}</span><span class="path">${p.length?p.map(esc).join(" › "):"виден на стартовом экране"}</span></td>`}).join("")}</tr>`}).join("")||`<tr><td colspan="6" class="muted">Ничего не найдено</td></tr>`;
+ const tot=k=>FUNCS.reduce((s,f)=>s+f[IDX[k]].length,0),wt=k=>FUNCS.reduce((s,f)=>s+f[IDX[k]].length*f[2],0),w=FUNCS.reduce((s,f)=>s+f[2],0);
+ $("#ftf").innerHTML=`<tr><td>Среднее число кликов</td><td></td>${KEYS.map(k=>`<td>${(tot(k)/FUNCS.length).toFixed(2)}</td>`).join("")}</tr><tr><td>Среднее с учётом частоты</td><td></td>${KEYS.map(k=>`<td>${(wt(k)/w).toFixed(2)}</td>`).join("")}</tr>`;}
+$("#q").oninput=drawFinder;
+function drawDec(){$("#dec").innerHTML=DECISIONS.map(d=>`<fieldset><legend>${esc(d[1])}</legend>${d[2].map(o=>`<label><input type="radio" name="${d[0]}" value="${o[0]}" ${answers[d[0]]===o[0]?"checked":""}> ${esc(o[1])}</label>`).join("")}</fieldset>`).join("");
+ $("#dec").onchange=e=>{answers[e.target.name]=e.target.value;sum()};sum();}
+function sum(){$("#sum").value="FO-UX02-D — выбор Owner\n"+DECISIONS.map(d=>`${d[0]} ${d[1]}: ${d[2].find(o=>o[0]===answers[d[0]])[1]}`).join("\n");}
+$("#copy").onclick=async()=>{try{await navigator.clipboard.writeText($("#sum").value);$("#copied").textContent="Скопировано"}catch{$("#sum").select();$("#copied").textContent="Выделено — нажмите ⌘C"}};
+function drawCost(){const C=[["Текущая",0,"—","ничего не меняется"],["A",12,"New task, Manager-вкладки","≈12 из 104 спеков (12 %)"],["B",43,"A + вкладки Estimates/Environment/Knowledge/Manager, rail Clusters/Knowledge/All tasks","≈43 из 104 (41 %)"],["C",54,"B + вкладки Overview/Board, rail Company/Portfolio/Overview","≈54 из 104 (52 %)"]];
+ $("#cost").innerHTML=C.map(c=>`<div class="card"><div class="small muted">${esc(c[0])}</div><div class="big">${c[1]}</div><div class="small">${esc(c[3])}</div><div class="small muted" style="margin-top:6px">${esc(c[2])}</div></div>`).join("");}
+function draw(){drawTabs();drawShot();drawDetail();}
+draw();drawFinder();drawDec();drawCost();
+</script>
+</body>
+</html>

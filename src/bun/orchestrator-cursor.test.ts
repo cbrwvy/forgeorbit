@@ -43,7 +43,7 @@ test("createTask (cursor) defaults model to Grok 4.7 at high effort and lands in
 
 test("startTask (cursor) sets tmux_session + persists the session id as cursor_session_id", async () => {
   const { createTask, startTask } = await import("./orchestrator.ts");
-  const { runs, harnesses } = await import("./db.ts");
+  const { runs, tasks, harnesses } = await import("./db.ts");
   const { sessionNameFor } = await import("./claude-tmux.ts");
   harnesses.setEnabled("cursor", true);
 
@@ -57,6 +57,8 @@ test("startTask (cursor) sets tmux_session + persists the session id as cursor_s
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
@@ -76,7 +78,7 @@ test("startTask (cursor) sets tmux_session + persists the session id as cursor_s
 
 test("sendInput (cursor, idle) spawns a NEW run row that resumes the same session", async () => {
   const { createTask, startTask, sendInput } = await import("./orchestrator.ts");
-  const { runs, harnesses } = await import("./db.ts");
+  const { runs, tasks, harnesses } = await import("./db.ts");
   harnesses.setEnabled("cursor", true);
 
   const created = await createTask({
@@ -89,6 +91,8 @@ test("sendInput (cursor, idle) spawns a NEW run row that resumes the same sessio
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
@@ -115,7 +119,7 @@ test("sendInput (cursor, busy) queues the follow-up; it spawns after the active 
   // queue (no new row yet) and then drain into a second run once the first
   // resolves.
   const { createTask, startTask, sendInput } = await import("./orchestrator.ts");
-  const { runs, harnesses } = await import("./db.ts");
+  const { runs, tasks, harnesses } = await import("./db.ts");
   harnesses.setEnabled("cursor", true);
 
   const created = await createTask({
@@ -128,6 +132,8 @@ test("sendInput (cursor, busy) queues the follow-up; it spawns after the active 
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
@@ -167,6 +173,8 @@ test("deleteTask (cursor) tears down without throwing and removes the task", asy
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
 
+  tasks.update(taskId, { column: "ready" });
+
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);
   // Let the fake turn resolve fully, then delete — the common path.
@@ -192,6 +200,8 @@ test("deleteTask (cursor) mid-turn does not crash on late chunks", async () => {
   });
   if ("error" in created) throw new Error(created.error);
   const taskId = created.task.id;
+
+  tasks.update(taskId, { column: "ready" });
 
   const started = await startTask(taskId);
   if ("error" in started) throw new Error(started.error);

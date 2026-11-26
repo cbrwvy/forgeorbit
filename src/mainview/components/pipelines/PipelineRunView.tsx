@@ -1,3 +1,6 @@
+import { intlLocale, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, useNodesState, useEdgesState } from "@xyflow/react";
 import { AnimatePresence, motion } from "motion/react";
@@ -120,11 +123,11 @@ function isTerminalRunStatus(status: PipelineRunStatus): boolean {
 }
 
 const STATUS_LABEL: Record<PipelineRunStatus, string> = {
-  idle: "Not started",
-  running: "Running",
-  blocked: "Blocked",
-  done: "Done",
-  cancelled: "Cancelled",
+  get idle() { return tr("common.not_started_ba35f0"); },
+  get running() { return tr("phase.running"); },
+  get blocked() { return tr("common.blocked"); },
+  get done() { return tr("common.done"); },
+  get cancelled() { return tr("common.cancelled_d353a9"); },
 };
 
 const STATUS_CLASSES: Record<PipelineRunStatus, string> = {
@@ -186,7 +189,7 @@ interface PipelineRunViewProps {
 }
 
 function formatClockTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return new Date(ts).toLocaleTimeString(intlLocale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDuration(ms: number): string {
@@ -262,6 +265,7 @@ function hasLiveExecution(steps: Task[], run: { active: { taskId: string }[] } |
  * sync) entirely when a poll turns up nothing new to paint.
  */
 export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgents, onMarkDone }: PipelineRunViewProps) {
+  const { locale: uiLocale } = useUILocale();
   const { resolved } = useTheme();
   const { profiles: liveProfiles, loaded: liveProfilesLoaded } = useAgentProfiles();
   const confirm = useConfirm();
@@ -375,7 +379,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       });
     } catch (err) {
       if (!aliveRef.current) return;
-      setLoadError(err instanceof ApiError ? err.message : "Failed to load pipeline run.");
+      setLoadError(err instanceof ApiError ? err.message : tr("common.failed_to_load_pipeline_run"));
     } finally {
       fetchingRef.current = false;
       if (aliveRef.current && dirtyRef.current) {
@@ -485,7 +489,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
     if (!effectiveGraph) return null;
     if (snapshotCapturedAt != null) return `snap:${snapshotCapturedAt}`;
     return `live:${effectiveGraph.steps.map((s) => s.id).join(",")}:${effectiveGraph.edges.map((e) => e.id).join(",")}`;
-  }, [effectiveGraph, snapshotCapturedAt]);
+  }, [effectiveGraph, snapshotCapturedAt, uiLocale]);
   const effectiveGraphRef = useRef<PipelineGraph | null>(null);
   effectiveGraphRef.current = effectiveGraph;
 
@@ -525,16 +529,16 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       .join(",");
     const columns = steps.map((t) => `${t.id}:${t.column}:${t.pendingInteractionCount}`).join(",");
     return `${active}|${blocked}|${history}|${columns}`;
-  }, [run, steps]);
+  }, [run, steps, uiLocale]);
 
   const edgeVisualSignature = useMemo(() => {
     if (!run) return "";
     const active = run.active.map((a) => a.stepId).join(",");
     const history = run.history.map((h) => `${h.stepId}:${h.nextStepIds.join("+")}`).join(",");
     return `${active}|${history}`;
-  }, [run]);
+  }, [run, uiLocale]);
 
-  const transition = useMemo(() => latestTransition(run), [run]);
+  const transition = useMemo(() => latestTransition(run), [run, uiLocale]);
   const transitionRef = useRef<ReturnType<typeof latestTransition>>(null);
   transitionRef.current = transition;
   const transitionKey = transition ? `${transition.fromStepId}>${transition.toStepIds.join("+")}#${transition.seq}` : "";
@@ -615,7 +619,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
 
   const canvasContextValue = useMemo<PipelineCanvasContextValue>(
     () => ({ startStepId: effectiveGraph?.startStepId ?? null, resolveProfile }),
-    [effectiveGraph?.startStepId, resolveProfile],
+    [effectiveGraph?.startStepId, resolveProfile, uiLocale],
   );
 
   // ---- Subagent satellites (see PipelineEditor's twin block): one node
@@ -623,7 +627,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
   // running subagent that matched no persona. `visual` comes from the
   // subagents observed on the step's CURRENT task (`subagentSatellites`):
   // working / done / idle. Derived, identity-reconciled, never in state. ----
-  const liveSubagentsKey = useMemo(() => liveSubagentsSignature(liveSubagents), [liveSubagents]);
+  const liveSubagentsKey = useMemo(() => liveSubagentsSignature(liveSubagents), [liveSubagents, uiLocale]);
   const satellites = useMemo<SubagentSatellite[]>(() => {
     const g = effectiveGraphRef.current;
     if (!g) return [];
@@ -636,19 +640,19 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       return subagentSatellites(step, observed, (id) => resolveProfile(id).profile?.name ?? null);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content signatures (graph, node visuals, observed subagents), not the churning run/steps/graph objects; the refs carry current values.
-  }, [graphSignature, nodeVisualSignature, liveSubagentsKey, resolveProfile]);
+  }, [graphSignature, nodeVisualSignature, liveSubagentsKey, resolveProfile, uiLocale]);
   const satelliteNodeMemory = useRef(new Map<string, { key: string; item: SubagentFlowNode }>());
   const satelliteEdgeMemory = useRef(new Map<string, { key: string; item: SubagentFlowEdge }>());
   const satellitesKey = satellitesSignature(satellites);
   const subagentNodes = useMemo(
     () => reconcileFlowItems(satelliteNodeMemory.current, toSubagentFlowNodes(satellites, () => ({ readOnly: true })), subagentNodeKey),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content (satellitesKey).
-    [satellitesKey],
+    [satellitesKey, uiLocale],
   );
   const subagentEdges = useMemo(
     () => reconcileFlowItems(satelliteEdgeMemory.current, toSubagentFlowEdges(satellites), subagentEdgeKey),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content (satellitesKey).
-    [satellitesKey],
+    [satellitesKey, uiLocale],
   );
   // Satellites are derived during render from the frozen graph, but the
   // step nodes they hang from only land in `nodes` state once the graph
@@ -660,11 +664,11 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
   const canvasNodes = useMemo<CanvasNode[]>(() => {
     const stepIds = new Set(nodes.map((n) => n.id));
     return [...nodes, ...subagentNodes.filter((n) => n.parentId != null && stepIds.has(n.parentId))];
-  }, [nodes, subagentNodes]);
+  }, [nodes, subagentNodes, uiLocale]);
   const canvasEdges = useMemo<CanvasEdge[]>(() => {
     const stepIds = new Set(nodes.map((n) => n.id));
     return [...edges, ...subagentEdges.filter((e) => stepIds.has(e.source))];
-  }, [nodes, edges, subagentEdges]);
+  }, [nodes, edges, subagentEdges, uiLocale]);
   const canvasNodesRef = useRef<CanvasNode[]>([]);
   canvasNodesRef.current = canvasNodes;
 
@@ -713,7 +717,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
 
   const detailsSatellite = useMemo(
     () => (detailsNodeId ? (satellites.find((sat) => sat.nodeId === detailsNodeId) ?? null) : null),
-    [detailsNodeId, satellites],
+    [detailsNodeId, satellites, uiLocale],
   );
   const detailsStep = detailsSatellite ? (effectiveGraph?.steps.find((st) => st.id === detailsSatellite.stepId) ?? null) : null;
   const detailsStepTask = detailsSatellite ? stepTaskFor(steps, run, detailsSatellite.stepId) : null;
@@ -726,7 +730,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       await api.cancelPipeline(taskId);
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to stop the run.");
+      setActionError(err instanceof ApiError ? err.message : tr("common.failed_to_stop_the_run"));
     } finally {
       setActionBusy(false);
     }
@@ -739,7 +743,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       await api.retryPipeline(taskId, stepTaskId ? { taskId: stepTaskId } : undefined);
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to retry.");
+      setActionError(err instanceof ApiError ? err.message : tr("common.failed_to_retry"));
     } finally {
       setActionBusy(false);
     }
@@ -753,7 +757,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
         await api.advancePipeline(taskId, { nextStepIds, handoff, fromTaskId: fromTaskId ?? undefined });
         await load();
       } catch (err) {
-        setActionError(err instanceof ApiError ? err.message : "Failed to advance.");
+        setActionError(err instanceof ApiError ? err.message : tr("common.failed_to_advance"));
       } finally {
         setActionBusy(false);
       }
@@ -770,19 +774,19 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       else await api.moveTask(taskId, "done");
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to mark the pipeline done.");
+      setActionError(err instanceof ApiError ? err.message : tr("common.failed_to_mark_the_pipeline_done"));
     } finally {
       setActionBusy(false);
     }
   }, [task, taskId, load, onMarkDone]);
 
   const handleRestart = useCallback(async () => {
-    const ok = await confirm({
-      title: "Restart this pipeline?",
-      description: "This starts a fresh run from the start step. Previous run history will be cleared.",
-      confirmLabel: "Restart",
+    const ok = await confirm(() => ({
+      title: tr("common.restart_this_pipeline"),
+      description: tr("common.this_starts_a_fresh_run_from_the_start"),
+      confirmLabel: tr("common.restart"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     setActionBusy(true);
     setActionError(null);
@@ -790,7 +794,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
       await api.restartPipeline(taskId);
       await load();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Failed to restart the run.");
+      setActionError(err instanceof ApiError ? err.message : tr("common.failed_to_restart_the_run"));
     } finally {
       setActionBusy(false);
     }
@@ -800,18 +804,14 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 text-sm text-danger">
         <p>{loadError}</p>
-        <Button type="button" variant="outline" size="sm" onClick={onBack}>
-          Back to board
-        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onBack}><I18nText id="pipelines.back_to_board" />{" "}</Button>
       </div>
     );
   }
 
   if (!task || !run) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
-        Loading pipeline run…
-      </div>
+      <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground"><I18nText id="pipelines.loading_pipeline_run" />{" "}</div>
     );
   }
 
@@ -839,9 +839,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
     <div data-testid="pipeline-run-view" className="flex h-full min-h-0 w-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card px-4 py-2.5">
         <Button type="button" variant="ghost" size="sm" data-testid="pipeline-run-back" onClick={onBack} className="gap-1.5">
-          <ArrowLeft className="size-4" aria-hidden />
-          Back to board
-        </Button>
+          <ArrowLeft className="size-4" aria-hidden /><I18nText id="pipelines.back_to_board" />{" "}</Button>
         <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
           <Workflow className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <span className="truncate">{run.pipelineName}</span>
@@ -866,9 +864,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               onClick={() => void handleMarkDone()}
               className="gap-1.5"
             >
-              <CheckCircle2 className="size-3.5" aria-hidden />
-              Done
-            </Button>
+              <CheckCircle2 className="size-3.5" aria-hidden /><I18nText id="common.done" />{" "}</Button>
           )}
           {showStop && (
             <Button
@@ -880,9 +876,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               onClick={() => void handleStop()}
               className="gap-1.5"
             >
-              <Square className="size-3.5" aria-hidden />
-              Stop
-            </Button>
+              <Square className="size-3.5" aria-hidden /><I18nText id="common.stop" />{" "}</Button>
           )}
           {(run.status === "blocked" || run.status === "cancelled") && (
             <Button
@@ -894,9 +888,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               onClick={() => void handleRetry()}
               className="gap-1.5"
             >
-              <RotateCcw className="size-3.5" aria-hidden />
-              Retry
-            </Button>
+              <RotateCcw className="size-3.5" aria-hidden /><I18nText id="common.retry" />{" "}</Button>
           )}
           {showRestart && (
             <Button
@@ -908,9 +900,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               onClick={() => void handleRestart()}
               className="gap-1.5"
             >
-              <RotateCcw className="size-3.5" aria-hidden />
-              Restart
-            </Button>
+              <RotateCcw className="size-3.5" aria-hidden /><I18nText id="common.restart" />{" "}</Button>
           )}
         </div>
       </div>
@@ -973,8 +963,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               data-testid="pipeline-run-node-not-started"
               className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground shadow-sm"
             >
-              "{notStartedStepName}" hasn't started yet.
-            </div>
+              "{notStartedStepName}<I18nText id="pipelines.hasn_t_started_yet" />{" "}</div>
           )}
         </div>
 
@@ -985,9 +974,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
               data-testid="pipeline-run-goal-toggle"
               onClick={() => setShowGoal((v) => !v)}
               className="flex w-full items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-accent/40"
-            >
-              Goal
-              <ChevronDown className={`size-3.5 shrink-0 transition-transform ${showGoal ? "rotate-180" : ""}`} aria-hidden />
+            ><I18nText id="pipelines.goal" />{" "}<ChevronDown className={`size-3.5 shrink-0 transition-transform ${showGoal ? "rotate-180" : ""}`} aria-hidden />
             </button>
             {showGoal && (
               <p data-testid="pipeline-run-goal" className="mt-1.5 whitespace-pre-wrap rounded-md bg-muted p-2 text-xs text-foreground">
@@ -1027,9 +1014,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
                             data-testid="pipeline-run-open-step"
                             onClick={() => onOpenTask(stepTask)}
                             className="h-7 text-xs"
-                          >
-                            Open step
-                          </Button>
+                          ><I18nText id="pipelines.open_step" />{" "}</Button>
                         )}
                         {RETRY_BLOCK_KINDS.includes(entry.kind) && (
                           <Button
@@ -1040,9 +1025,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
                             disabled={actionBusy}
                             onClick={() => void handleRetry(entry.taskId ?? undefined)}
                             className="h-7 text-xs"
-                          >
-                            Retry
-                          </Button>
+                          ><I18nText id="common.retry" />{" "}</Button>
                         )}
                       </div>
                       {ADVANCE_BLOCK_KINDS.includes(entry.kind) &&
@@ -1062,7 +1045,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
 
           {reviewActive.length > 0 && (
             <div data-testid="pipeline-run-review" className="mb-3 flex flex-col gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Awaiting review</p>
+              <p className="text-xs font-medium text-muted-foreground"><I18nText id="pipelines.awaiting_review" /></p>
               <AnimatePresence initial={false}>
                 {reviewActive.map(({ active, task: stepTask }) => {
                   const stepName = effectiveGraph ? stepNameById(effectiveGraph, active.stepId) : active.stepId;
@@ -1074,7 +1057,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
                       exit={{ opacity: 0 }}
                       className="rounded-md border border-info/40 bg-info/10 p-2.5"
                     >
-                      <p className="text-xs font-medium text-info">{stepName} — finished, awaiting next step</p>
+                      <p className="text-xs font-medium text-info">{stepName}{" "}<I18nText id="pipelines.finished_awaiting_next_step" /></p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <Button
                           type="button"
@@ -1083,9 +1066,7 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
                           data-testid="pipeline-run-open-step"
                           onClick={() => onOpenTask(stepTask)}
                           className="h-7 text-xs"
-                        >
-                          Open step
-                        </Button>
+                        ><I18nText id="pipelines.open_step" />{" "}</Button>
                       </div>
                       <AdvanceForm
                         candidates={candidates}
@@ -1100,9 +1081,9 @@ export function PipelineRunView({ taskId, onOpenTask, onBack, onOpenSettingsAgen
           )}
 
           <div>
-            <p className="mb-1.5 text-xs font-medium text-muted-foreground">History</p>
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground"><I18nText id="common.history" /></p>
             {run.history.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No steps have run yet.</p>
+              <p className="text-xs text-muted-foreground"><I18nText id="pipelines.no_steps_have_run_yet" /></p>
             ) : (
               <ul data-testid="pipeline-run-history" className="flex flex-col gap-1.5">
                 {[...run.history].reverse().map((record) => (
@@ -1126,6 +1107,7 @@ function AdvanceForm({
   busy: boolean;
   onSubmit: (nextStepIds: string[] | null, handoff?: Partial<Handoff>) => void;
 }) {
+  useUILocale();
   const [selected, setSelected] = useState<string[]>([]);
   const [finishHere, setFinishHere] = useState(false);
   const [purpose, setPurpose] = useState("");
@@ -1141,28 +1123,26 @@ function AdvanceForm({
   return (
     <div data-testid="pipeline-run-advance" className="mt-2 flex flex-col gap-2 rounded-md border border-border bg-background p-2">
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Switch checked={finishHere} onCheckedChange={setFinishHere} data-testid="pipeline-run-advance-finish" />
-        Finish here (no next step)
-      </label>
+        <Switch checked={finishHere} onCheckedChange={setFinishHere} data-testid="pipeline-run-advance-finish" /><I18nText id="pipelines.finish_here_no_next_step" />{" "}</label>
       {!finishHere && (
         <MultiSearchSelect
           values={selected}
           onChange={setSelected}
           items={items}
-          emptyLabel="Pick next step(s)…"
-          placeholder="Search steps…"
+          emptyLabel={tr("pipelines.pick_next_step_s")}
+          placeholder={tr("pipelines.search_steps")}
         />
       )}
       <Textarea
         value={purpose}
         onChange={(e) => setPurpose(e.target.value)}
-        placeholder="Purpose (optional)"
+        placeholder={tr("pipelines.purpose_optional")}
         className="min-h-[44px] text-xs"
       />
       <Textarea
         value={summary}
         onChange={(e) => setSummary(e.target.value)}
-        placeholder="Summary (optional)"
+        placeholder={tr("pipelines.summary_optional")}
         className="min-h-[44px] text-xs"
       />
       <Button
@@ -1171,14 +1151,13 @@ function AdvanceForm({
         className="h-7 text-xs"
         disabled={busy || (!finishHere && selected.length === 0)}
         onClick={submit}
-      >
-        Advance
-      </Button>
+      ><I18nText id="pipelines.advance" />{" "}</Button>
     </div>
   );
 }
 
 function HistoryRow({ record, graph }: { record: PipelineStepRecord; graph: PipelineGraph | null }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const stepName = graph ? stepNameById(graph, record.stepId) : record.stepId;
   const duration = record.endedAt != null ? formatDuration(record.endedAt - record.startedAt) : "—";
@@ -1204,7 +1183,7 @@ function HistoryRow({ record, graph }: { record: PipelineStepRecord; graph: Pipe
             <span
               data-testid="pipeline-run-response-kind"
               data-kind={record.responseKind}
-              className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${TONE_CLASSES[kindInfo.tone]}`}
+              className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium ${TONE_CLASSES[kindInfo.tone]}`}
             >
               {kindInfo.text}
             </span>
@@ -1214,11 +1193,11 @@ function HistoryRow({ record, graph }: { record: PipelineStepRecord; graph: Pipe
               data-testid="pipeline-run-reminder"
               title={record.reminder.detail}
               data-delivered={record.reminder.delivered !== false}
-              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[length:var(--text-caption)] font-medium ${
                 record.reminder.delivered === false ? TONE_CLASSES.danger : TONE_CLASSES.warning
               }`}
             >
-              {record.reminder.delivered === false ? "Reminder failed" : "Reminder sent"} ·{" "}
+              {record.reminder.delivered === false ? tr("common.reminder_failed") : tr("common.reminder_sent")} ·{" "}
               {formatClockTime(record.reminder.at)}
             </span>
           )}
@@ -1227,7 +1206,7 @@ function HistoryRow({ record, graph }: { record: PipelineStepRecord; graph: Pipe
       {open && record.handoff && (
         <pre
           data-testid="pipeline-run-history-handoff"
-          className="mt-2 max-h-48 overflow-auto rounded bg-muted p-2 text-[10px]"
+          className="mt-2 max-h-48 overflow-auto rounded bg-muted p-2 text-[length:var(--text-caption)]"
         >
           {JSON.stringify(record.handoff, null, 2)}
         </pre>

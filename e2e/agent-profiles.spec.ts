@@ -121,7 +121,7 @@ function runPanel(page: Page): Locator {
 }
 
 function boardCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 async function openTask(page: Page, title: string): Promise<Locator> {
@@ -138,7 +138,7 @@ async function openSettingsAgents(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Agents", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   await expect(dialog.getByTestId("agent-profiles-section")).toBeVisible();
   return dialog;
 }
@@ -486,7 +486,7 @@ test.describe("agent profiles", () => {
     await expect(settingsDialog.getByRole("heading", { name: "Edit agent" })).toBeVisible();
     await expect(settingsDialog.getByTestId("agent-profile-editor")).toBeVisible();
     await expect(settingsDialog.getByTestId("agent-profiles-section")).toHaveCount(0);
-    await expect(settingsDialog.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute(
+    await expect(settingsDialog.getByRole("button", { name: "Library", exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );

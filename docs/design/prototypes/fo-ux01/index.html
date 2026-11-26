@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="ru" data-density="comfortable">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeOrbit UX01 — прототип</title>
+<meta name="description" content="Демонстрационный прототип FO-UX01: навигация, Kanban, стеклянная дизайн-система и плавающий Head of PM. Данные вымышлены, AI не запускается.">
+<script>
+/* No-flash theme: resolve before first paint. Mirrors the production boot rule (src/mainview/index.html). */
+(function () {
+  var mode = "auto";
+  try { mode = localStorage.getItem("fo-ux01:theme") || "auto"; } catch (e) {}
+  var dark = mode === "dark" || (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.documentElement.dataset.themeMode = mode;
+})();
+</script>
+<style>
+/* =====================================================================
+   FO-UX01 design tokens (see docs/design/fo-ux01-design-system.md)
+   ===================================================================== */
+:root {
+  /* spacing — 4px grid */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+  /* type scale (6 steps) */
+  --t-caption: 11px; --t-small: 12px; --t-body: 13px; --t-ui: 14px; --t-title: 18px; --t-display: 24px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* radii */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+  /* control heights (density-driven) */
+  --h-sm: 28px; --h-md: 32px; --h-lg: 40px;
+  --row-pad: 10px;
+  /* motion */
+  --ease: cubic-bezier(.2,.8,.2,1); --dur-1: 120ms; --dur-2: 200ms; --dur-3: 320ms;
+  --blur: 24px;
+}
+[data-density="compact"] { --h-sm: 24px; --h-md: 28px; --h-lg: 34px; --row-pad: 6px; --s-4: 14px; }
+
+/* light */
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --canvas: #e9edf5;
+  --canvas-glow-1: rgba(77, 110, 255, .20);
+  --canvas-glow-2: rgba(40, 190, 170, .14);
+  --surface: #ffffff;           /* content: boards, tables, chat, code — always solid */
+  --surface-2: #f4f6fa;
+  --surface-3: #e8ebf2;
+  --text: #14161c;
+  --text-2: #424a5a;
+  --text-3: #5b6372;
+  --border: rgba(20, 24, 36, .12);
+  --border-strong: rgba(20, 24, 36, .22);
+  --accent: #3050e0;            --accent-fg: #ffffff;  --accent-soft: rgba(48, 80, 224, .10);
+  --success: #0f7a4d;           --success-soft: rgba(15, 122, 77, .12);
+  --warning: #8a5200;           --warning-soft: rgba(196, 118, 0, .15);
+  --danger:  #b3203a;           --danger-soft: rgba(179, 32, 58, .11);
+  --info:    #0a6aa6;           --info-soft: rgba(10, 106, 166, .11);
+  --glass: rgba(255, 255, 255, .62);
+  --glass-strong: rgba(255, 255, 255, .86);
+  --glass-edge: rgba(255, 255, 255, .85);
+  --glass-line: rgba(20, 24, 36, .10);
+  --shadow-1: 0 1px 2px rgba(20, 24, 36, .06);
+  --shadow-2: 0 8px 28px rgba(20, 24, 36, .12), 0 1px 2px rgba(20, 24, 36, .06);
+  --shadow-3: 0 24px 64px rgba(20, 24, 36, .22), 0 2px 6px rgba(20, 24, 36, .08);
+  --hover: rgba(20, 24, 36, .05); --selected: rgba(48, 80, 224, .12);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #0a0c11;
+  --canvas-glow-1: rgba(96, 120, 255, .22);
+  --canvas-glow-2: rgba(30, 200, 170, .10);
+  --surface: #14171f;
+  --surface-2: #1b1f29;
+  --surface-3: #252a36;
+  --text: #eceef4;
+  --text-2: #b4bbca;
+  --text-3: #99a1b2;
+  --border: rgba(255, 255, 255, .10);
+  --border-strong: rgba(255, 255, 255, .22);
+  --accent: #8ba0ff;            --accent-fg: #0a0c11;  --accent-soft: rgba(139, 160, 255, .16);
+  --success: #4fdc9f;           --success-soft: rgba(79, 220, 159, .14);
+  --warning: #f6bb52;           --warning-soft: rgba(246, 187, 82, .15);
+  --danger:  #ff8696;           --danger-soft: rgba(255, 134, 150, .15);
+  --info:    #62c4fb;           --info-soft: rgba(98, 196, 251, .14);
+  --glass: rgba(26, 30, 41, .58);
+  --glass-strong: rgba(24, 27, 37, .88);
+  --glass-edge: rgba(255, 255, 255, .14);
+  --glass-line: rgba(255, 255, 255, .09);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, .5), 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-3: 0 28px 70px rgba(0, 0, 0, .65), 0 2px 6px rgba(0, 0, 0, .4);
+  --hover: rgba(255, 255, 255, .06); --selected: rgba(139, 160, 255, .18);
+}
+
+/* =====================================================================
+   Base
+   ===================================================================== */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; font: 400 var(--t-body)/1.45 var(--font); color: var(--text); background: var(--canvas);
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 8px; top: -48px; z-index: 100; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-md); }
+.skip:focus { top: 8px; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--text-3); }
+
+/* =====================================================================
+   Glass — ONLY chrome (title bar, sidebar, floating panels, sheets, toasts).
+   Content (board, chat, tables, code) stays on solid --surface.
+   ===================================================================== */
+.glass {
+  background: var(--glass); border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow-1);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.5); backdrop-filter: blur(var(--blur)) saturate(1.5);
+}
+.glass-float { background: var(--glass-strong); box-shadow: inset 0 1px 0 var(--glass-edge), var(--shadow-3); }
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-float { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .glass-float { background: var(--surface); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+
+/* =====================================================================
+   Shell
+   ===================================================================== */
+.app {
+  position: fixed; inset: 0; display: grid; grid-template-rows: 44px 1fr; overflow: hidden;
+  background:
+    radial-gradient(900px 520px at 4% -8%, var(--canvas-glow-1), transparent 62%),
+    radial-gradient(800px 520px at 100% 108%, var(--canvas-glow-2), transparent 60%),
+    var(--canvas);
+}
+.demo-banner {
+  padding: 2px 10px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 600; color: var(--warning);
+  background: var(--warning-soft); border: 1px solid var(--warning); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto;
+}
+.titlebar { display: flex; align-items: center; gap: var(--s-3); padding: 0 var(--s-4) 0 84px; border-width: 0 0 1px; }
+.titlebar .brand { display: flex; align-items: center; gap: var(--s-2); font-weight: 650; font-size: var(--t-ui); letter-spacing: -.01em; }
+.logo { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 32% 28%, #fff 0 8%, var(--accent) 40%, #1b2a7a 100%); box-shadow: 0 0 0 1px var(--glass-line); }
+.harness-chips { display: flex; gap: var(--s-3); flex: none; font-size: var(--t-small); color: var(--text-2); min-width: 0; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--success); margin-left: 4px; }
+.dot.warn { background: var(--warning); }
+.spacer { flex: 1; }
+.title-actions { display: flex; align-items: center; gap: var(--s-1); }
+.search-hint {
+  display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-sm); padding: 0 var(--s-3); border-radius: var(--r-md);
+  background: var(--hover); border: 1px solid var(--border); color: var(--text-3); font-size: var(--t-small); min-width: 180px;
+}
+kbd { font: 500 var(--t-caption)/1 var(--mono); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text-2); }
+
+.body { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 0; transition: grid-template-columns var(--dur-2) var(--ease); }
+.sidebar { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3) var(--s-2) var(--s-3); border-width: 0 1px 0 0; min-height: 0; overflow-y: auto; }
+.nav-group { font-size: var(--t-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); padding: var(--s-4) var(--s-3) var(--s-1); }
+.nav-item {
+  display: flex; align-items: center; gap: var(--s-3); width: 100%; height: var(--h-md); padding: 0 var(--s-3); border: 0; border-radius: var(--r-md);
+  background: transparent; text-align: left; font-size: var(--t-body); color: var(--text); transition: background var(--dur-1);
+}
+.nav-item:hover { background: var(--hover); }
+.nav-item[aria-current="page"] { background: var(--selected); font-weight: 600; }
+.nav-item .ico { width: 18px; text-align: center; flex: none; color: var(--text-2); }
+.nav-item .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 650; line-height: 18px; text-align: center; background: var(--surface-3); color: var(--text-2); }
+.badge.attn { background: var(--warning-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--warning); }
+.badge.err { background: var(--danger-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--danger); }
+.proj-initial { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; font-size: var(--t-caption); font-weight: 700; background: var(--surface-3); color: var(--text); flex: none; }
+.sidebar-foot { margin-top: auto; margin-bottom: 52px; padding-top: var(--s-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--s-1); }
+.run-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--info); flex: none; animation: breathe 1.8s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35; } }
+
+.main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.page-head { padding: var(--s-4) var(--s-6) 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3) var(--s-4); }
+.page-head h1 { margin: 0; font-size: var(--t-title); line-height: 1.25; letter-spacing: -.015em; font-weight: 650; }
+.page-head .sub { color: var(--text-3); font-size: var(--t-small); }
+.crumb { display: flex; flex-direction: column; min-width: 0; flex: 1 1 220px; }
+.tabs { display: flex; gap: var(--s-1); padding: var(--s-3) var(--s-6) 0; overflow-x: auto; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+.tab {
+  position: relative; display: inline-flex; align-items: center; gap: var(--s-2); height: var(--h-lg); padding: 0 var(--s-3); border: 0; background: transparent;
+  color: var(--text-2); font-size: var(--t-body); font-weight: 500; border-radius: var(--r-md) var(--r-md) 0 0; white-space: nowrap;
+}
+.tab:hover { color: var(--text); background: var(--hover); }
+.tab[aria-selected="true"] { color: var(--text); font-weight: 650; }
+.tab[aria-selected="true"]::after { content: ""; position: absolute; left: var(--s-3); right: var(--s-3); bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.content { flex: 1; min-height: 0; overflow: auto; padding: var(--s-5) var(--s-6) 96px; /* bottom inset keeps the orb off critical controls */ }
+.content.board-pad { padding-bottom: 96px; }
+
+/* controls */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); height: var(--h-md); padding: 0 var(--s-4); border-radius: var(--r-md);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: var(--t-body); font-weight: 550; white-space: nowrap;
+  transition: background var(--dur-1), transform var(--dur-1);
+}
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { background: var(--hover); }
+.btn.sm { height: var(--h-sm); padding: 0 var(--s-3); font-size: var(--t-small); }
+.btn.icon { width: var(--h-md); padding: 0; }
+.btn.danger { color: var(--danger); }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.field { display: flex; flex-direction: column; gap: var(--s-1); }
+.field label { font-size: var(--t-small); font-weight: 600; color: var(--text-2); }
+.input, .select, .textarea {
+  width: 100%; min-height: var(--h-md); padding: 0 var(--s-3); border-radius: var(--r-md); border: 1px solid var(--border-strong); background: var(--surface); font-size: var(--t-body);
+}
+.textarea { padding: var(--s-2) var(--s-3); resize: vertical; min-height: 84px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 600; background: var(--surface-3); color: var(--text-2); white-space: nowrap; }
+.chip.info { background: var(--info-soft); color: var(--info); }
+.chip.ok { background: var(--success-soft); color: var(--success); }
+.chip.warn { background: var(--warning-soft); color: var(--warning); }
+.chip.err { background: var(--danger-soft); color: var(--danger); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-1); }
+.card-h { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); }
+.card-h h2 { margin: 0; font-size: var(--t-ui); font-weight: 650; }
+.card-b { padding: var(--s-4); }
+.grid { display: grid; gap: var(--s-4); }
+.grid.cols-3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; margin-bottom: var(--s-4); }
+.stat { padding: var(--s-3) var(--s-4); border-right: 1px solid var(--border); }
+.stat:last-child { border-right: 0; }
+.stat .k { font-size: var(--t-caption); text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); font-weight: 600; }
+.stat .v { font-size: var(--t-title); font-weight: 650; letter-spacing: -.01em; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; align-items: center; gap: var(--s-3); padding: var(--row-pad) var(--s-4); border-top: 1px solid var(--border); }
+.list li:first-child { border-top: 0; }
+.list .grow { flex: 1; min-width: 0; }
+.list .t { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .s { font-size: var(--t-small); color: var(--text-3); }
+.note { font-size: var(--t-small); color: var(--text-2); }
+
+/* kanban — solid cards, translucent-free columns */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; margin-bottom: var(--s-4); }
+.toolbar .input { width: 220px; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(172px, 1fr); gap: var(--s-3); align-items: start; overflow-x: auto; padding-bottom: var(--s-2); }
+.col { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-lg); display: flex; flex-direction: column; min-height: 120px; }
+.col-h { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-3); font-size: var(--t-small); font-weight: 650; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); }
+.col-h .cnt { margin-left: auto; }
+.col-b { display: flex; flex-direction: column; gap: var(--s-2); padding: 0 var(--s-2) var(--s-2); }
+.col-empty { padding: var(--s-3); font-size: var(--t-small); color: var(--text-3); }
+.task {
+  text-align: left; width: 100%; border: 1px solid var(--border); border-left: 3px solid var(--st, var(--border-strong)); background: var(--surface);
+  border-radius: var(--r-md); padding: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); box-shadow: var(--shadow-1);
+  transition: box-shadow var(--dur-1), transform var(--dur-1);
+}
+.task:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.task[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 0; }
+.task .tt { font-weight: 600; font-size: var(--t-body); }
+.task .row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.bar { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--info); border-radius: 4px; }
+.avatar { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--accent-soft); color: var(--accent); flex: none; }
+[data-s="backlog"] { --st: var(--border-strong); } [data-s="ready"] { --st: var(--accent); } [data-s="running"] { --st: var(--info); }
+[data-s="blocked"] { --st: var(--danger); } [data-s="review"] { --st: var(--warning); } [data-s="done"] { --st: var(--success); }
+
+/* inspector */
+.inspector { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; width: min(380px, 100%); border-width: 0 0 0 1px; padding: var(--s-5); overflow: auto; transform: translateX(0); transition: transform var(--dur-3) var(--ease); }
+.inspector[hidden] { display: block; transform: translateX(105%); visibility: hidden; }
+.inspector h2 { margin: 0 0 var(--s-2); font-size: var(--t-title); }
+.kv { display: grid; grid-template-columns: 96px 1fr; gap: var(--s-2) var(--s-3); font-size: var(--t-body); margin: var(--s-4) 0; }
+.kv dt { color: var(--text-3); } .kv dd { margin: 0; }
+.gate { border: 1px dashed var(--warning); background: var(--warning-soft); border-radius: var(--r-md); padding: var(--s-3); font-size: var(--t-small); color: var(--text); }
+.main-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* sheets */
+.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(8, 10, 16, .38); display: grid; place-items: start center; padding-top: 12vh; }
+.scrim[hidden] { display: none; }
+.sheet { width: min(560px, calc(100vw - 24px)); border-radius: var(--r-lg); padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-4); animation: pop var(--dur-3) var(--ease); }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.sheet h2 { margin: 0; font-size: var(--t-title); }
+.sheet-actions { display: flex; justify-content: flex-end; gap: var(--s-2); flex-wrap: wrap; }
+
+/* toasts */
+.toasts { position: fixed; z-index: 95; right: 16px; top: 56px; display: flex; flex-direction: column; gap: var(--s-2); width: min(340px, calc(100vw - 32px)); pointer-events: none; }
+.toast { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); font-size: var(--t-body); animation: pop var(--dur-2) var(--ease); }
+
+/* demo controls */
+.demo-tools { position: fixed; z-index: 70; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; padding: var(--s-2); border-radius: var(--r-lg); font-size: var(--t-small); max-width: calc(100vw - 100px); }
+.demo-tools select { height: var(--h-sm); border-radius: var(--r-sm); border: 1px solid var(--border-strong); background: var(--surface); padding: 0 6px; font-size: var(--t-small); }
+.demo-tools label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
+.demo-tools[data-collapsed="true"] > :not(.dt-toggle) { display: none; }
+
+/* =====================================================================
+   Head of PM — floating orb + panel
+   ===================================================================== */
+.orb {
+  position: fixed; z-index: 80; width: 56px; height: 56px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center;
+  right: 20px; bottom: 44px; color: #fff;
+  background: radial-gradient(circle at 30% 26%, rgba(255,255,255,.55), transparent 42%), conic-gradient(from 210deg, #5b73ff, #2fc3b0, #8a63ff, #5b73ff);
+  box-shadow: 0 10px 28px rgba(40, 60, 180, .38), inset 0 1px 0 rgba(255,255,255,.5), 0 0 0 1px rgba(255,255,255,.35);
+  transition: transform var(--dur-2) var(--ease), right var(--dur-3) var(--ease), bottom var(--dur-3) var(--ease), left var(--dur-3) var(--ease);
+  touch-action: none;
+}
+.orb[data-corner="bl"] { right: auto; left: 20px; } .orb[data-corner="tr"] { bottom: auto; top: 60px; } .orb[data-corner="tl"] { right: auto; left: 20px; bottom: auto; top: 60px; }
+/* Right-hand details panel open: anchor the orb to the work column, not the window (same signal idea as Toaster panelOpen). */
+html[data-inspector="1"] .orb:not([data-corner$="l"]), html[data-inspector="1"] .pm-panel:not([data-corner$="l"]) { right: calc(20px + min(380px, 100vw)); }
+.orb:hover { transform: scale(1.06); } .orb:active { transform: scale(.97); }
+.orb:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.orb .core { width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,.92); box-shadow: 0 0 14px rgba(255,255,255,.8); }
+.orb .ring { position: absolute; inset: -5px; border-radius: 50%; pointer-events: none; border: 2px solid transparent; }
+.orb .glyph { position: absolute; font-size: 18px; font-weight: 800; line-height: 1; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.orb .count { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; font-size: 11px; font-weight: 750; line-height: 20px; text-align: center; color: #fff; display: none; box-shadow: 0 0 0 2px var(--canvas); }
+.orb .dots { position: absolute; display: none; gap: 3px; } .orb .dots i { width: 5px; height: 5px; border-radius: 50%; background: #1a2260; animation: dotpulse 1s infinite; } .orb .dots i:nth-child(2) { animation-delay: .15s; } .orb .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes dotpulse { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes halo { 0%, 100% { box-shadow: 0 10px 28px rgba(40,60,180,.38), 0 0 0 0 rgba(91,115,255,.0), 0 0 0 1px rgba(255,255,255,.35); } 50% { box-shadow: 0 10px 28px rgba(40,60,180,.38), 0 0 0 9px rgba(91,115,255,.18), 0 0 0 1px rgba(255,255,255,.35); } }
+.orb[data-state="idle"] { animation: halo 6s ease-in-out infinite; }
+.orb[data-state="thinking"] .core { display: none; } .orb[data-state="thinking"] .dots { display: inline-flex; } .orb[data-state="thinking"] .core ~ .dots {}
+.orb[data-state="thinking"] .ring { border-top-color: #fff; border-right-color: rgba(255,255,255,.4); animation: spin 1.1s linear infinite; }
+.orb[data-state="working"] .ring { border-color: rgba(255,255,255,.28); border-top-color: #7ee8d6; animation: spin 2.4s linear infinite; }
+.orb[data-state="working"] .count { display: block; background: #0a6aa6; }
+.orb[data-state="needs-owner"] .ring { border-color: #ffb938; animation: halo2 1.8s ease-in-out infinite; }
+@keyframes halo2 { 50% { transform: scale(1.12); opacity: .5; } }
+.orb[data-state="needs-owner"] .count { display: block; background: #9a5a00; }
+.orb[data-state="error"] { background: radial-gradient(circle at 30% 26%, rgba(255,255,255,.4), transparent 42%), linear-gradient(135deg, #c43a52, #8a1f36); }
+.orb[data-state="error"] .core { display: none; } .orb[data-state="error"] .ring { border-color: #ff8696; } .orb[data-state="error"] .count { display: block; background: #a01630; }
+.orb[data-state="thinking"] .count, .orb[data-state="idle"] .count { display: none; }
+
+.pm-panel {
+  position: fixed; z-index: 79; right: 20px; bottom: 112px; width: min(420px, calc(100vw - 24px)); height: min(640px, calc(100vh - 168px)); min-height: 360px;
+  border-radius: var(--r-lg); display: flex; flex-direction: column; overflow: hidden; transform-origin: bottom right; animation: panelIn var(--dur-3) var(--ease);
+}
+.pm-panel[data-corner="bl"], .pm-panel[data-corner="tl"] { right: auto; left: 20px; transform-origin: bottom left; }
+.pm-panel[data-corner="tr"], .pm-panel[data-corner="tl"] { bottom: auto; top: 124px; transform-origin: top right; }
+.pm-panel[hidden] { display: none; }
+@keyframes panelIn { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+.pm-head { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--glass-line); }
+.pm-head .mini { width: 30px; height: 30px; border-radius: 50%; flex: none; background: radial-gradient(circle at 30% 26%, rgba(255,255,255,.55), transparent 42%), conic-gradient(from 210deg, #5b73ff, #2fc3b0, #8a63ff, #5b73ff); }
+.pm-head h2 { margin: 0; font-size: var(--t-ui); font-weight: 650; line-height: 1.2; }
+.pm-head .sub { font-size: var(--t-caption); color: var(--text-3); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 2px; margin: var(--s-3) var(--s-4) 0; border-radius: var(--r-md); background: var(--surface-3); }
+.seg button { height: var(--h-sm); border: 0; border-radius: 8px; background: transparent; font-size: var(--t-small); font-weight: 600; color: var(--text-2); }
+.seg button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); }
+.ctx-line { padding: var(--s-2) var(--s-4) 0; font-size: var(--t-caption); color: var(--text-3); display: flex; gap: var(--s-2); flex-wrap: wrap; align-items: center; }
+.pm-log { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); }
+.msg { max-width: 92%; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--t-body); background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.msg .src { margin-top: var(--s-2); font-size: var(--t-caption); color: var(--text-3); }
+.msg ul { margin: var(--s-1) 0 0; padding-left: 18px; }
+.msg li { margin: 2px 0; }
+.proposal { align-self: stretch; max-width: none; border-left: 3px solid var(--warning); }
+.proposal .row { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+.typing { align-self: flex-start; color: var(--text-3); font-size: var(--t-small); }
+.suggest { display: flex; gap: var(--s-2); flex-wrap: wrap; padding: 0 var(--s-4) var(--s-2); }
+.suggest button { height: var(--h-sm); padding: 0 var(--s-3); border-radius: var(--r-pill); border: 1px solid var(--border-strong); background: var(--surface); font-size: var(--t-small); }
+.suggest button:hover { background: var(--surface-2); }
+.pm-compose { padding: var(--s-3) var(--s-4) var(--s-3); border-top: 1px solid var(--glass-line); display: flex; flex-direction: column; gap: var(--s-2); }
+.pm-compose .textarea { min-height: 58px; resize: none; }
+.pm-compose .foot { display: flex; align-items: center; gap: var(--s-2); justify-content: space-between; font-size: var(--t-caption); color: var(--text-3); }
+
+/* Responsive */
+@media (max-width: 1280px) { .demo-banner { display: none; } }
+@media (max-width: 1100px) {
+  .body { grid-template-columns: 64px minmax(0, 1fr); }
+  .nav-item .label, .nav-group, .nav-item .badge, .sidebar-foot .label { display: none; }
+  .nav-item { justify-content: center; padding: 0; }
+  .search-hint { min-width: 0; } .search-hint .kbd-wrap { display: none; }
+}
+@media (max-width: 760px) {
+  .titlebar { padding-left: var(--s-3); } .harness-chips, .search-hint { display: none; }
+  .body { grid-template-columns: minmax(0, 1fr); } .sidebar { display: none; }
+  .body[data-nav-open="true"] .sidebar { display: flex; position: fixed; z-index: 50; top: 44px; bottom: 0; left: 0; width: 232px; }
+  .body[data-nav-open="true"] .nav-item .label, .body[data-nav-open="true"] .nav-group, .body[data-nav-open="true"] .nav-item .badge { display: initial; }
+  .body[data-nav-open="true"] .nav-item { justify-content: flex-start; padding: 0 var(--s-3); }
+  .page-head, .tabs, .content { padding-left: var(--s-4); padding-right: var(--s-4); }
+  .pm-panel { right: 8px; left: 8px; width: auto; bottom: 8px; height: min(78vh, 640px); border-radius: var(--r-lg); }
+  .pm-panel[data-corner] { left: 8px; right: 8px; top: auto; bottom: 8px; }
+  .demo-tools { bottom: 70px; }
+  /* The sheet owns the corner on small windows: hide the orb while it is open so it never covers Send. */
+  .orb[aria-expanded="true"] { visibility: hidden; }
+  html[data-inspector="1"] .orb { visibility: hidden; }
+  html[data-inspector="1"] .pm-panel:not([data-corner$="l"]) { right: 8px; }
+}
+@media (min-width: 761px) { .menu-btn { display: none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<div class="app" id="app">
+  <header class="titlebar glass" role="banner">
+    <button class="btn icon ghost menu-btn" id="menuBtn" aria-label="Меню навигации" aria-expanded="false">☰</button>
+    <div class="brand"><span class="logo" aria-hidden="true"></span> ForgeOrbit</div>
+    <div class="harness-chips" aria-label="Состояние агентов-исполнителей">
+      <span>Claude Code<span class="dot" title="Доступен"></span></span>
+      <span>Codex<span class="dot" title="Доступен"></span></span>
+      <span>Antigravity<span class="dot warn" title="Нужен вход"></span></span>
+    </div>
+    <span class="demo-banner" role="note" title="Данные вымышлены, AI не запускается, production-код не затронут">ДЕМО · вымышленные данные · AI не запускается</span>
+    <div class="spacer"></div>
+    <button class="search-hint" id="searchHint" type="button" aria-label="Поиск и команды (демо, не работает)"><span aria-hidden="true">⌕</span> Поиск, команды <span class="kbd-wrap"><kbd>⌘K</kbd></span></button>
+    <div class="title-actions">
+      <button class="btn primary sm" id="newTaskBtn" type="button">＋ Новая задача <kbd class="kbd-wrap" style="margin-left:4px">⌘N</kbd></button>
+      <button class="btn icon ghost" type="button" aria-label="Настройки (демо)">⚙</button>
+    </div>
+  </header>
+
+  <div class="body" id="body">
+    <nav class="sidebar glass" aria-label="Основная навигация" id="sidebar"></nav>
+    <div class="main" id="main" tabindex="-1">
+      <div class="main-wrap" id="mainWrap"></div>
+    </div>
+  </div>
+</div>
+
+<!-- New task sheet -->
+<div class="scrim" id="taskScrim" hidden>
+  <form class="sheet glass glass-float" id="taskForm" role="dialog" aria-modal="true" aria-labelledby="taskTitle">
+    <h2 id="taskTitle">Новая задача</h2>
+    <div class="field"><label for="ntTitle">Название</label><input class="input" id="ntTitle" placeholder="Краткое описание" required></div>
+    <div class="field"><label for="ntPrompt">Что поручить</label><textarea class="textarea" id="ntPrompt" placeholder="Опишите задачу. Ссылки на файлы: @путь"></textarea></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-3)">
+      <div class="field"><label for="ntProj">Проект</label><select class="select" id="ntProj"></select></div>
+      <div class="field"><label for="ntAgent">Исполнитель</label><select class="select" id="ntAgent"><option>Claude Code</option><option>Codex</option><option>Antigravity</option></select></div>
+    </div>
+    <p class="note" style="margin:0">Запуск агента всегда подтверждается отдельно (Owner approval). «В бэклог» ничего не запускает.</p>
+    <div class="sheet-actions">
+      <button class="btn ghost" type="button" data-close="task">Отмена <kbd>Esc</kbd></button>
+      <button class="btn" type="submit" value="backlog">В бэклог</button>
+      <button class="btn primary" type="submit" value="run">Создать и подготовить запуск</button>
+    </div>
+  </form>
+</div>
+
+<!-- Head of PM -->
+<section class="pm-panel glass glass-float" id="pmPanel" role="dialog" aria-modal="false" aria-labelledby="pmTitle" data-corner="br" hidden>
+  <div class="pm-head">
+    <span class="mini" aria-hidden="true"></span>
+    <div style="flex:1;min-width:0"><h2 id="pmTitle">Head of PM</h2><div class="sub" id="pmSub">Главный агент · демо</div></div>
+    <button class="btn icon ghost sm" id="pmClose" type="button" aria-label="Закрыть панель Head of PM (Esc)">✕</button>
+  </div>
+  <div class="seg" role="radiogroup" aria-label="Контекст Head of PM" id="pmSeg">
+    <button type="button" role="radio" aria-checked="true" data-ctx="project">Текущий проект</button>
+    <button type="button" role="radio" aria-checked="false" data-ctx="all">Все проекты</button>
+  </div>
+  <div class="ctx-line" id="pmCtx"></div>
+  <div class="pm-log" id="pmLog" role="log" aria-live="polite" aria-label="Диалог с Head of PM" tabindex="0"></div>
+  <div class="suggest" id="pmSuggest"></div>
+  <form class="pm-compose" id="pmForm">
+    <label class="sr-only" for="pmInput">Сообщение Head of PM</label>
+    <textarea class="textarea" id="pmInput" rows="2" placeholder="Спросить, поручить, запросить план…"></textarea>
+    <div class="foot"><span>Enter — отправить · Shift+Enter — перенос · Esc — закрыть</span><button class="btn primary sm" type="submit">Отправить</button></div>
+  </form>
+</section>
+<button class="orb" id="orb" type="button" data-state="idle" data-corner="br" aria-haspopup="dialog" aria-expanded="false" aria-controls="pmPanel" aria-label="Head of PM. Состояние: свободен. Открыть: Ctrl+J">
+  <span class="ring" aria-hidden="true"></span><span class="core" aria-hidden="true"></span>
+  <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+  <span class="count" id="orbCount" aria-hidden="true"></span>
+</button>
+<div id="orbLive" class="sr-only" role="status" aria-live="polite"></div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="demo-tools glass" id="demoTools" data-collapsed="false">
+  <button class="btn sm ghost dt-toggle" id="dtToggle" type="button" aria-label="Свернуть демо-панель" aria-expanded="true">⚙ демо</button>
+  <label>Тема <select id="dtTheme"><option value="auto">Авто</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select></label>
+  <label>Плотность <select id="dtDensity"><option value="comfortable">Обычная</option><option value="compact">Компактная</option></select></label>
+  <label>Состояние орба <select id="dtOrb"><option value="auto">по данным</option><option value="idle">Idle</option><option value="thinking">Thinking</option><option value="working">Working</option><option value="needs-owner">Needs Owner</option><option value="error">Error</option></select></label>
+</div>
+
+<script>
+"use strict";
+/* ===== Demo data (fictional). Every Head of PM answer is computed from THIS data, never invented. ===== */
+const PROJECTS = [
+  { id: "atlas", name: "Atlas Billing", init: "A", path: "~/code/atlas-billing", branch: "main" },
+  { id: "orbit", name: "Orbit Mobile", init: "O", path: "~/code/orbit-mobile", branch: "develop" },
+  { id: "helios", name: "Helios Docs", init: "H", path: "~/code/helios-docs", branch: "main" },
+];
+let TASKS = [
+  { id: "t1", p: "atlas", title: "Экспорт счетов в PDF", s: "running", agent: "Claude Code", who: "МК", progress: 62 },
+  { id: "t2", p: "atlas", title: "Исправить округление налога", s: "review", agent: "Codex", who: "ДР", progress: 100 },
+  { id: "t3", p: "atlas", title: "Миграция вебхуков", s: "blocked", agent: "Claude Code", who: "МК", progress: 35, why: "Нужен ответ: какой формат подписи вебхука использовать?" },
+  { id: "t4", p: "atlas", title: "Рефакторинг сервиса ledger", s: "ready", agent: "Codex", who: "ДР" },
+  { id: "t5", p: "atlas", title: "Документация онбординга", s: "backlog", agent: "Antigravity", who: "—" },
+  { id: "t6", p: "atlas", title: "Покрыть тестами расчёт скидок", s: "backlog", agent: "Codex", who: "—" },
+  { id: "t7", p: "atlas", title: "Обновить зависимости SDK", s: "done", agent: "Claude Code", who: "МК" },
+  { id: "t8", p: "orbit", title: "Экран входа по Face ID", s: "running", agent: "Claude Code", who: "АН", progress: 28 },
+  { id: "t9", p: "orbit", title: "Краш при повороте экрана", s: "blocked", agent: "Codex", who: "АН", progress: 10, why: "Запуск завершился ошибкой: тесты не стартуют (xcodebuild)." },
+  { id: "t10", p: "orbit", title: "Офлайн-кэш ленты", s: "backlog", agent: "Antigravity", who: "—" },
+  { id: "t11", p: "helios", title: "Структура раздела API", s: "review", agent: "Antigravity", who: "ИС", progress: 100 },
+  { id: "t12", p: "helios", title: "Глоссарий терминов", s: "backlog", agent: "Claude Code", who: "—" },
+];
+const COLS = [["backlog", "Бэклог"], ["ready", "Готово к запуску"], ["running", "В работе"], ["blocked", "Заблокировано"], ["review", "На проверке"], ["done", "Готово"]];
+const COLNAME = Object.fromEntries(COLS);
+const state = { view: "home", project: "atlas", tab: "board", ctx: "project", orbForce: "auto", pmOpen: false, selected: null, busy: false, errorSim: false, corner: "br", log: { project: [], all: [] }, proposals: {} };
+
+const $ = (s, r = document) => r.querySelector(s);
+const el = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const proj = (id) => PROJECTS.find((p) => p.id === id);
+const tasksOf = (pid) => TASKS.filter((t) => pid === "*" || t.p === pid);
+const count = (pid, s) => tasksOf(pid).filter((t) => t.s === s).length;
+const store = { get: (k) => { try { return localStorage.getItem("fo-ux01:" + k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem("fo-ux01:" + k, v); } catch {} } };
+
+/* ===== Toasts ===== */
+function toast(msg) {
+  const t = el(`<div class="toast glass glass-float" role="status">${esc(msg)}</div>`);
+  $("#toasts").append(t); setTimeout(() => t.remove(), 4200);
+}
+
+/* ===== Sidebar ===== */
+const ICON = { home: "◫", inbox: "✋", company: "▦", portfolio: "◎", know: "❒", runs: "▶" };
+function needsOwner() { return TASKS.filter((t) => t.s === "blocked" || t.s === "review"); }
+function renderSidebar() {
+  const sb = $("#sidebar"); const need = needsOwner().length; const running = TASKS.filter((t) => t.s === "running").length;
+  const item = (id, ico, label, extra = "", cur = false, attrs = "") => `<button class="nav-item" data-nav="${id}" ${cur ? 'aria-current="page"' : ""} ${attrs} title="${esc(label)}"><span class="ico" aria-hidden="true">${ico}</span><span class="label">${esc(label)}</span>${extra}</button>`;
+  sb.innerHTML = `
+    ${item("home", ICON.home, "Главная", "", state.view === "home")}
+    ${item("inbox", ICON.inbox, "Нужно вам", need ? `<span class="badge attn" aria-label="${need} требуют решения">${need}</span>` : "", state.view === "inbox")}
+    ${item("company", ICON.company, "Команда", "", state.view === "company")}
+    ${item("portfolio", ICON.portfolio, "Портфель и отчёты", "", state.view === "portfolio")}
+    ${item("knowledge", ICON.know, "Знания", "", state.view === "knowledge")}
+    <div class="nav-group">Проекты</div>
+    ${PROJECTS.map((p) => { const r = TASKS.filter((t) => t.p === p.id && t.s === "running").length; const b = TASKS.filter((t) => t.p === p.id && t.s === "blocked").length;
+      return item("p:" + p.id, `<span class="proj-initial">${p.init}</span>`, p.name, (b ? `<span class="badge err" aria-label="${b} заблокировано">${b}</span>` : r ? `<span class="run-dot" title="Идёт работа"></span>` : ""), state.view === "project" && state.project === p.id); }).join("")}
+    <div class="sidebar-foot">
+      ${item("add", "＋", "Добавить проект")}
+      ${item("clone", "⎘", "Клонировать репозиторий")}
+    </div>`;
+  const navs = [...sb.querySelectorAll(".nav-item")];
+  sb.onclick = (e) => { const b = e.target.closest("[data-nav]"); if (!b) return; const id = b.dataset.nav;
+    if (id === "add" || id === "clone") return toast("Демо: диалог проекта не реализован в прототипе");
+    if (id.startsWith("p:")) go("project", id.slice(2)); else go(id); $("#body").dataset.navOpen = "false"; $("#menuBtn").setAttribute("aria-expanded", "false"); };
+  sb.onkeydown = (e) => { if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return; const i = navs.indexOf(document.activeElement); if (i < 0) return; e.preventDefault();
+    navs[e.key === "Home" ? 0 : e.key === "End" ? navs.length - 1 : (i + (e.key === "ArrowDown" ? 1 : -1) + navs.length) % navs.length].focus(); };
+}
+
+/* ===== Views ===== */
+function go(view, pid) { state.view = view; if (pid) { state.project = pid; state.tab = "board"; } state.selected = null; render(); if (state.pmOpen) refreshPm(); $("#main").focus({ preventScroll: true }); }
+function render() { document.documentElement.dataset.inspector = "0"; renderSidebar(); const w = $("#mainWrap"); w.innerHTML = ""; ({ home: viewHome, inbox: viewInbox, project: viewProject, company: viewSimple("Команда", "Сотрудники, роли, назначения и история выполнения.", ["Руководитель PM и сотрудники", "Предложения назначений (только рекомендация)", "Журнал активности"]), portfolio: viewSimple("Портфель и отчёты", "Сводка по всем проектам, аккаунты и ресурсы, кластеры.", ["Обзор портфеля", "Аккаунты и ресурсы", "Кластеры", "Менеджер портфеля (полная страница)"]), knowledge: viewSimple("Знания", "Markdown-заметки компании и кластеров.", ["Заметки компании", "Заметки кластеров", "Передача заметок менеджеру — только с подтверждением"]) }[state.view])(w); updateOrb(); }
+
+const pageHead = (title, sub, actions = "") => `<div class="page-head"><div class="crumb"><h1>${esc(title)}</h1><span class="sub">${sub}</span></div>${actions}</div>`;
+
+function viewHome(w) {
+  const need = needsOwner(), run = TASKS.filter((t) => t.s === "running");
+  w.append(el(pageHead("Добрый день, Owner", "Сводка по всем проектам — демо-данные")));
+  const c = el(`<div class="content"></div>`);
+  c.innerHTML = `
+  <div class="stats" role="group" aria-label="Сводка">
+    <div class="stat"><div class="k">Проектов</div><div class="v">${PROJECTS.length}</div></div>
+    <div class="stat"><div class="k">В работе</div><div class="v">${run.length}</div></div>
+    <div class="stat"><div class="k">Нужно вам</div><div class="v">${need.length}</div></div>
+    <div class="stat"><div class="k">Заблокировано</div><div class="v">${TASKS.filter((t) => t.s === "blocked").length}</div></div>
+    <div class="stat"><div class="k">Готово</div><div class="v">${TASKS.filter((t) => t.s === "done").length}</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <section class="card" aria-labelledby="h-need"><div class="card-h"><h2 id="h-need">Нужно вам</h2><button class="btn sm ghost" data-go="inbox">Все →</button></div>
+      <ul class="list">${need.map((t) => `<li><span class="chip ${t.s === "blocked" ? "err" : "warn"}">${t.s === "blocked" ? "Заблокировано" : "Проверить"}</span><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(proj(t.p).name)}</div></div><button class="btn sm" data-open="${t.id}">Открыть</button></li>`).join("")}</ul></section>
+    <section class="card" aria-labelledby="h-run"><div class="card-h"><h2 id="h-run">Кто сейчас работает</h2></div>
+      <ul class="list">${run.map((t) => `<li><span class="avatar" aria-hidden="true">${t.who}</span><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(t.agent)} · ${esc(proj(t.p).name)}</div><div class="bar" role="progressbar" aria-valuenow="${t.progress}" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс ${t.progress}%"><i style="width:${t.progress}%"></i></div></div><span class="chip info">${t.progress}%</span></li>`).join("")}</ul></section>
+  </div>
+  <h2 style="font-size:var(--t-ui);margin:var(--s-6) 0 var(--s-3)">Проекты</h2>
+  <div class="grid cols-3">${PROJECTS.map((p) => `<button class="card task" style="--st:var(--accent)" data-proj="${p.id}"><span class="tt">${esc(p.name)}</span><span class="note mono">${esc(p.path)}</span><span class="row"><span class="chip">${tasksOf(p.id).length} задач</span><span class="chip info">${count(p.id, "running")} в работе</span>${count(p.id, "blocked") ? `<span class="chip err">${count(p.id, "blocked")} заблок.</span>` : ""}</span></button>`).join("")}</div>`;
+  w.append(c); bindCommon(c);
+}
+function viewInbox(w) {
+  const need = needsOwner(); w.append(el(pageHead("Нужно вам", "Всё, что ждёт решения Owner: ответы, проверки, подтверждения запуска")));
+  const c = el(`<div class="content"><section class="card"><ul class="list">${need.map((t) => `<li><span class="chip ${t.s === "blocked" ? "err" : "warn"}">${t.s === "blocked" ? "Заблокировано" : "Проверить результат"}</span><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(proj(t.p).name)} · ${esc(t.why || "Результат готов, нужно принять или вернуть")}</div></div><button class="btn sm" data-open="${t.id}">Открыть</button></li>`).join("")}</ul></section></div>`);
+  w.append(c); bindCommon(c);
+}
+function viewSimple(title, sub, items) { return (w) => { w.append(el(pageHead(title, sub))); w.append(el(`<div class="content"><section class="card"><div class="card-h"><h2>Что здесь живёт</h2><span class="chip">заглушка прототипа</span></div><ul class="list">${items.map((i) => `<li><div class="grow t">${esc(i)}</div></li>`).join("")}</ul></section></div>`)); }; }
+
+const TABS = [["overview", "Обзор"], ["board", "Доска"], ["plan", "План и очередь"], ["runs", "Запуски"], ["team", "Команда"], ["setup", "Настройка"]];
+function viewProject(w) {
+  const p = proj(state.project);
+  w.append(el(pageHead(p.name, `<span class="mono">${esc(p.path)}</span> · ветка ${esc(p.branch)}`, `<button class="btn primary sm" id="pNew" type="button">＋ Новая задача</button>`)));
+  const tabs = el(`<div class="tabs" role="tablist" aria-label="Разделы проекта">${TABS.map(([id, l]) => `<button class="tab" role="tab" id="tab-${id}" aria-selected="${state.tab === id}" tabindex="${state.tab === id ? 0 : -1}" data-tab="${id}" aria-controls="tabpanel">${l}${id === "board" && count(p.id, "blocked") ? ` <span class="badge err">${count(p.id, "blocked")}</span>` : ""}</button>`).join("")}</div>`);
+  w.append(tabs);
+  tabs.onclick = (e) => { const b = e.target.closest("[data-tab]"); if (b) { state.tab = b.dataset.tab; state.selected = null; render(); $("#tab-" + state.tab).focus(); } };
+  tabs.onkeydown = (e) => { const ids = TABS.map((t) => t[0]); const i = ids.indexOf(state.tab); let n = null;
+    if (e.key === "ArrowRight") n = (i + 1) % ids.length; else if (e.key === "ArrowLeft") n = (i - 1 + ids.length) % ids.length; else if (e.key === "Home") n = 0; else if (e.key === "End") n = ids.length - 1;
+    if (n != null) { e.preventDefault(); state.tab = ids[n]; render(); $("#tab-" + state.tab).focus(); } };
+  const c = el(`<div class="content ${state.tab === "board" ? "board-pad" : ""}" id="tabpanel" role="tabpanel" aria-labelledby="tab-${state.tab}"></div>`);
+  w.append(c);
+  ({ overview: tabOverview, board: tabBoard, plan: tabPlan, runs: tabRuns, team: tabMap("Команда проекта", ["Сотрудники проекта и роли", "Предложения назначений", "Исполнитель на задаче"], "Company → Staff / Assignments"), setup: tabMap("Настройка проекта", ["Окружение", "Документы проекта (IDEA, PRD)", "База знаний", "Оценки", "Контекст Head of PM"], "Environment, Docs, Knowledge, Estimates") }[state.tab])(c, p);
+  $("#pNew").onclick = openTaskSheet; bindCommon(c);
+  const ins = el(`<aside class="inspector glass glass-float" id="inspector" aria-label="Детали задачи" hidden></aside>`); w.append(ins); renderInspector();
+}
+function tabOverview(c, p) {
+  c.innerHTML = `<div class="stats">${COLS.map(([id, l]) => `<div class="stat"><div class="k">${l}</div><div class="v">${count(p.id, id)}</div></div>`).join("")}</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <section class="card"><div class="card-h"><h2>Последние задачи</h2><button class="btn sm ghost" data-tab-go="board">Открыть доску →</button></div><ul class="list">${tasksOf(p.id).slice(0, 4).map((t) => `<li><span class="chip">${COLNAME[t.s]}</span><div class="grow t">${esc(t.title)}</div></li>`).join("")}</ul></section>
+    <section class="card"><div class="card-h"><h2>Окружение</h2><span class="chip ok">готово</span></div><div class="card-b note">Node 22 · git чистый · 3 исполнителя доступны. Подробности — в «Настройка».</div></section>
+  </div>`;
+}
+function tabBoard(c, p) {
+  const filter = state.filter || "";
+  c.innerHTML = `<div class="stats" role="group" aria-label="Сводка по доске">${COLS.map(([id, l]) => `<div class="stat"><div class="k">${l}</div><div class="v">${count(p.id, id)}</div></div>`).join("")}</div>
+  <div class="toolbar"><label class="sr-only" for="bf">Поиск по задачам</label><input class="input" id="bf" type="search" placeholder="Поиск по задачам" value="${esc(filter)}">
+    <select class="select" style="width:auto" aria-label="Фильтр по исполнителю"><option>Все исполнители</option><option>Claude Code</option><option>Codex</option><option>Antigravity</option></select><span class="spacer"></span><span class="note">Нажмите на карточку — детали справа</span></div>
+  <div class="board" role="list" aria-label="Колонки доски">${COLS.map(([id, l]) => { const ts = tasksOf(p.id).filter((t) => t.s === id && t.title.toLowerCase().includes(filter.toLowerCase()));
+    return `<section class="col" role="listitem" aria-label="${l}, ${ts.length}" data-s="${id}"><div class="col-h"><span>${l}</span><span class="chip cnt">${ts.length}</span></div><div class="col-b">${ts.length ? ts.map(taskCard).join("") : `<div class="col-empty">Пусто</div>`}</div></section>`; }).join("")}</div>`;
+  $("#bf", c).oninput = (e) => { state.filter = e.target.value; const pos = e.target.selectionStart; render(); const f = $("#bf"); f.focus(); f.setSelectionRange(pos, pos); };
+}
+const taskCard = (t) => `<button class="task" data-s="${t.s}" data-open="${t.id}" aria-pressed="${state.selected === t.id}"><span class="tt">${esc(t.title)}</span><span class="row"><span class="chip">${esc(t.agent)}</span>${t.s === "blocked" ? `<span class="chip err">Нужно решение</span>` : t.s === "review" ? `<span class="chip warn">Проверить</span>` : ""}<span class="spacer"></span>${t.who !== "—" ? `<span class="avatar" title="Исполнитель" aria-label="Исполнитель ${t.who}">${t.who}</span>` : ""}</span>${t.progress != null && t.s === "running" ? `<span class="bar" role="progressbar" aria-valuenow="${t.progress}" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс ${t.progress}%"><i style="width:${t.progress}%"></i></span>` : ""}</button>`;
+function tabPlan(c, p) {
+  const q = tasksOf(p.id).filter((t) => ["ready", "backlog"].includes(t.s));
+  c.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"><section class="card"><div class="card-h"><h2>План работ</h2><span class="chip warn">предложение — ждёт одобрения</span></div><div class="card-b note">План строит Project Manager (тот же workflow, что и сегодня). Утверждённый план — это очередь ниже. Здесь план перестаёт быть вложенным в карточку чата.</div></section>
+  <section class="card"><div class="card-h"><h2>Очередь задач</h2><button class="btn sm" type="button" data-toast="Демо: сохранение очереди">Сохранить порядок</button></div><ol class="list" style="padding-left:0">${q.map((t, i) => `<li><span class="chip">${i + 1}</span><div class="grow"><div class="t">${esc(t.title)}</div><div class="s">${esc(t.agent)}${i ? " · зависит от №" + i : ""}</div></div><button class="btn sm" data-open="${t.id}">Открыть</button></li>`).join("")}</ol></section></div>`;
+}
+function tabRuns(c, p) {
+  c.innerHTML = `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+  <section class="card"><div class="card-h"><h2>Пакеты запуска</h2><span class="chip">${count(p.id, "ready")} готово</span></div><div class="card-b note">Одно подтверждение — несколько задач. Статус: черновик → одобрен → выполняется. Старт — отдельное действие Owner.</div><div class="card-b"><button class="btn sm" data-toast="Демо: мастер пакета">Подготовить пакет…</button></div></section>
+  <section class="card"><div class="card-h"><h2>Автономный режим</h2><span class="chip">выключен</span></div><div class="card-b note">Ограничения: число запусков, параллелизм, срок. Включается только явным грантом, лимит не расширяется.</div></section>
+  <section class="card"><div class="card-h"><h2>Журнал активности</h2></div><ul class="list"><li><div class="grow"><div class="t">Запуск «Экспорт счетов в PDF» подтверждён Owner</div><div class="s">сегодня, 11:42</div></div></li><li><div class="grow"><div class="t">«Миграция вебхуков» остановлена: нужен ответ</div><div class="s">сегодня, 11:10</div></div></li></ul></section></div>`;
+}
+const tabMap = (title, items, from) => (c) => { c.innerHTML = `<section class="card"><div class="card-h"><h2>${esc(title)}</h2><span class="chip">заглушка прототипа</span></div><ul class="list">${items.map((i) => `<li><div class="grow t">${esc(i)}</div></li>`).join("")}</ul><div class="card-b note">Переносится из: ${esc(from)}</div></section>`; };
+
+function renderInspector() {
+  const ins = $("#inspector"); if (!ins) { document.documentElement.dataset.inspector = "0"; return; } const t = TASKS.find((x) => x.id === state.selected);
+  if (!t) { ins.hidden = true; document.documentElement.dataset.inspector = "0"; return; }
+  ins.hidden = false; document.documentElement.dataset.inspector = "1";
+  ins.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px"><span class="chip">${COLNAME[t.s]}</span><button class="btn icon ghost sm" id="insClose" aria-label="Закрыть детали">✕</button></div>
+  <h2 style="margin-top:var(--s-3)">${esc(t.title)}</h2>
+  <dl class="kv"><dt>Проект</dt><dd>${esc(proj(t.p).name)}</dd><dt>Исполнитель</dt><dd>${esc(t.agent)} ${t.who !== "—" ? `(${t.who})` : "(не назначен)"}</dd><dt>Статус</dt><dd>${COLNAME[t.s]}</dd></dl>
+  ${t.why ? `<div class="gate" role="note"><strong>Почему остановлено:</strong> ${esc(t.why)}</div>` : ""}
+  ${t.s === "ready" ? `<div class="gate" role="note" style="margin-top:var(--s-3)"><strong>Запуск требует подтверждения Owner.</strong> Будет использован исполнитель «${esc(t.agent)}»; платные лимиты — «неизвестно».</div>` : ""}
+  <div style="display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-4)"><button class="btn" type="button" data-toast="Демо: чат с исполнителем">Чат с исполнителем</button>
+  ${t.s === "ready" ? `<button class="btn primary" type="button" id="approveRun">Подтвердить и запустить</button>` : ""}${t.s === "review" ? `<button class="btn primary" type="button" id="acceptRes">Принять результат</button>` : ""}</div>`;
+  $("#insClose").onclick = () => { state.selected = null; render(); };
+  const ap = $("#approveRun"); if (ap) ap.onclick = () => { t.s = "running"; t.progress = 5; toast("Демо: запуск подтверждён Owner (AI не запущен)"); render(); };
+  const ac = $("#acceptRes"); if (ac) ac.onclick = () => { t.s = "done"; toast("Результат принят"); state.selected = null; render(); };
+  ins.querySelectorAll("[data-toast]").forEach((b) => (b.onclick = () => toast(b.dataset.toast)));
+}
+function bindCommon(root) {
+  root.querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => { const t = TASKS.find((x) => x.id === b.dataset.open); if (state.view !== "project" || state.project !== t.p) { state.view = "project"; state.project = t.p; state.tab = "board"; } state.tab = "board"; state.selected = t.id; render(); const sel = $(`[data-open="${t.id}"]`); sel && sel.focus(); }));
+  root.querySelectorAll("[data-proj]").forEach((b) => b.addEventListener("click", () => go("project", b.dataset.proj)));
+  root.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+  root.querySelectorAll("[data-tab-go]").forEach((b) => b.addEventListener("click", () => { state.tab = b.dataset.tabGo; render(); }));
+  root.querySelectorAll("[data-toast]").forEach((b) => b.addEventListener("click", () => toast(b.dataset.toast)));
+}
+
+/* ===== New task sheet ===== */
+let sheetReturn = null;
+function openTaskSheet() { sheetReturn = document.activeElement; const sel = $("#ntProj"); sel.innerHTML = PROJECTS.map((p) => `<option value="${p.id}" ${p.id === state.project ? "selected" : ""}>${esc(p.name)}</option>`).join(""); $("#taskScrim").hidden = false; $("#app").inert = true; $("#orb").inert = true; $("#pmPanel").inert = true; setTimeout(() => $("#ntTitle").focus(), 0); }
+function closeTaskSheet() { $("#taskScrim").hidden = true; $("#app").inert = false; $("#orb").inert = false; $("#pmPanel").inert = false; (sheetReturn && sheetReturn.isConnected ? sheetReturn : $("#newTaskBtn")).focus(); }
+$("#newTaskBtn").onclick = openTaskSheet; $("#taskScrim").addEventListener("click", (e) => { if (e.target.id === "taskScrim" || e.target.closest("[data-close=task]")) closeTaskSheet(); });
+$("#taskForm").addEventListener("submit", (e) => { e.preventDefault(); const run = e.submitter && e.submitter.value === "run"; const id = "t" + (TASKS.length + 1);
+  TASKS.push({ id, p: $("#ntProj").value, title: $("#ntTitle").value, s: run ? "ready" : "backlog", agent: $("#ntAgent").value, who: "—" }); $("#taskForm").reset(); closeTaskSheet(); render(); toast(run ? "Задача создана. Запуск ждёт вашего подтверждения." : "Задача добавлена в бэклог"); });
+$("#menuBtn").onclick = () => { const b = $("#body"); const o = b.dataset.navOpen !== "true"; b.dataset.navOpen = String(o); $("#menuBtn").setAttribute("aria-expanded", String(o)); };
+
+/* ===== Head of PM: orb state ===== */
+function derivedOrb() {
+  if (state.busy) return { s: "thinking", n: 0 };
+  if (state.errorSim || tasksFor().some((t) => t.s === "blocked" && /ошибк/i.test(t.why || ""))) return { s: "error", n: tasksFor().filter((t) => /ошибк/i.test(t.why || "")).length || 1 };
+  const need = tasksFor().filter((t) => t.s === "blocked" || t.s === "review").length; if (need) return { s: "needs-owner", n: need };
+  const r = tasksFor().filter((t) => t.s === "running").length; if (r) return { s: "working", n: r };
+  return { s: "idle", n: 0 };
+}
+const tasksFor = () => (state.ctx === "all" || state.view !== "project" ? TASKS : tasksOf(state.project));
+const ORB_TEXT = { idle: "свободен", thinking: "думает", working: "исполнители работают", "needs-owner": "нужно ваше решение", error: "ошибка" };
+let lastOrb = "";
+function updateOrb() {
+  const o = $("#orb"); const d = state.orbForce === "auto" ? derivedOrb() : { s: state.orbForce, n: state.orbForce === "idle" || state.orbForce === "thinking" ? 0 : 2 };
+  o.dataset.state = d.s; $("#orbCount").textContent = d.s === "error" ? "!" : d.n || "";
+  const text = ORB_TEXT[d.s] + (d.n && d.s !== "error" ? `, ${d.n}` : "");
+  o.setAttribute("aria-label", `Head of PM. Состояние: ${text}. ${state.pmOpen ? "Закрыть" : "Открыть"}: Ctrl+J`);
+  if (d.s !== lastOrb) { $("#orbLive").textContent = `Head of PM: ${text}`; lastOrb = d.s; }
+}
+
+/* ===== Head of PM: panel ===== */
+const SUGGEST = { project: ["Что блокирует проект?", "Кто сейчас работает?", "Составь план работ", "Кого назначить на задачи?"], all: ["Сводка по всем проектам", "Где ошибки и блокировки?", "Что требует моего решения?", "Составь план на неделю"] };
+function ctxLine() {
+  const p = proj(state.project);
+  $("#pmCtx").innerHTML = state.ctx === "project" ? `<span class="chip info">Проект: ${esc(p.name)}</span><span>${tasksOf(p.id).length} задач · данные доски, запусков, пакетов</span>` : `<span class="chip">Все проекты (${PROJECTS.length})</span><span>${TASKS.length} задач · обзор портфеля</span>`;
+  $("#pmSub").textContent = state.ctx === "project" ? "Главный агент · контекст: " + p.name : "Главный агент · контекст: все проекты";
+  $("#pmSuggest").innerHTML = SUGGEST[state.ctx].map((s) => `<button type="button">${esc(s)}</button>`).join("");
+  $("#pmInput").placeholder = state.ctx === "project" ? `Спросить про «${p.name}», поручить, запросить план…` : "Спросить про все проекты…";
+}
+function refreshPm() { ctxLine(); renderLog(); updateOrb(); }
+function renderLog() {
+  const log = $("#pmLog"); const msgs = state.log[state.ctx]; log.innerHTML = "";
+  if (!msgs.length) log.append(el(`<div class="msg"><strong>Я — главный агент ForgeOrbit.</strong> Отвечаю по реальным данным приложения: доска, запуски, пакеты, команда. Любые изменения задач, назначения и запуски — только после вашего подтверждения.<div class="src">Прототип: ответы заготовлены и строятся из демо-данных. В production каждое сообщение — один платный запрос выбранному агенту; здесь AI не вызывается.</div></div>`));
+  msgs.forEach((m) => log.append(buildMsg(m))); if (state.busy) log.append(el(`<div class="typing">Head of PM анализирует данные…</div>`)); log.scrollTop = log.scrollHeight;
+}
+function buildMsg(m) {
+  if (m.kind === "proposal") { const node = el(`<div class="msg proposal"><strong>${esc(m.title)}</strong><ul>${m.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul><div class="gate" style="margin-top:8px">Это предложение. Задачи появятся на доске только после одобрения Owner.</div><div class="row"></div><div class="src">${esc(m.src)}</div></div>`);
+    const row = $(".row", node); if (m.status === "pending") { const a = el(`<button class="btn primary sm" type="button">Одобрить и создать</button>`), r = el(`<button class="btn sm" type="button">Отклонить</button>`); row.append(a, r); a.onclick = () => resolveProposal(m, true); r.onclick = () => resolveProposal(m, false); }
+    else row.append(el(`<span class="chip ${m.status === "approved" ? "ok" : ""}">${m.status === "approved" ? "Одобрено Owner" : "Отклонено"}</span>`)); return node; }
+  return el(`<div class="msg ${m.role === "user" ? "user" : ""}">${m.html || esc(m.text)}${m.src ? `<div class="src">Источники: ${esc(m.src)}</div>` : ""}</div>`);
+}
+function resolveProposal(m, ok) { m.status = ok ? "approved" : "rejected"; if (ok) { m.items.forEach((title, i) => TASKS.push({ id: "t" + (TASKS.length + 1) + i, p: m.project, title, s: "backlog", agent: "Codex", who: "—" })); toast("Одобрено: задачи созданы в бэклоге (демо)"); } render(); refreshPm(); }
+
+function answer(q) {
+  const all = state.ctx === "all"; const pid = state.project; const ts = all ? TASKS : tasksOf(pid); const nm = (t) => (all ? `${t.title} (${proj(t.p).name})` : t.title);
+  const lc = q.toLowerCase(); const src = all ? "доска всех проектов, запуски" : `доска «${proj(pid).name}», запуски`;
+  if (/ошиб|блок|останов|заблок/.test(lc)) { const b = ts.filter((t) => t.s === "blocked"); return { html: b.length ? `Заблокировано задач: <strong>${b.length}</strong>.<ul>${b.map((t) => `<li>${esc(nm(t))} — ${esc(t.why || "ждёт решения")}</li>`).join("")}</ul>` : "Заблокированных задач нет.", src }; }
+  if (/работа|кто|исполн/.test(lc) && !/назнач/.test(lc)) { const r = ts.filter((t) => t.s === "running"); return { html: r.length ? `Сейчас работают (<strong>${r.length}</strong>):<ul>${r.map((t) => `<li>${esc(nm(t))} — ${esc(t.agent)}, ${t.progress}%</li>`).join("")}</ul>` : "Сейчас никто не работает.", src }; }
+  if (/решен|нужно|ждёт|ждет/.test(lc)) { const n = ts.filter((t) => t.s === "blocked" || t.s === "review"); return { html: `Ждут вас (<strong>${n.length}</strong>):<ul>${n.map((t) => `<li>${esc(nm(t))} — ${t.s === "blocked" ? "ответить на вопрос" : "проверить результат"}</li>`).join("")}</ul>`, src }; }
+  if (/сводк|обзор|итог/.test(lc)) { return { html: `<ul>${(all ? PROJECTS : [proj(pid)]).map((p) => `<li><strong>${esc(p.name)}</strong>: в работе ${count(p.id, "running")}, на проверке ${count(p.id, "review")}, заблокировано ${count(p.id, "blocked")}, бэклог ${count(p.id, "backlog")}</li>`).join("")}</ul>`, src }; }
+  if (/назнач|рекоменд/.test(lc)) { const f = ts.filter((t) => t.who === "—").slice(0, 3); return { html: f.length ? `Рекомендации (это не назначение, только предложение):<ul>${f.map((t) => `<li>${esc(nm(t))} → ${esc(t.agent)}: подходит по профилю задачи; лимиты и стоимость <em>неизвестны</em></li>`).join("")}</ul>` : "Все задачи уже имеют исполнителя.", src: src + ", команда" }; }
+  if (/план|недел/.test(lc)) { return { proposal: { kind: "proposal", status: "pending", project: all ? "atlas" : pid, title: all ? "План на неделю (по всем проектам)" : `План работ: ${proj(pid).name}`, items: all ? ["Atlas Billing: утвердить формат подписи вебхуков", "Orbit Mobile: починить запуск тестов xcodebuild", "Helios Docs: принять структуру раздела API"] : ["Утвердить формат подписи вебхуков", "Добавить тесты для расчёта скидок", "Принять результат по округлению налога"], src: "Источники: " + src + ", очередь задач" } }; }
+  return { html: `По данным (${esc(src)}): задач ${ts.length}, в работе ${ts.filter((t) => t.s === "running").length}, ждут вас ${ts.filter((t) => t.s === "blocked" || t.s === "review").length}. Это прототип — свободные вопросы не обрабатываются; попробуйте быстрые подсказки ниже.`, src };
+}
+function send(text) {
+  text = text.trim(); if (!text || state.busy) return; const key = state.ctx; state.log[key].push({ role: "user", text }); state.busy = true; refreshPm();
+  setTimeout(() => { const a = answer(text); state.busy = false; state.log[key].push(a.proposal ? a.proposal : { role: "pm", html: a.html, src: a.src }); refreshPm(); if (!state.pmOpen) { toast("Head of PM ответил"); } }, 900);
+}
+function openPm() { state.pmOpen = true; const p = $("#pmPanel"); p.hidden = false; p.dataset.corner = state.corner; $("#orb").setAttribute("aria-expanded", "true"); refreshPm(); $("#pmInput").focus(); }
+function closePm() { state.pmOpen = false; $("#pmPanel").hidden = true; $("#orb").setAttribute("aria-expanded", "false"); updateOrb(); $("#orb").focus(); }
+const togglePm = () => (state.pmOpen ? closePm() : openPm());
+$("#orb").addEventListener("click", (e) => { if ($("#orb").dataset.dragged === "1") { $("#orb").dataset.dragged = "0"; return; } togglePm(); });
+$("#pmClose").onclick = closePm;
+$("#pmSeg").addEventListener("click", (e) => { const b = e.target.closest("[data-ctx]"); if (!b) return; setCtx(b.dataset.ctx); });
+$("#pmSeg").addEventListener("keydown", (e) => { if (!["ArrowLeft", "ArrowRight"].includes(e.key)) return; e.preventDefault(); setCtx(state.ctx === "project" ? "all" : "project", true); });
+function setCtx(c, focus) { state.ctx = c; $("#pmSeg").querySelectorAll("[role=radio]").forEach((b) => { const on = b.dataset.ctx === c; b.setAttribute("aria-checked", String(on)); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); }); refreshPm(); }
+$("#pmSuggest").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) send(b.textContent); });
+$("#pmForm").addEventListener("submit", (e) => { e.preventDefault(); const i = $("#pmInput"); send(i.value); i.value = ""; });
+$("#pmInput").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#pmForm").requestSubmit(); } });
+
+/* Orb corner: drag to snap, or Shift+Arrow with focus on the orb. Persisted. */
+function setCorner(c) { state.corner = c; const o = $("#orb"); o.dataset.corner = c; $("#pmPanel").dataset.corner = c; store.set("corner", c); }
+(function dragInit() { const o = $("#orb"); let sx, sy, moved;
+  o.addEventListener("pointerdown", (e) => { sx = e.clientX; sy = e.clientY; moved = false; o.setPointerCapture(e.pointerId); });
+  o.addEventListener("pointermove", (e) => { if (!o.hasPointerCapture(e.pointerId)) return; if (Math.hypot(e.clientX - sx, e.clientY - sy) > 8) moved = true; });
+  o.addEventListener("pointerup", (e) => { if (!moved) return; o.dataset.dragged = "1"; setCorner((e.clientY < innerHeight / 2 ? "t" : "b") + (e.clientX < innerWidth / 2 ? "l" : "r")); setTimeout(() => (o.dataset.dragged = "0"), 50); });
+  o.addEventListener("keydown", (e) => { if (!e.shiftKey || !e.key.startsWith("Arrow")) return; e.preventDefault(); const c = state.corner; const v = e.key === "ArrowUp" ? "t" : e.key === "ArrowDown" ? "b" : c[0]; const h = e.key === "ArrowLeft" ? "l" : e.key === "ArrowRight" ? "r" : c[1]; setCorner(v + h); }); })();
+
+/* Global keys */
+document.addEventListener("keydown", (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === "j") { e.preventDefault(); if ($("#taskScrim").hidden) togglePm(); }
+  else if (mod && e.key.toLowerCase() === "n") { e.preventDefault(); if ($("#taskScrim").hidden) openTaskSheet(); }
+  else if (e.key === "Escape") { if (!$("#taskScrim").hidden) closeTaskSheet(); else if (state.pmOpen) closePm(); else if (state.selected) { state.selected = null; render(); } }
+});
+$("#searchHint").onclick = () => toast("Демо: глобальный поиск / палитра команд не реализованы");
+
+/* Demo tools */
+$("#dtTheme").value = document.documentElement.dataset.themeMode;
+$("#dtTheme").onchange = (e) => { const m = e.target.value; store.set("theme", m); document.documentElement.dataset.themeMode = m; applyTheme(); };
+const mq = matchMedia("(prefers-color-scheme: dark)"); function applyTheme() { const m = document.documentElement.dataset.themeMode; document.documentElement.dataset.theme = m === "dark" || (m === "auto" && mq.matches) ? "dark" : "light"; } mq.addEventListener("change", applyTheme);
+$("#dtDensity").onchange = (e) => { document.documentElement.dataset.density = e.target.value; };
+$("#dtOrb").onchange = (e) => { state.orbForce = e.target.value; updateOrb(); };
+$("#dtToggle").onclick = () => { const d = $("#demoTools"); const c = d.dataset.collapsed !== "true"; d.dataset.collapsed = String(c); $("#dtToggle").setAttribute("aria-expanded", String(!c)); $("#dtToggle").textContent = c ? "⚙" : "⚙ демо"; };
+
+/* boot */
+const savedCorner = store.get("corner"); if (/^(br|bl|tr|tl)$/.test(savedCorner || "")) { state.corner = savedCorner; $("#orb").dataset.corner = savedCorner; }
+const q = new URLSearchParams(location.search); if (q.get("view") === "project") { state.view = "project"; state.tab = q.get("tab") || "board"; }
+if (q.get("orb")) { state.orbForce = q.get("orb"); $("#dtOrb").value = state.orbForce; }
+if (q.get("density")) { document.documentElement.dataset.density = q.get("density"); $("#dtDensity").value = q.get("density"); }
+setCtx("project"); render(); if (q.get("pm") === "1") openPm();
+</script>
+</body>
+</html>

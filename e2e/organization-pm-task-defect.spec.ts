@@ -1,0 +1,37 @@
+import { test, expect, api, registerProject } from "./organization-acceptance-fixture";
+
+test("FO012C-P1-01: PM-created Task in an accepted non-Git project must reach canonical execution without an unavailable worktree", async ({ request, companyBackend: b }, info) => {
+  const dir = await registerProject(request, b, "PM non-Git reproduction");
+  await api(request, b, "PATCH", "/harnesses/codex", { enabled: true });
+  const preflight = await api(request, b, "POST", "/project-interviews/preflight", { harness: "codex", model: "gpt-6.1-sol" });
+  await api(request, b, "PUT", "/project-manager/config", { path: dir, config: { harness: "codex", model: "gpt-6.1-sol", effort: "low", consentKey: preflight.isolation.consentKey } });
+  await api(request, b, "POST", "/project-manager/messages", { path: dir, text: "Split the project into tasks" }, 202);
+  await expect.poll(async () => (await api(request, b, "GET", `/project-manager?path=${encodeURIComponent(dir)}`)).activeTurn).toBeNull();
+  const state = await api(request, b, "GET", `/project-manager?path=${encodeURIComponent(dir)}`), proposal = state.proposals[0];
+  expect(proposal).toBeTruthy();
+  await api(request, b, "POST", `/project-manager/proposals/${proposal.id}/approve`, { path: dir, revision: proposal.revision });
+  const task = (await api(request, b, "GET", "/tasks"))[0];
+  expect(task.isolation).toBe("none");
+  const refused = await api(request, b, "PATCH", `/tasks/${task.id}`, { column: "ready", isolation: "worktree" }, 409);
+  expect(refused.code).toBe("isolation-immutable");
+  expect((await api(request, b, "GET", `/tasks/${task.id}`)).column).toBe("backlog");
+  const patched = await api(request, b, "PATCH", `/tasks/${task.id}`, { column: "ready", isolation: "none" });
+  expect(patched.isolation).toBe("none");
+  const worker = await api(request, b, "POST", "/employees", { name: "PM Task worker", jobTitle: "Engineer", projectPath: dir }, 201);
+  await api(request, b, "POST", `/employees/${worker.id}/professional-profile`, { catalogRoleSlug: "engineering-backend-architect", promptMarkdown: "# Minimal approved professional" });
+  await api(request, b, "POST", "/task-assignments", { taskId: task.id, employeeId: worker.id }, 201);
+  const review = await api(request, b, "POST", "/employee-execution/reviews", { taskId: task.id, harnessId: "claude-code" });
+  expect(review.blockingErrors).toEqual([]); expect(review.preflight.outcome).toBe("prepared");
+  expect(review.attempt.review.isolation).toBe("none");
+  expect(review.attempt.review.checks).toContainEqual(expect.objectContaining({ code: "no-isolation", level: "warning" }));
+  await api(request, b, "POST", `/employee-execution/attempts/${review.attempt.id}/start`, { revision: review.attempt.revision, confirm: false, acknowledgeUsage: true }, 400);
+  expect(await api(request, b, "GET", `/tasks/${task.id}/runs`)).toEqual([]);
+  const start = await api(request, b, "POST", `/employee-execution/attempts/${review.attempt.id}/start`, { revision: review.attempt.revision, confirm: true, acknowledgeUsage: true });
+  const runs = await api(request, b, "GET", `/tasks/${task.id}/runs`);
+  await info.attach("FO012C-P1-01-reproduction", { body: JSON.stringify({ dir, proposal, task, patched, review, start, runs }, null, 2), contentType: "application/json" });
+  expect(start.attempt.status).toBe("started");
+  expect(runs).toHaveLength(1);
+  const replay = await api(request, b, "POST", `/employee-execution/attempts/${review.attempt.id}/start`, { revision: review.attempt.revision, confirm: true, acknowledgeUsage: true });
+  expect(replay.replayed).toBe(true);
+  expect(await api(request, b, "GET", `/tasks/${task.id}/runs`)).toHaveLength(1);
+});

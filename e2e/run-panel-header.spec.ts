@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2E coverage for the restructured task-details header in
@@ -89,7 +89,7 @@ test.describe("task details header", () => {
     const prompt = `header-e2e ${randomUUID()}`;
     await createAndStartFakeClaudeTask(request, backend, prompt);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, prompt);
     const header = panelHeader(page);
 
@@ -168,7 +168,7 @@ test.describe("task details header", () => {
     const prompt = `header-tooltip-e2e ${randomUUID()}`;
     await createAndStartFakeClaudeTask(request, backend, prompt);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await openTask(page, prompt);
     const header = panelHeader(page);
     const viewDiffButton = header.getByRole("button", { name: "View diff" });

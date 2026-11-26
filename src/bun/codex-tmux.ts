@@ -1,3 +1,4 @@
+import { RUN_USAGE_STATUS_PREFIX } from "../shared/usage-analytics.ts";
 import {
   existsSync,
   mkdirSync,
@@ -29,6 +30,7 @@ import {
   type ChunkHandler,
   type SpawnedAgent,
 } from "./claude-tmux.ts";
+import { makeTerminator, type TerminationEvidence } from "./process-termination.ts";
 
 /**
  * Driver that hosts a single `codex exec` turn inside a per-task tmux session
@@ -89,7 +91,7 @@ interface CodexEvent {
   thread_id?: string;
   item?: CodexItem;
   message?: string;
-  error?: { message?: string } | string;
+  error?: { message?: string; codex_error_info?: unknown; codexErrorInfo?: unknown } | string;
   [k: string]: unknown;
 }
 
@@ -105,6 +107,14 @@ function errMessage(e: CodexEvent["error"]): string {
   if (!e) return "codex turn failed";
   if (typeof e === "string") return e;
   return e.message ?? "codex turn failed";
+}
+
+function emitError(error: CodexEvent["error"], type: "error" | "turn.failed", onChunk: ChunkHandler, seq: { n: number }) {
+  onChunk("stderr", errMessage(error), `${type}:${seq.n++}`);
+  const code = typeof error === "object" && error ? error.codex_error_info ?? error.codexErrorInfo : null;
+  if (code === "usage_limit_exceeded" || code === "usageLimitExceeded") {
+    onChunk("stderr", "usage_limit_exceeded", `${type}:${seq.n++}`);
+  }
 }
 
 /**
@@ -135,17 +145,24 @@ export function mapCodexEvent(
       // banner would just be noise above the first assistant/tool chunk.
       return {};
 
-    case "turn.completed":
+    case "turn.completed": {
+      const usage = evt.usage as Record<string, unknown> | undefined;
+      if (usage && typeof usage === "object") {
+        onChunk("status", RUN_USAGE_STATUS_PREFIX + JSON.stringify({
+          input: usage.input_tokens, output: usage.output_tokens, cacheRead: usage.cached_input_tokens, cacheWrite: usage.cache_write_input_tokens,
+        }), "turn.usage");
+      }
       return { done: 0 };
+    }
 
     case "turn.failed":
-      onChunk("stderr", errMessage(evt.error), `turn.failed:${seq.n++}`);
+      emitError(evt.error, "turn.failed", onChunk, seq);
       return { done: 1 };
 
     case "error":
       // Top-level transport/model error (no item). A `turn.failed` usually
       // follows and carries the terminal `done`; surface the message here.
-      onChunk("stderr", errMessage(evt.error ?? evt.message), `error:${seq.n++}`);
+      emitError(evt.error ?? evt.message, "error", onChunk, seq);
       return {};
 
     case "item.started":
@@ -187,6 +204,7 @@ export function mapCodexEvent(
               toolUseId: id,
               content: out,
               isError: typeof exit === "number" && exit !== 0,
+              exitCode: typeof exit === "number" ? exit : null,
             }), `${key}:result`);
           }
           break;
@@ -242,6 +260,8 @@ interface CodexSessionState {
   onSessionId?: (id: string) => void;
   sessionIdSent: boolean;
   resolved: boolean;
+  /** Set once a Stop begins: the vanished session is the Owner's doing, not a crash. */
+  terminating?: boolean;
   lastCode: number | null;
   resolveDone: (code: number) => void;
 }
@@ -390,6 +410,7 @@ function startCodexTailer(state: CodexSessionState): Promise<number> {
     tickInFlight = true;
     void (async () => {
       try {
+        if (state.terminating) return;
         tryWatch();
         // Compute the log-recency veto lazily — only a `gone` probe uses it.
         const liveness = await probe.probe();
@@ -442,6 +463,7 @@ const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 // tmux-resolution.ts — shared verbatim with cursor-tmux.ts/gemini-tmux.ts.
 
 export interface CodexLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   runId: string;
   /** codex argv from `buildCommand` — `[bin, "exec", …flags, ("resume" sid)?, "-"]`.
@@ -491,7 +513,7 @@ export async function spawnCodexViaTmux(opts: CodexLaunchOptions): Promise<Spawn
     ...envArgs,
     "--", "sh", "-c", inner,
   ];
-  const res = await spawnTmuxNewSession(tmux, args);
+  const res = await spawnTmuxNewSession(tmux, args, opts.authorize);
 
   const state: CodexSessionState = {
     taskId: opts.taskId,
@@ -526,6 +548,7 @@ export async function spawnCodexViaTmux(opts: CodexLaunchOptions): Promise<Spawn
   const done = startCodexTailer(state);
   return {
     kill: () => killCodexState(state),
+    terminate: () => codexTerminator(state)(),
     // codex exec doesn't accept conversational input mid-turn; follow-ups are
     // delivered as fresh `resume` turns (new run rows) by the orchestrator.
     writeInput: () => false,
@@ -540,25 +563,30 @@ export async function spawnCodexViaTmux(opts: CodexLaunchOptions): Promise<Spawn
  * decides cancelled-vs-failed from its own `handle.cancelled` flag, so the
  * resolution code here is immaterial to the recorded status.
  */
+const codexTerminators = new WeakMap<CodexSessionState, () => Promise<TerminationEvidence>>();
+
+/** One terminator per session: a stop kills the tmux session, escalates, and settles only when the process is gone. */
+function codexTerminator(state: CodexSessionState): () => Promise<TerminationEvidence> {
+  let terminator = codexTerminators.get(state);
+  if (!terminator) {
+    terminator = makeTerminator({
+      sessionName: state.sessionName,
+      begin: () => { state.terminating = true; },
+      settle: () => {
+        setTimeout(() => {
+          flushCodexLog(state);
+          resolveCodexDone(state, state.lastCode ?? 1);
+        }, DEATH_GRACE_MS);
+      },
+    });
+    codexTerminators.set(state, terminator);
+  }
+  return terminator;
+}
+
+/** `kill` is a synchronous `SpawnedAgent` field; the confirmed stop is `terminate`. */
 function killCodexState(state: CodexSessionState): void {
-  // `kill` is a synchronous `SpawnedAgent` field (shared contract in
-  // claude-tmux.ts), so the now-async tmux kill is fired-and-forgotten here
-  // rather than awaited — never left unhandled: a rejection still falls
-  // through to schedule the flush + resolve so the run can't hang.
-  void (async () => {
-    try {
-      await killSessionByName(state.sessionName);
-    } catch {
-      // best-effort — killSessionByName is expected to never throw (its
-      // underlying tmux() swallows spawn errors into an ok:false result),
-      // but this path must never leave the run stuck in `running` even if
-      // that changes.
-    }
-    setTimeout(() => {
-      flushCodexLog(state);
-      resolveCodexDone(state, state.lastCode ?? 1);
-    }, DEATH_GRACE_MS);
-  })();
+  void codexTerminator(state)().catch(() => undefined);
 }
 
 export interface CodexReattachOptions {
@@ -602,6 +630,7 @@ export async function reattachCodexSession(opts: CodexReattachOptions): Promise<
   const done = startCodexTailer(state);
   return {
     kill: () => killCodexState(state),
+    terminate: () => codexTerminator(state)(),
     writeInput: () => false,
     done,
   };

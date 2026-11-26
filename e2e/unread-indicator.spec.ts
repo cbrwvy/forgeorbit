@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2E coverage for the unread-messages corner dot on board `TaskCard`s
@@ -108,7 +108,7 @@ async function openTask(page: Page, title: string) {
  *  card rather than any other `[title="New messages"]` element that might
  *  exist elsewhere in the DOM. */
 function taskCard(page: Page, title: string) {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 function unreadDot(page: Page, title: string) {
@@ -131,7 +131,7 @@ test.describe("unread messages indicator", () => {
     await waitForUnread(request, backend, task.id, true);
 
     // --- (1) board card shows the dot, without opening the task ----------
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const dot = unreadDot(page, title);
     await expect(dot).toBeVisible({ timeout: 10_000 });
     await expect(dot).toHaveAttribute("role", "img");

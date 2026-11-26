@@ -8,6 +8,8 @@ import path from "node:path";
 // from it. Set a temp dir before importing.
 process.env.AGETOR_DATA_DIR = mkdtempSync(path.join(tmpdir(), "agetor-gemini-tmux-"));
 
+process.env.HOME = process.env.AGETOR_DATA_DIR;
+process.env.FORGEORBIT_DATA_DIR = process.env.AGETOR_DATA_DIR;
 const { mapGeminiEvent, geminiLogPath, spawnGeminiViaTmux } = await import("./gemini-tmux.ts");
 import type { RunEventStream } from "../shared/types.ts";
 
@@ -207,8 +209,9 @@ test("spawnGeminiViaTmux's new-session argv pins -x 200 -y 50 and forwards GEMIN
     await spawnGeminiViaTmux({
       taskId,
       runId,
-      argv: ["gemini", "-m", "gemini-3.1-pro-preview", "--output-format", "stream-json", "--yolo", "--skip-trust", "-p", "hello"],
-      env: { GEMINI_CLI_HOME: "/tmp/gemini-home" },
+      promptText: "fixture prompt",
+      argv: ["gemini", "-m", "gemini-3.1-pro-preview", "--output-format", "stream-json", "--yolo", "--skip-trust", "-p", ""],
+      env: { GEMINI_CLI_HOME: process.env.AGETOR_DATA_DIR!, GEMINI_CLI_SYSTEM_SETTINGS_PATH: path.join(process.env.AGETOR_DATA_DIR!, "system.json"), GEMINI_CLI_SYSTEM_DEFAULTS_PATH: path.join(process.env.AGETOR_DATA_DIR!, "defaults.json") },
       cwd: "/tmp",
       onChunk,
     });
@@ -230,17 +233,18 @@ test("spawnGeminiViaTmux's new-session argv pins -x 200 -y 50 and forwards GEMIN
 
     // GEMINI_CLI_HOME forwarded as its own -e flag (harness env), distinct
     // from the separately-forwarded PATH -e.
-    const envIdx = argv.findIndex((a, i) => a === "-e" && argv[i + 1] === "GEMINI_CLI_HOME=/tmp/gemini-home");
+    const envIdx = argv.findIndex((a, i) => a === "-e" && argv[i + 1] === `GEMINI_CLI_HOME=${process.env.AGETOR_DATA_DIR}`);
     expect(envIdx).toBeGreaterThan(-1);
 
-    // The real behavioral delta vs codex: no stdin redirect anywhere in the
-    // inner shell command — gemini's prompt rides in argv (`-p hello` above),
-    // so there's no promptfile to pipe in via `<`.
+    // The shell invokes the fixed stdin supervisor, keeping user bytes off argv.
+    // The private input manifest never becomes a prompt argv token in via `<`.
     const innerIdx = argv.indexOf("sh") !== -1 ? argv.lastIndexOf("-c") : -1;
     expect(innerIdx).toBeGreaterThan(-1);
     const inner = argv[innerIdx + 1]!;
     expect(inner).not.toContain("<");
-    expect(inner).toContain("'-p' 'hello'");
+    expect(inner).not.toContain("fixture prompt");
+    expect(inner).toContain("payload.json");
+    expect(inner).toContain("Bun.spawn");
   } finally {
     if (prevBin === undefined) delete process.env.AGETOR_TMUX_BIN;
     else process.env.AGETOR_TMUX_BIN = prevBin;

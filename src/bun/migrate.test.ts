@@ -1,6 +1,9 @@
 import { test, expect } from "bun:test";
 import { Database } from "bun:sqlite";
-import { migrate, splitSqlStatements, type Migration } from "./migrate.ts";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { migrate, SchemaAheadError, splitSqlStatements, unknownAppliedMigrationIds, type Migration } from "./migrate.ts";
 import reseedBuiltins from "./migrations/024_reseed_harness_builtins.sql" with { type: "text" };
 import retireGemini3ProPreview from "./migrations/049_retire_gemini_3_pro_preview.sql" with { type: "text" };
 import normalizeCursorGrok47 from "./migrations/055_normalize_cursor_grok_4_7.sql" with { type: "text" };
@@ -11,6 +14,13 @@ import normalizeCursorGemini4Argon from "./migrations/064_normalize_cursor_gemin
 import antigravityEffortInModelId from "./migrations/065_antigravity_effort_in_model_id.sql" with { type: "text" };
 import retireGemini37And35Flash from "./migrations/066_retire_gemini_3_7_and_3_5_flash.sql" with { type: "text" };
 import retentionSweptTasks from "./migrations/067_retention_swept_tasks.sql" with { type: "text" };
+import projectInterviewsSql from "./migrations/068_project_interviews.sql" with { type: "text" };
+import environmentProfilesSql from "./migrations/069_environment_profiles.sql" with { type: "text" };
+import projectManagersSql from "./migrations/070_project_managers.sql" with { type: "text" };
+import projectExecutionsSql from "./migrations/071_project_manager_executions.sql" with { type: "text" };
+import taskSchedulingSql from "./migrations/072_task_scheduling.sql" with { type: "text" };
+import executionBatchesSql from "./migrations/073_execution_batches.sql" with { type: "text" };
+import projectEstimationSql from "./migrations/074_project_estimation.sql" with { type: "text" };
 import { migrations } from "./migrations/index.ts";
 
 // Minimal harnesses table matching the shape after 013 + 014 (adds `enabled`).
@@ -1120,11 +1130,300 @@ test("066 (retire gemini 3.7/3.5 Flash) is registered after 065, after 064, afte
   expect(migrations[at - 2]?.sql).toContain("gemini-4-argon");
 });
 
-test("067 (retention swept tasks) is the last registered migration, right after 066", () => {
+test("067 (retention swept tasks) is registered right after 066", () => {
   const at = migrations.findIndex((m) => m.id === "067_retention_swept_tasks");
-  expect(at).toBe(migrations.length - 1);
+  expect(at).toBeGreaterThan(0);
   expect(migrations[at - 1]?.id).toBe("066_retire_gemini_3_7_and_3_5_flash");
   expect(migrations[at]?.sql).toBe(retentionSweptTasks);
+});
+
+test("068 (project interviews) is registered right after 067", () => {
+  const at = migrations.findIndex((m) => m.id === "068_project_interviews");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("067_retention_swept_tasks");
+  expect(migrations[at]?.sql).toBe(projectInterviewsSql);
+});
+
+test("069 (environment profiles) is registered right after 068", () => {
+  const at = migrations.findIndex((m) => m.id === "069_environment_profiles");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("068_project_interviews");
+  expect(migrations[at]?.sql).toBe(environmentProfilesSql);
+});
+
+test("070 (project managers) is registered right after 069", () => {
+  const at = migrations.findIndex((m) => m.id === "070_project_managers");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("069_environment_profiles");
+  expect(migrations[at]?.sql).toBe(projectManagersSql);
+});
+
+test("071 (manager executions) is registered right after 070", () => {
+  const at = migrations.findIndex((m) => m.id === "071_project_manager_executions");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("070_project_managers");
+  expect(migrations[at]?.sql).toBe(projectExecutionsSql);
+});
+
+test("072 (task scheduling) is registered right after 071", () => {
+  const at = migrations.findIndex((m) => m.id === "072_task_scheduling");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("071_project_manager_executions");
+  expect(migrations[at]?.sql).toBe(taskSchedulingSql);
+});
+
+test("073 (execution batches) is registered right after 072", () => {
+  const at = migrations.findIndex((m) => m.id === "073_execution_batches");
+  expect(at).toBeGreaterThan(0);
+  expect(migrations[at - 1]?.id).toBe("072_task_scheduling");
+  expect(migrations[at]?.sql).toBe(executionBatchesSql);
+});
+
+test("072: dependencies and priorities cascade with their tasks and refuse self-links", () => {
+  const db = new Database(":memory:");
+  db.exec("PRAGMA foreign_keys = ON;");
+  db.exec("CREATE TABLE tasks (id TEXT PRIMARY KEY);");
+  db.exec(taskSchedulingSql);
+  db.exec("INSERT INTO tasks (id) VALUES ('a'), ('b'), ('c');");
+  db.exec("INSERT INTO task_dependencies (task_id, depends_on_id, created_at) VALUES ('a', 'b', 1), ('c', 'a', 1);");
+  db.exec("INSERT INTO task_priorities (task_id, priority, updated_at) VALUES ('a', 'critical', 1);");
+  expect(() => db.exec("INSERT INTO task_dependencies (task_id, depends_on_id, created_at) VALUES ('b', 'b', 1);")).toThrow();
+  expect(() => db.exec("INSERT INTO task_priorities (task_id, priority, updated_at) VALUES ('b', 'urgent', 1);")).toThrow();
+  expect(() => db.exec("INSERT INTO task_dependencies (task_id, depends_on_id, created_at) VALUES ('a', 'ghost', 1);")).toThrow();
+  db.exec("DELETE FROM tasks WHERE id = 'a';");
+  expect(db.query("SELECT COUNT(*) AS n FROM task_dependencies").get()).toEqual({ n: 0 });
+  expect(db.query("SELECT COUNT(*) AS n FROM task_priorities").get()).toEqual({ n: 0 });
+  db.close();
+});
+
+test("071 allows one open execution per task and any number of settled ones", () => {
+  const db = new Database(":memory:");
+  db.exec(projectExecutionsSql);
+  const insert = (id: string, status: string) => db.run(
+    `INSERT INTO project_manager_executions (id, project_path, task_id, status, data, created_at, updated_at) VALUES (?, '/p', 't1', ?, '{}', 1, 1)`,
+    [id, status],
+  );
+  insert("e1", "started");
+  insert("e2", "dismissed");
+  insert("e3", "proposed");
+  expect(() => insert("e4", "proposed")).toThrow();
+  expect(() => insert("e5", "starting")).toThrow();
+  db.run(`UPDATE project_manager_executions SET status = 'started' WHERE id = 'e3'`);
+  insert("e6", "proposed");
+  expect(db.query("SELECT COUNT(*) AS n FROM project_manager_executions").get()).toEqual({ n: 4 });
+});
+
+test("074 (project estimation) follows 073, with only its own legacy alias", () => {
+  // 075 (portfolio manager) is what moved "last" off 074.
+  const at = migrations.findIndex((m) => m.id === "074_project_estimation");
+  expect(migrations[at + 1]?.id).toBe("075_portfolio_manager");
+  expect(migrations[at - 1]?.id).toBe("073_execution_batches");
+  expect(migrations[at]?.aliases).toEqual(["071_project_estimation"]);
+  expect(migrations[at]?.sql).toBe(projectEstimationSql);
+  // No other migration carries an alias into the 071-074 range.
+  for (const m of migrations) {
+    if (m.id === "074_project_estimation") continue;
+    for (const alias of m.aliases ?? []) expect(alias).not.toMatch(/^07[1-4]_/);
+  }
+});
+
+test("075 (portfolio manager) follows 074 and lets a delegation be claimed only once", () => {
+  const position = migrations.findIndex(m => m.id === "075_portfolio_manager");
+  expect(migrations[position - 1]?.id).toBe("074_project_estimation");
+  expect(migrations[position]?.aliases).toBeUndefined();
+  const db = new Database(":memory:");
+  migrate(db, migrations.slice(0, position + 1));
+  const tables = db.query<{ name: string }, []>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'portfolio_manager%' ORDER BY name`,
+  ).all().map((row) => row.name);
+  expect(tables).toEqual([
+    "portfolio_manager",
+    "portfolio_manager_decisions",
+    "portfolio_manager_delegations",
+    "portfolio_manager_messages",
+    "portfolio_manager_plans",
+  ]);
+  db.run(`INSERT INTO portfolio_manager_delegations (id, project_path, message_id, status, data, created_at, updated_at) VALUES ('d', '/p', 'm', 'proposed', '{}', 1, 1)`);
+  const claim = () => db.run(`UPDATE portfolio_manager_delegations SET status = 'sending' WHERE id = 'd' AND status IN ('proposed', 'failed')`).changes;
+  expect(claim()).toBe(1);
+  expect(claim()).toBe(0);
+  db.close();
+});
+
+test("migration ids and aliases are unique", () => {
+  const seen = new Set<string>();
+  for (const m of migrations) {
+    for (const key of [m.id, ...(m.aliases ?? [])]) {
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+  }
+});
+
+const MANAGER_TABLES = [
+  "project_estimation",
+  "project_execution_batch_events",
+  "project_execution_batches",
+  "project_manager_executions",
+  "task_dependencies",
+  "task_priorities",
+];
+
+function managerTables(db: Database): string[] {
+  const placeholders = MANAGER_TABLES.map(() => "?").join(", ");
+  return db.query<{ name: string }, string[]>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (${placeholders}) ORDER BY name`,
+  ).all(...MANAGER_TABLES).map((row) => row.name);
+}
+
+function recordedIds(db: Database): string[] {
+  return db.query<{ id: string }, []>(`SELECT id FROM _migrations`).all().map((row) => row.id);
+}
+
+const through = (id: string) => migrations.slice(0, migrations.findIndex((m) => m.id === id) + 1);
+const throughManagers = through("070_project_managers");
+const estimation = migrations.find((m) => m.id === "074_project_estimation")!;
+
+test("a clean database runs 070-076 in canonical order, and a restart is a no-op", () => {
+  const db = new Database(":memory:");
+  const ran = migrate(db, migrations);
+  expect(ran.slice(ran.indexOf("070_project_managers"), ran.indexOf("085_employee_execution_attribution") + 1)).toEqual([
+    "070_project_managers",
+    "071_project_manager_executions",
+    "072_task_scheduling",
+    "073_execution_batches",
+    "074_project_estimation",
+    "075_portfolio_manager",
+    "076_account_quota_core",
+    "077_cluster_registry",
+    "078_knowledge_documents",
+    "079_ai_employees",
+    "080_infrastructure_inventory",
+    "081_employee_task_assignments",
+    "082_knowledge_context",
+    "084_organization_assignment_proposals", "085_employee_execution_attribution",
+  ]);
+  expect(ran).not.toContain("071_project_estimation");
+  expect(managerTables(db)).toEqual(MANAGER_TABLES);
+  expect(migrate(db, migrations)).toEqual([]);
+  db.close();
+});
+
+test("a database at 070-071 gains 072 through 076 and keeps its rows", () => {
+  const db = new Database(":memory:");
+  expect(migrate(db, through("071_project_manager_executions")).at(-1)).toBe("071_project_manager_executions");
+  db.run(
+    `INSERT INTO project_manager_executions (id, project_path, task_id, status, data, created_at, updated_at) VALUES ('e1', '/p', 't1', 'started', '{}', 1, 1)`,
+  );
+  expect(migrate(db, migrations)).toEqual(["072_task_scheduling", "073_execution_batches", "074_project_estimation", "075_portfolio_manager", "076_account_quota_core", "077_cluster_registry", "078_knowledge_documents", "079_ai_employees", "080_infrastructure_inventory", "081_employee_task_assignments", "082_knowledge_context", "084_organization_assignment_proposals", "085_employee_execution_attribution", "086_head_portfolio_binding", "087_employee_professional_profiles", "088_employee_hiring_proposals", "088a_legacy_hiring_compatibility", "089_hiring_proposal_dedup", "090_professional_runtime", "091_professional_execution_turns", "092_company_activity_journal", "093_task_dependency_tombstones", "094_task_plan_queues", "095_task_queue_progression"]);
+  expect(db.query("SELECT id FROM project_manager_executions").get()).toEqual({ id: "e1" });
+  expect(managerTables(db)).toEqual(MANAGER_TABLES);
+  expect(migrate(db, migrations)).toEqual([]);
+  db.close();
+});
+
+test("a database with the legacy 071_project_estimation id is backfilled to 074, not migrated again", () => {
+  // The estimation branch's dogfood build: 001-070 plus the old id.
+  const db = new Database(":memory:");
+  migrate(db, throughManagers);
+  db.exec(projectEstimationSql);
+  db.run(`INSERT INTO _migrations (id, applied_at) VALUES ('071_project_estimation', 1)`);
+  db.run(
+    `INSERT INTO project_estimation (project_path, settings, backlog_fingerprint, updated_at) VALUES ('/tmp/kept', '{}', 'v1:0:0', 1)`,
+  );
+  // The legacy id is not the manager-executions migration: 071 still runs.
+  expect(migrate(db, migrations)).toEqual([
+    "071_project_manager_executions",
+    "072_task_scheduling",
+    "073_execution_batches",
+    "075_portfolio_manager",
+    "076_account_quota_core", "077_cluster_registry", "078_knowledge_documents", "079_ai_employees", "080_infrastructure_inventory", "081_employee_task_assignments", "082_knowledge_context", "084_organization_assignment_proposals", "085_employee_execution_attribution", "086_head_portfolio_binding", "087_employee_professional_profiles", "088_employee_hiring_proposals", "088a_legacy_hiring_compatibility", "089_hiring_proposal_dedup", "090_professional_runtime", "091_professional_execution_turns", "092_company_activity_journal", "093_task_dependency_tombstones", "094_task_plan_queues", "095_task_queue_progression",
+  ]);
+  expect(db.query("SELECT project_path AS path FROM project_estimation").get()).toEqual({ path: "/tmp/kept" });
+  const recorded = recordedIds(db);
+  expect(recorded).toContain("074_project_estimation");
+  expect(recorded).toContain("071_project_estimation");
+  expect(managerTables(db)).toEqual(MANAGER_TABLES);
+  expect(migrate(db, migrations)).toEqual([]);
+
+  // Main's build first (071 executions), then the old estimation build.
+  const both = new Database(":memory:");
+  migrate(both, through("071_project_manager_executions"));
+  both.exec(projectEstimationSql);
+  both.run(`INSERT INTO _migrations (id, applied_at) VALUES ('071_project_estimation', 1)`);
+  expect(migrate(both, migrations)).toEqual(["072_task_scheduling", "073_execution_batches", "075_portfolio_manager", "076_account_quota_core", "077_cluster_registry", "078_knowledge_documents", "079_ai_employees", "080_infrastructure_inventory", "081_employee_task_assignments", "082_knowledge_context", "084_organization_assignment_proposals", "085_employee_execution_attribution", "086_head_portfolio_binding", "087_employee_professional_profiles", "088_employee_hiring_proposals", "088a_legacy_hiring_compatibility", "089_hiring_proposal_dedup", "090_professional_runtime", "091_professional_execution_turns", "092_company_activity_journal", "093_task_dependency_tombstones", "094_task_plan_queues", "095_task_queue_progression"]);
+  expect(managerTables(both)).toEqual(MANAGER_TABLES);
+  db.close();
+  both.close();
+});
+
+test("a database that already applied 074 still gets 071-073 inserted ahead of it", () => {
+  // The renumbered estimation branch alone: 001-070 plus 074.
+  const db = new Database(":memory:");
+  expect(migrate(db, [...throughManagers, estimation]).at(-1)).toBe("074_project_estimation");
+  db.run(
+    `INSERT INTO project_estimation (project_path, settings, backlog_fingerprint, updated_at) VALUES ('/tmp/proj', '{}', 'v1:0:0', 1)`,
+  );
+  expect(migrate(db, migrations)).toEqual([
+    "071_project_manager_executions",
+    "072_task_scheduling",
+    "073_execution_batches",
+    "075_portfolio_manager",
+    "076_account_quota_core", "077_cluster_registry", "078_knowledge_documents", "079_ai_employees", "080_infrastructure_inventory", "081_employee_task_assignments", "082_knowledge_context", "084_organization_assignment_proposals", "085_employee_execution_attribution", "086_head_portfolio_binding", "087_employee_professional_profiles", "088_employee_hiring_proposals", "088a_legacy_hiring_compatibility", "089_hiring_proposal_dedup", "090_professional_runtime", "091_professional_execution_turns", "092_company_activity_journal", "093_task_dependency_tombstones", "094_task_plan_queues", "095_task_queue_progression",
+  ]);
+  expect(db.query("SELECT project_path AS path FROM project_estimation").get()).toEqual({ path: "/tmp/proj" });
+  expect(managerTables(db)).toEqual(MANAGER_TABLES);
+  expect(migrate(db, migrations)).toEqual([]);
+
+  // Main's build (071) followed by the renumbered estimation build (074).
+  const mixed = new Database(":memory:");
+  migrate(mixed, [...through("071_project_manager_executions"), estimation]);
+  expect(migrate(mixed, migrations)).toEqual(["072_task_scheduling", "073_execution_batches", "075_portfolio_manager", "076_account_quota_core", "077_cluster_registry", "078_knowledge_documents", "079_ai_employees", "080_infrastructure_inventory", "081_employee_task_assignments", "082_knowledge_context", "084_organization_assignment_proposals", "085_employee_execution_attribution", "086_head_portfolio_binding", "087_employee_professional_profiles", "088_employee_hiring_proposals", "088a_legacy_hiring_compatibility", "089_hiring_proposal_dedup", "090_professional_runtime", "091_professional_execution_turns", "092_company_activity_journal", "093_task_dependency_tombstones", "094_task_plan_queues", "095_task_queue_progression"]);
+  expect(migrate(mixed, migrations)).toEqual([]);
+  db.close();
+  mixed.close();
+});
+
+test("070 creates the manager tables, scoped by project path, without touching projects", () => {
+  const db = new Database(":memory:");
+  db.exec(`CREATE TABLE projects (path TEXT PRIMARY KEY, name TEXT NOT NULL, added_at INTEGER NOT NULL);`);
+  db.exec(`INSERT INTO projects (path, name, added_at) VALUES ('/tmp/proj', 'Proj', 1)`);
+  db.exec(projectManagersSql);
+  expect(db.query("SELECT name FROM projects").get()).toEqual({ name: "Proj" });
+  const tables = db.query<{ name: string }, []>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'project_manager%' ORDER BY name`,
+  ).all().map((row) => row.name);
+  expect(tables).toEqual(["project_manager_decisions", "project_manager_messages", "project_manager_proposals", "project_managers"]);
+  db.run(`INSERT INTO project_managers (project_path, config, updated_at) VALUES ('/tmp/proj', '{}', 1)`);
+  expect(() => db.run(`INSERT INTO project_managers (project_path, config, updated_at) VALUES ('/tmp/proj', '{}', 2)`)).toThrow();
+});
+
+test("069 creates environment_profiles without touching an existing projects table", () => {
+  const db = new Database(":memory:");
+  db.exec(`CREATE TABLE projects (path TEXT PRIMARY KEY, name TEXT NOT NULL, added_at INTEGER NOT NULL);`);
+  db.exec(`INSERT INTO projects (path, name, added_at) VALUES ('/tmp/proj', 'Proj', 1)`);
+  db.exec(environmentProfilesSql);
+  expect(db.query("SELECT name FROM projects").get()).toEqual({ name: "Proj" });
+  db.run(
+    `INSERT INTO environment_profiles (id, project_path, data, updated_at) VALUES ('p1', '/tmp/proj', '{}', 1)`,
+  );
+  expect(() =>
+    db.run(
+      `INSERT INTO environment_profiles (id, project_path, data, updated_at) VALUES ('p1', '/tmp/proj', '{}', 2)`,
+    ),
+  ).toThrow();
+  const indexed = db.query<{ name: string }, []>(
+    `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'environment_profiles'`,
+  ).all();
+  expect(indexed.map((row) => row.name)).toContain("environment_profiles_project_path");
+});
+
+test("068 creates project_interviews keyed by project path", () => {
+  const db = new Database(":memory:");
+  db.exec(projectInterviewsSql);
+  db.run("INSERT INTO project_interviews (project_path, data, updated_at) VALUES ('/p', '{}', 1)");
+  expect(() => db.run("INSERT INTO project_interviews (project_path, data, updated_at) VALUES ('/p', '{}', 2)")).toThrow();
+  expect(db.query("SELECT COUNT(*) AS n FROM project_interviews").get()).toEqual({ n: 1 });
 });
 
 test("067 creates retention_swept_tasks (cascading on task delete) and drops the old retention:sweptTasks preference only", () => {
@@ -1188,4 +1487,76 @@ test("the Gemini 4 Argon migrations were renumbered 063-065 -> 064-066 when main
   expect(ran).toEqual(["063_task_checkout_branch"]);
   const ids = db.query<{ id: string }, []>(`SELECT id FROM _migrations`).all().map((r) => r.id);
   for (const [id] of renumbered) expect(ids).toContain(id);
+});
+
+test("a historical alias is not treated as a newer schema", () => {
+  const db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE _migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);
+    INSERT INTO _migrations (id, applied_at) VALUES ('025_cursor_session_id', 1);
+  `);
+  expect(unknownAppliedMigrationIds(db, migrations)).not.toContain("025_cursor_session_id");
+  db.close();
+});
+
+test("refuses a newer schema without rewriting the database", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fo-schema-ahead-"));
+  const file = join(dir, "agetor.sqlite");
+  try {
+    const created = new Database(file);
+    migrate(created, [
+      { id: "001_init", sql: "CREATE TABLE kept (id INTEGER PRIMARY KEY);" },
+      { id: "002_add", sql: "CREATE TABLE later (id INTEGER PRIMARY KEY);" },
+    ]);
+    created.run("INSERT INTO kept (id) VALUES (7)");
+    created.run("INSERT INTO _migrations (id, applied_at) VALUES ('003_future_not_in_this_build', 1)");
+    created.close();
+    const before = readFileSync(file);
+    const olderBundle: Migration[] = [
+      { id: "001_init", sql: "DROP TABLE kept;" },
+    ];
+    const opened = new Database(file);
+    let thrown: unknown;
+    try {
+      migrate(opened, olderBundle);
+    } catch (error) {
+      thrown = error;
+    }
+    opened.close();
+    expect(thrown).toBeInstanceOf(SchemaAheadError);
+    expect((thrown as SchemaAheadError).code).toBe("SCHEMA_AHEAD");
+    expect((thrown as SchemaAheadError).unknownIds).toEqual(["002_add", "003_future_not_in_this_build"]);
+    expect(readFileSync(file)).toEqual(before);
+    const check = new Database(file, { readonly: true });
+    expect(check.query("SELECT id FROM kept").get()).toEqual({ id: 7 });
+    expect(check.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'later'").get()).toEqual({ name: "later" });
+    expect(check.query<{ id: string }, []>("SELECT id FROM _migrations ORDER BY id").all().map((row) => row.id)).toEqual([
+      "001_init",
+      "002_add",
+      "003_future_not_in_this_build",
+    ]);
+    check.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the current registry refuses one unknown future migration and still upgrades an older profile", () => {
+  const ahead = new Database(":memory:");
+  migrate(ahead, migrations);
+  ahead.run("INSERT INTO _migrations (id, applied_at) VALUES ('146_not_in_this_build', 1)");
+  const recorded = ahead.query<{ id: string }, []>("SELECT id FROM _migrations ORDER BY id").all().map((row) => row.id);
+  expect(() => migrate(ahead, migrations)).toThrow(SchemaAheadError);
+  expect(ahead.query<{ id: string }, []>("SELECT id FROM _migrations ORDER BY id").all().map((row) => row.id)).toEqual(recorded);
+  ahead.close();
+
+  const older = new Database(":memory:");
+  const cut = migrations.findIndex((migration) => migration.id === "142_run_terminations");
+  expect(cut).toBeGreaterThan(0);
+  expect(migrate(older, migrations.slice(0, cut + 1)).at(-1)).toBe("142_run_terminations");
+  const pending = migrate(older, migrations);
+  expect(pending[0]).toBe("143_router_issued_plans");
+  expect(pending.at(-1)).toBe(migrations.at(-1)!.id);
+  expect(unknownAppliedMigrationIds(older, migrations)).toEqual([]);
+  older.close();
 });

@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import {
   useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -72,11 +74,12 @@ function paneLabel(side: Side): { text: string; cls: string } {
 }
 
 function emptySideCopy(side: Side, status: BinaryPreviewFileStatus): string {
-  if (side === "old") return status === "added" ? "Added — no previous version" : "No previous version";
-  return status === "deleted" ? "Deleted — no new version" : "No new version";
+  if (side === "old") return status === "added" ? tr("common.added_no_previous_version") : tr("common.no_previous_version");
+  return status === "deleted" ? tr("common.deleted_no_new_version") : tr("common.no_new_version");
 }
 
 function Pane({ side, status, children }: { side: Side; status: BinaryPreviewFileStatus; children: React.ReactNode }) {
+  useUILocale();
   const label = paneLabel(side);
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -94,6 +97,7 @@ function Pane({ side, status, children }: { side: Side; status: BinaryPreviewFil
 }
 
 function EmptyPane({ side, status }: { side: Side; status: BinaryPreviewFileStatus }) {
+  useUILocale();
   return (
     <div className="flex h-56 items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/20 p-2 text-center text-[11px] italic text-muted-foreground">
       {emptySideCopy(side, status)}
@@ -111,12 +115,13 @@ const MAX_BLOB_PREVIEW_MB = Math.round(MAX_BLOB_PREVIEW_BYTES / 1_000_000);
 type ImageErrorKind = "too-large" | "missing" | "generic";
 
 const IMAGE_ERROR_COPY: Record<ImageErrorKind, string> = {
-  "too-large": `Too large to preview — ${MAX_BLOB_PREVIEW_MB} MB limit`,
-  "missing": "Not present on this side",
-  "generic": "Couldn't load image",
+  get "too-large"() { return tr("common.too_large_to_preview_mb_limit", { p0: String(MAX_BLOB_PREVIEW_MB) }); },
+  get "missing"() { return tr("common.not_present_on_this_side"); },
+  get "generic"() { return tr("common.couldn_t_load_image"); },
 };
 
 function ImagePane({ side, status, url, fileName }: { side: Side; status: BinaryPreviewFileStatus; url: string | null; fileName?: string }) {
+  useUILocale();
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [errorKind, setErrorKind] = useState<ImageErrorKind | null>(null);
 
@@ -159,7 +164,7 @@ function ImagePane({ side, status, url, fileName }: { side: Side; status: Binary
       >
         <img
           src={url}
-          alt={`${label} version of ${fileName ?? "file"}`}
+          alt={tr("common.version_of", { p0: String(label), p1: String(fileName ?? "file") })}
           loading="lazy"
           decoding="async"
           className="max-h-full max-w-full object-contain"
@@ -168,7 +173,7 @@ function ImagePane({ side, status, url, fileName }: { side: Side; status: Binary
         />
       </div>
       <span className="text-center font-mono text-[11px] tabular-nums text-muted-foreground">
-        {dims ? `${dims.w} × ${dims.h} px` : " "}
+        {dims ? tr("common.px", { p0: String(dims.w), p1: String(dims.h) }) : " "}
       </span>
     </div>
   );
@@ -295,9 +300,9 @@ function useVisibleOnce<T extends HTMLElement>(): [(el: T | null) => void, boole
 }
 
 const PDF_ERROR_COPY: Record<"too-large" | "missing" | "generic", string> = {
-  "too-large": `Too large to preview — ${MAX_BLOB_PREVIEW_MB} MB limit`,
-  "missing": "File not found",
-  "generic": "Couldn't load PDF",
+  get "too-large"() { return tr("common.too_large_to_preview_mb_limit", { p0: String(MAX_BLOB_PREVIEW_MB) }); },
+  get "missing"() { return tr("common.file_not_found"); },
+  get "generic"() { return tr("common.couldn_t_load_pdf"); },
 };
 
 function PdfPane({
@@ -310,6 +315,7 @@ function PdfPane({
   width: number;
   containerRef: (el: HTMLDivElement | null) => void;
 }) {
+  useUILocale();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Render failures distinct from a document-level load error (state.error)
   // — a corrupt page on an otherwise-valid doc, surfaced instead of the
@@ -358,8 +364,7 @@ function PdfPane({
 
   if (page > state.numPages) {
     return (
-      <div ref={containerRef} className="flex h-40 items-center justify-center rounded-md border border-border/60 bg-muted/20 p-2 text-center text-[11px] italic text-muted-foreground">
-        No page {page}
+      <div ref={containerRef} className="flex h-40 items-center justify-center rounded-md border border-border/60 bg-muted/20 p-2 text-center text-[11px] italic text-muted-foreground"><I18nText id="tasks.no_page" />{" "}{page}
       </div>
     );
   }
@@ -368,7 +373,7 @@ function PdfPane({
     return (
       <div ref={containerRef} className="flex h-40 flex-col items-center justify-center gap-1.5 rounded-md border border-border/60 bg-muted/20 p-2 text-center">
         <AlertTriangle className="size-4 shrink-0 text-muted-foreground" />
-        <span className="text-[11px] italic text-muted-foreground">Couldn't render page {page}</span>
+        <span className="text-[11px] italic text-muted-foreground"><I18nText id="tasks.couldn_t_render_page" />{" "}{page}</span>
       </div>
     );
   }
@@ -383,6 +388,7 @@ function PdfPane({
 /* ------------------------------ Component -------------------------------- */
 
 export function BinaryFilePreview({ kind, status, oldUrl, newUrl, fetchBytes, fileName }: BinaryFilePreviewProps) {
+  useUILocale();
   const doFetch = fetchBytes ?? api.fetchBlobBytes;
   const [page, setPage] = useState(1);
 
@@ -449,12 +455,11 @@ export function BinaryFilePreview({ kind, status, oldUrl, newUrl, fetchBytes, fi
             disabled={page <= 1}
             onMouseDown={stopMouseDown}
             onClick={goPrev}
-            aria-label="Previous page"
+            aria-label={tr("tasks.previous_page")}
           >
             <ChevronLeft className="size-3.5" />
           </Button>
-          <span className="min-w-[5.5rem] text-center font-mono text-[11px] tabular-nums text-muted-foreground">
-            Page {page} / {totalPages}
+          <span className="min-w-[5.5rem] text-center font-mono text-[11px] tabular-nums text-muted-foreground"><I18nText id="common.page" />{" "}{page} / {totalPages}
           </span>
           <Button
             type="button"
@@ -464,7 +469,7 @@ export function BinaryFilePreview({ kind, status, oldUrl, newUrl, fetchBytes, fi
             disabled={page >= totalPages}
             onMouseDown={stopMouseDown}
             onClick={goNext}
-            aria-label="Next page"
+            aria-label={tr("tasks.next_page")}
           >
             <ChevronRight className="size-3.5" />
           </Button>

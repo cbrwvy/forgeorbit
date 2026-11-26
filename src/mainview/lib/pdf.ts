@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 /**
  * Lazy pdf.js loader for binary-diff PDF previews.
  *
@@ -90,7 +91,7 @@ export async function loadPdfDocument(data: ArrayBuffer): Promise<PdfDoc> {
       let renderTask: { cancel(): void } | null = null;
 
       function cancelledError(): Error {
-        const e = new Error(`Rendering cancelled, page ${pageNo}`);
+        const e = new Error(tr("common.rendering_cancelled_page", { p0: String(pageNo) }));
         e.name = RENDERING_CANCELLED_NAME;
         return e;
       }
@@ -104,7 +105,7 @@ export async function loadPdfDocument(data: ArrayBuffer): Promise<PdfDoc> {
         const cssScale = maxWidth / unscaled.width;
         const viewport = page.getViewport({ scale: cssScale * dpr });
 
-        if (!canvas.getContext("2d")) throw new Error("Canvas 2D context unavailable");
+        if (!canvas.getContext("2d")) throw new Error(tr("common.canvas_2d_context_unavailable"));
 
         // Mutating the canvas is gated behind this second cancellation
         // check (cancel() can fire during the `getPage` await above, before

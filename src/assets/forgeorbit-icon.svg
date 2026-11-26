@@ -96,10 +96,10 @@
     <circle cx="804" cy="580" r="12" fill="#DDD6FE" stroke="#8B5CF6" stroke-width="3.5" />
   </g>
 
-  <!-- Central Orchestrator Node (Lunarian Forge Core) -->
+  <!-- Central orchestrator node -->
   <circle cx="512" cy="512" r="138" fill="url(#core-halo)" />
   <circle cx="512" cy="512" r="88" fill="url(#core-grad)" />
-  <!-- Lunar crescent shadow carve inside the core for Lunarian Forge signature -->
+  <!-- Crescent shadow inside the core -->
   <path d="M 542 440 A 72 72 0 1 0 542 584 A 58 64 0 1 1 542 440 Z" fill="#1E1B4B" fill-opacity="0.28" />
   <!-- Crisp core specular highlight -->
   <circle cx="486" cy="484" r="22" fill="#FFFFFF" fill-opacity="0.45" />

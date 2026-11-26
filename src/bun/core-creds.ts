@@ -1,5 +1,7 @@
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveActiveDataDir } from "./profile-activation-state.ts";
+export { resolveDataDir } from "./data-dir.ts";
+export { resolveActiveDataDir } from "./profile-activation-state.ts";
 import {
   readFileSync,
   writeFileSync,
@@ -7,6 +9,7 @@ import {
   unlinkSync,
   chmodSync,
 } from "node:fs";
+import { ProfileActivationError } from "./profile-activation-errors.ts";
 
 /**
  * The "core credentials" file is how an out-of-process client (the `agetor`
@@ -39,17 +42,7 @@ export interface CoreCreds {
 
 export const CORE_CREDS_FILENAME = "agetor-core.json";
 
-/**
- * Resolve the data dir the same way `db.ts` does, but lazily (at call time)
- * and without importing `db.ts`. Reading `AGETOR_DATA_DIR` at call time keeps
- * us in agreement with `db.ts` even under the test auto-allocate path (which
- * sets the env var before any creds call runs).
- */
-export function resolveDataDir(): string {
-  return process.env.FORGEORBIT_DATA_DIR ?? process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
-}
-
-export function coreCredsPath(dataDir: string = resolveDataDir()): string {
+export function coreCredsPath(dataDir: string = resolveActiveDataDir()): string {
   return path.join(dataDir, CORE_CREDS_FILENAME);
 }
 
@@ -72,11 +65,21 @@ export function writeCoreCreds(creds: CoreCreds, dataDir?: string): void {
 }
 
 export function readCoreCreds(dataDir?: string): CoreCreds | null {
+  let file: string;
+  try {
+    file = coreCredsPath(dataDir);
+  } catch (err) {
+    if (err instanceof ProfileActivationError) throw err;
+    throw err;
+  }
   let raw: string;
   try {
-    raw = readFileSync(coreCredsPath(dataDir), "utf8");
-  } catch {
-    return null; // missing file → no core
+    raw = readFileSync(file, "utf8");
+  } catch (err) {
+    if (err instanceof ProfileActivationError) throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return null;
+    throw err;
   }
   try {
     const v = JSON.parse(raw) as Partial<CoreCreds>;
@@ -119,6 +122,23 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
+export async function fetchCoreProfileIdentity(
+  creds: CoreCreds,
+  timeoutMs = 800,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${creds.port}/info`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { profileIdentity?: unknown } | null;
+    return typeof body?.profileIdentity === "string" ? body.profileIdentity : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Verify a discovered core is actually live and ours: the pid is alive, `/health`
  * self-identifies as agetor (guards against another service grabbing the port,
@@ -128,6 +148,7 @@ export function isPidAlive(pid: number): boolean {
 export async function probeLiveCore(
   creds: CoreCreds,
   timeoutMs = 800,
+  options?: { expectedProfileIdentity?: string },
 ): Promise<boolean> {
   if (!isPidAlive(creds.pid)) return false;
   const base = `http://127.0.0.1:${creds.port}`;
@@ -145,7 +166,12 @@ export async function probeLiveCore(
       headers: { Authorization: `Bearer ${creds.token}` },
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return info.ok; // 200 → token valid; 401 → stale
+    if (!info.ok) return false;
+    if (options?.expectedProfileIdentity) {
+      const body = (await info.json().catch(() => null)) as { profileIdentity?: unknown } | null;
+      if (body?.profileIdentity !== options.expectedProfileIdentity) return false;
+    }
+    return true;
   } catch {
     return false; // connection refused / timeout / DNS → not live
   }

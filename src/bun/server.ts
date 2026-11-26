@@ -1,11 +1,97 @@
+import { providerRefusalsForRuns } from "./provider-refusals.ts";
+import { normalizeAccessMode } from "../shared/execution/access-mode.ts";
+import { diagnoseDraftLaunch, diagnoseTaskLaunch } from "./launch-diagnostics.ts";
+import { runTerminations } from "./run-terminations.ts";
+import { getHeadAuto, prepareHeadAuto, authorizeHeadAuto, actHeadAuto, initHeadAuto } from "./head-pm-auto.ts";
+import { requiresProfessionalInputReview } from "./professional-input-policy.ts";
+import { headPortfolioBindingHttp } from "./head-portfolio-binding-http.ts";
+import { CodexSource } from "./codex-source.ts";
+import { CodexEvidenceCollector } from "./codex-evidence.ts";
+import { modelRouterHttp } from "./model-router-http.ts";
+import { usageAnalyticsHttp } from "./usage-analytics/http.ts";
+import { routerV2Http } from "./router-v2/router-v2-http.ts";
+import { orchestrationHttp } from "./orchestration/mission-http.ts";
+import { autonomyHttp } from "./autonomy/http.ts";
+import { ownerTrustHttp } from "./owner-trust/http.ts";
+import { selfImprovementHttp } from "./self-improve/http.ts";
+import { missionScheduler } from "./orchestration/mission-scheduler.ts";
+import { allocationPlanHttp } from "./allocation-http.ts";
+import { TrustedQuotaRefresh } from "./trusted-quota.ts";
+import { cursorOrganizationQuota, type CursorOrganizationAccess } from "./cursor-org-quota.ts";
+import { db as accountCoreDb } from "./db.ts";
+import { readOwnerActions } from "./owner-actions.ts";
+import {
+  allProjectQueuesView,
+  cancelHandsoffRun,
+  HandsoffError,
+  handsoffView,
+  projectQueueView,
+  resumeRun as resumeHandsoffRun,
+  retryRun as retryHandsoffRun,
+  submitTask as submitHandsoffTask,
+} from "./handsoff/driver.ts";
+import { notifySmartQueueChanged } from "./handsoff/queue-events.ts";
+import { ownerProjectOf } from "./project-ownership.ts";
+import { readHandsoffPolicy, saveHandsoffPolicy } from "./handsoff/policy.ts";
+import { authorizationView, authorizeProject, revokeProjectAuthorization } from "./handsoff/authorization.ts";
+import { handsoffStore } from "./handsoff/store.ts";
+import { RecurringError } from "./recurring/errors.ts";
+import { recurringStore } from "./recurring/store.ts";
+import {
+  convertTaskToRecurringTemplate,
+  createRecurringTemplate,
+  pauseRecurringTemplate,
+  reconcileDueRecurringTasks,
+  resumeRecurringTemplate,
+  stopRecurringTemplate,
+  triggerManualOccurrence,
+  updateRecurringTemplate,
+} from "./recurring/scheduler.ts";
+import {
+  addAllowRule,
+  approveOnce,
+  cancelRequest as cancelPermissionRequest,
+  denyRequest as denyPermissionRequest,
+  ProjectPermissionError,
+  previewProjectTest,
+  readProjectPermissions,
+  readProjectTestEvidence,
+  requestProjectTest,
+  revokeRule as revokePermissionRule,
+  setProjectDefault,
+  setProjectWorkspaceDevelopment,
+} from "./project-permissions.ts";
+import { AccountCore } from "./account-core.ts";
+import { LegacyUsageBridge } from "./account-usage-bridge.ts";
+import { accountHttp } from "./account-http.ts";
+import { clusterHttp } from "./cluster-http.ts";
+import { employeeHttp } from "./employee-http.ts";
+import { assignmentHttp } from "./assignment-http.ts";
+import { assignmentProposalHttp } from "./assignment-proposal-http.ts";
+import { employeeExecutionHttp } from "./employee-execution-http.ts";
+import { saveTaskComputerScope, taskComputerScreenshot, taskComputerView } from "./task-computer-workflow.ts";
+import { taskWorkspaceHttp } from "./task-workspace-http.ts";
+import { knowledgeHttp } from "./knowledge-http.ts";
+import { brainHttp } from "./brain-http.ts";
+import { browserHttp } from "./browser-http.ts";
+import { nativeComputerHttp } from "./native-computer-http.ts";
+import { infrastructureHttp } from "./infrastructure-http.ts";
+import { deploymentRequestHttp } from "./deployment-request-http.ts";
+import { infraAutoHttp } from "./infra-auto/http.ts";
+import { stagingIntegrationHttp } from "./deployment-staging-integration-http.ts";
+import { catalogHttp } from "./catalog/catalog-http.ts";
+import { hiringProposalHttp } from "./catalog/hiring-proposal-http.ts";
+import { activityHttp } from "./activity-http.ts";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, writeSync } from "node:fs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { WebSocketHandler } from "bun";
 import pkg from "../../package.json" with { type: "json" };
+import { readBuildInfo } from "./build-info.ts";
 import { API_TOKEN, DEFAULT_API_HOST, formatHostForUrl, getApiPort, nonLoopbackBindWarning } from "./api-config.ts";
 import { removeCoreCreds } from "./core-creds.ts";
+import { canonicalizeProfilePath, profileIdentityForPath } from "./profile-paths.ts";
 import {
   tasks,
   backlog,
@@ -13,6 +99,7 @@ import {
   runs,
   subagents,
   projects,
+  projectInterviews,
   preferences,
   harnesses,
   harnessUsage,
@@ -24,12 +111,31 @@ import {
   pipelines,
   PipelineNameError,
   dataDir,
+  baseDataDir,
   clampWindowByBytes,
   resolveAnchoredMinId,
 } from "./db.ts";
+import { ProfileActivationService } from "./profile-activation.ts";
 import { refreshOne } from "./usage/poller.ts";
+import { getPortfolioAnalysis } from "./portfolio-http.ts";
+import { ownershipFields } from "./project-ownership.ts";
+import { KanbanOrderError, reorderTask } from "./kanban-order.ts";
+import { isUrgency } from "../shared/board-order.ts";
+import { parseAvailableFromUtc } from "../shared/task-availability.ts";
+import { notifyTaskAvailabilityChanged } from "./task-availability.ts";
+import {
+  createEnvironmentProfile,
+  deleteEnvironmentProfile,
+  getEnvironmentIndex,
+  getEnvironmentLogs,
+  getEnvironmentProfile,
+  getEnvironmentUrls,
+  postEnvironmentAction,
+  updateEnvironmentProfile,
+} from "./environment/http.ts";
+import { getProjectEstimation, getProjectEstimationDependencies, putProjectEstimation } from "./estimation-http.ts";
 import { beginLagLabel } from "./event-loop-lag.ts";
-import { activeRunCount, archiveTask, cancelFxAutoResume, createTask, deleteOrphanWorktree, deleteTask, isOrphanedPipelineStep, listWorktrees, minCliVersionError, startTask, cancelRun, reconcileTaskSession, resumeFxRecovery, sendInput, subscribe, subscribeGlobal, teardownBranchesForTask, unarchiveTask, worktreeGitStatus } from "./orchestrator.ts";
+import { activeRunCount, noteTaskCompleted, archiveTask, cancelFxAutoResume, createTask, deleteOrphanWorktree, deleteTask, isOrphanedPipelineStep, listWorktrees, minCliVersionError, startTask, cancelRun, stopRun, reconcileTaskSession, resumeFxRecovery, sendInput, subscribe, subscribeGlobal, teardownBranchesForTask, unarchiveTask, worktreeGitStatus } from "./orchestrator.ts";
 import {
   compactDatabase,
   configuredRetentionDays,
@@ -41,9 +147,173 @@ import {
 import { advancePipeline, cancelPipelineRun, isPipelineStepTask, retryPipelineStep, startPipelineRun } from "./pipeline-runner.ts";
 import { approvePlan, effectiveContent, planSlug, setEditedContent } from "./task-plans.ts";
 import { checkAllHarnesses } from "./agent-status.ts";
+import { discoverDeepSeekInstallation } from "./deepseek-installation.ts";
+import { cursorProviderDiagnostic, deepseekProviderDiagnostic } from "../shared/provider-readiness.ts";
+import { readinessMatrix } from "../shared/provider-runtime/readiness.ts";
+import { profileLaunchTarget } from "./launch-target.ts";
 import { accountUsageDays } from "./account-usage.ts";
 import { discoverClaudeAccounts, effectiveClaudeConfigDir } from "./harness-discovery.ts";
 import { cancelClone, cloneAuthHeader, cloneRepo, defaultCloneDest, resolveCloneRepo } from "./clone.ts";
+import { discoverProject } from "./project-discovery.ts";
+import { findRegisteredDuplicate, registerProject } from "./project-register.ts";
+import { relinkProject, ProjectRelinkError } from "./project-relink.ts";
+import {
+  ProjectLifecycleError,
+  getProjectLifecycle,
+  listProjectsWithLifecycle,
+  resolveRegisteredProjectPath,
+  startProjectLifecycle,
+  stopProjectLifecycle,
+} from "./project-lifecycle.ts";
+import { createProjectRule, deleteProjectRule, listProjectRules, updateProjectRule } from "./project-rules-routes.ts";
+import {
+  acknowledgeQcOwnerReview,
+  withdrawQcOwnerAcceptance,
+  assertCanMoveTaskToDone,
+  cancelPendingQcReview,
+  getTaskQcBundle,
+  prepareQcReview,
+  authorizeQcExtension,
+  QcError,
+  startQcReview,
+} from "./task-quality-control.ts";
+import {
+  approveQcRecovery,
+  approveReviewTestAuthorization,
+  cancelQcRecovery,
+  cancelReviewTestAuthorization,
+  executeReviewTestAuthorization,
+  getQcRecoveryView,
+  prepareQcRecovery,
+  prepareReviewTestAuthorization,
+  QcRecoveryError,
+  reconcileQcRecovery,
+  startQcRecovery,
+} from "./qc-recovery.ts";
+import { getTaskQcEvidencePreview, QcEvidencePreviewError } from "./implementation-evidence.ts";
+import { getTaskSupervisedLive } from "./supervised-live-workflow.ts";
+import { AssignmentCoreError } from "./assignment-core.ts";
+import { failedRequestResponse, serverErrorResponse } from "./http-boundary.ts";
+import {
+  OrchestratedWorkflowError,
+  approveOrchestratedWorkflow,
+  cancelOrchestratedWorkflow,
+  getOrchestratedWorkflowView,
+  resumeOrchestratedWorkflow,
+  tickOrchestratedWorkflow,
+} from "./pm-orchestrated-workflow.ts";
+import { cancelInterviewTurn, getInterviewTurn, interviewPreflight, prepareInterviewTurn, startInterviewTurn } from "./project-interview.ts";
+import { checkDocTargets, writeProjectDocs } from "./project-docs-write.ts";
+import { INTERVIEW_LIMITS, sanitizeInterviewState } from "../shared/project-interview.ts";
+import {
+  addManagerDecision,
+  approveProposal,
+  cancelManagerTurn,
+  deleteManagerDecision,
+  getManagerContextSources,
+  getManagerState,
+  getManagerTurn,
+  managerPreflight,
+  rejectProposal,
+  saveProposalEdits,
+  sendManagerMessage,
+  updateManagerConfig,
+  type ManagerResult,
+} from "./project-manager.ts";
+import { resolveHeadBoardProposal } from "./head-board-proposals.ts";
+import { admitTaskToInbox, createIntakeGrant } from "./pm-intake.ts";
+import { MANAGER_LIMITS } from "../shared/project-manager.ts";
+import {
+  addPortfolioDecision,
+  approveDelegation,
+  cancelPortfolioTurn,
+  deletePortfolioDecision,
+  getPortfolioContextSources,
+  getHeadPmCoordination,
+  getPortfolioManagerState,
+  getPortfolioTurn,
+  portfolioManagerPreflight,
+  rejectDelegation,
+  sendPortfolioMessage,
+  setPlanStatus,
+  updatePortfolioManagerConfig,
+} from "./portfolio-manager.ts";
+import {
+  cancelHeadPmInitiative,
+  closeHeadPmContribution,
+  createHeadPmInitiative,
+  getHeadPmInitiative,
+  linkHeadPmBatch,
+  listHeadPmInitiatives,
+  prepareHeadPmDelegation,
+} from "./head-pm-initiative.ts";
+import {
+  approveHeadPmInitiativeProposal,
+  dismissHeadPmInitiativeProposal,
+  getHeadPmInitiativeProposal,
+  patchHeadPmInitiativeProposal,
+  rejectHeadPmInitiativeProposal,
+} from "./head-pm-initiative-proposal.ts";
+import {
+  approveExecution,
+  dismissExecution,
+  executionResult,
+  getExecution,
+  listExecutions,
+  prepareExecution,
+  recheckExecution,
+  reviewExecution,
+  updateExecution,
+} from "./project-execution.ts";
+import {
+  approveBatch,
+  grantAutonomy,
+  previewAutonomy,
+  revokeAutonomy,
+  batchEvents,
+  cancelBatch,
+  createBatch,
+  createBatchFromProposal,
+  getBatch,
+  listBatches,
+  notifyBatchTaskChanged,
+  pauseBatch,
+  previewBatch,
+  releaseBatchTask,
+  resumeBatch,
+  startBatch,
+  stopBatchRuns,
+  updateBatch,
+} from "./execution-batches.ts";
+import {
+  initOrchestratedBatches,
+  managerApprove as approveOrchestratedBatchRoute,
+  managerCancel as cancelOrchestratedBatchRoute,
+  managerCreateDraft as createOrchestratedBatchRoute,
+  managerGet as getOrchestratedBatchRoute,
+  managerList as listOrchestratedBatchesRoute,
+  managerPause as pauseOrchestratedBatchRoute,
+  managerPhaseGrant as phaseGrantOrchestratedBatchRoute,
+  managerResume as resumeOrchestratedBatchRoute,
+  managerStart as startOrchestratedBatchRoute,
+  recoverOrchestratedBatches,
+} from "./pm-orchestrated-batch.ts";
+import {
+  ProviderRecoveryError,
+  getProviderRecovery,
+  managerApply as applyProviderRecoveryRoute,
+  managerApplyPrelaunch as applyPrelaunchReauthorizationRoute,
+  managerApprove as approveProviderRecoveryRoute,
+  managerApprovePrelaunch as approvePrelaunchReauthorizationRoute,
+  managerClassifyPrelaunch as classifyPrelaunchClaimRoute,
+  managerMintGrant as mintProviderRecoveryPhaseGrantRoute,
+  managerMintPrelaunch as mintPrelaunchReplacementRoute,
+  managerPreview as previewProviderRecoveryRoute,
+  recoverProviderRecoveries,
+} from "./pm-provider-recovery.ts";
+import { listScheduling, updateScheduling } from "./task-scheduling.ts";
+import { getPlan, listPlans, verifyPlan } from "./task-plan.ts";
+import { getQueue, nextQueueTask, prepareQueueBatch, saveQueue, setAutoPrepare, setQueueStatus } from "./task-queue.ts";
 import { buildEli5Prompt, eli5TaskTitle } from "../shared/clone-eli5.ts";
 import { CLONE_PROVIDERS, isGitProvider } from "../shared/clone-input.ts";
 import { stalledSince } from "./stall-registry.ts";
@@ -252,6 +522,15 @@ import {
   type BundleImportError,
 } from "./bundle.ts";
 import { pickedPaths, singlePickedPath } from "./native-pick.ts";
+import { BackupService, BackupServiceError } from "./backup-service.ts";
+import {
+  activationRouteError,
+  buildActivationStatus,
+  buildCandidateView,
+  buildPrepareView,
+  readCandidatePath,
+  requireActivationConfirm,
+} from "./profile-activation-http.ts";
 import type { AgentProfilePatch } from "./db.ts";
 import { duplicateAgentName } from "../shared/duplicate-name.ts";
 import { duplicateAgentProfile } from "./duplicate-agent-profile.ts";
@@ -286,6 +565,71 @@ const json = (data: unknown, init?: ResponseInit) =>
     status: init?.status,
   });
 
+/**
+ * Maps a backup-service rejection to a bounded, sanitized HTTP response. Worker
+ * error text is never forwarded from here: the service has already reduced it
+ * to an allowlisted code/message, and unknown failures get a generic message.
+ */
+function backupRouteError(req: Request, err: unknown): Response {
+  if (err instanceof BackupServiceError) {
+    return json(
+      { error: err.message, code: err.code },
+      { status: err.status, headers: corsHeaders(req) },
+    );
+  }
+  console.error("[backup] unexpected route failure", err instanceof Error ? err.name : typeof err);
+  return json(
+    { error: "The backup operation could not be started", code: "BACKUP_INTEGRATION_ERROR" },
+    { status: 500, headers: corsHeaders(req) },
+  );
+}
+
+/** Small JSON-only request cap for every Backup/Restore endpoint. */
+export const BACKUP_JSON_MAX_BYTES = 32 * 1024;
+
+/**
+ * Reads a Backup/Restore request body with a specific small cap instead of
+ * relying on Bun's server-wide limit. A claimed oversize Content-Length is
+ * refused before any parsing; a chunked oversize body is refused while
+ * reading, with the rest drained so a keep-alive client can continue. Returns
+ * the parsed plain object or the error response to send.
+ */
+async function readBackupJsonBody(req: Request): Promise<Record<string, unknown> | Response> {
+  const tooLarge = () =>
+    json(
+      { error: "Backup request body is too large", code: "REQUEST_TOO_LARGE" },
+      { status: 413, headers: corsHeaders(req) },
+    );
+  const claimed = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(claimed) && claimed > BACKUP_JSON_MAX_BYTES) {
+    if (req.body) await drainRefusedBody(req.body.getReader());
+    return tooLarge();
+  }
+  const raw = await readBodyCapped(req, BACKUP_JSON_MAX_BYTES);
+  if (raw === null) return tooLarge();
+  if (raw.trim().length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return json(
+      { error: "Backup request body must be valid JSON", code: "INVALID_JSON" },
+      { status: 400, headers: corsHeaders(req) },
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return json(
+      { error: "Backup request body must be a JSON object", code: "INVALID_JSON" },
+      { status: 400, headers: corsHeaders(req) },
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function isResponse(value: unknown): value is Response {
+  return value instanceof Response;
+}
+
 // Content-type for the /tasks/:id/diff/blob response, from the shared
 // canonical extension→MIME map (`../shared/attachments.ts`, also used by
 // /files/preview below and by github.ts's pull-blob path — one map, no more
@@ -307,7 +651,7 @@ function withRunningSubagents(t: Task): Task & { runningSubagents: number } {
   // `stalledSince` rides the same decoration: transient in-memory server
   // state (the turn-stall watchdog's mark) that the DB-derived Task can't
   // carry — see stall-registry.ts.
-  return { ...t, runningSubagents, stalledSince: stalledSince(t.id) };
+  return { ...t, runningSubagents, stalledSince: stalledSince(t.id), ...ownershipFields(t.workdir) };
 }
 
 // Turn raw path strings into references: keep only existing absolute paths,
@@ -444,7 +788,142 @@ function unauthorized(req: Request): Response {
 // otherwise become `string | undefined` and force needless guards.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function authed<F extends (req: any) => Response | Promise<Response>>(fn: F): F {
-  return ((req: Request) => (isAuthorized(req) ? fn(req) : unauthorized(req))) as F;
+  // The authorization check stays first. After it, an exception from the handler (thrown or
+  // rejected) fails only this request: an escaped one would reach the backend Worker and
+  // stop the whole app (see http-boundary.ts). Routes still map the errors they know.
+  return ((req: Request) => {
+    if (!isAuthorized(req)) return unauthorized(req);
+    try {
+      const out = fn(req);
+      return out instanceof Promise ? out.catch((err: unknown) => failedRequestResponse(req, err, corsHeaders(req))) : out;
+    } catch (err) {
+      return failedRequestResponse(req, err, corsHeaders(req));
+    }
+  }) as F;
+}
+
+/** Project-permission mutations: Owner bearer header only, never `?token=`. */
+function permissionRoute(fn: (req: any) => Promise<unknown>, okStatus = 200) {
+  return (async (req: Request) => {
+    const header = req.headers.get("authorization");
+    if (!header?.startsWith("Bearer ") || !tokenMatches(header.slice(7))) return unauthorized(req);
+    try {
+      return json(await fn(req), { status: okStatus, headers: corsHeaders(req) });
+    } catch (e) {
+      if (e instanceof ProjectPermissionError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+      throw e;
+    }
+  });
+}
+
+/** Hands-off ("Work independently") mutations: Owner bearer header only, never `?token=`. */
+function handsoffRoute(fn: (req: any) => Promise<unknown> | unknown, okStatus = 200) {
+  return (async (req: Request) => {
+    const header = req.headers.get("authorization");
+    if (!header?.startsWith("Bearer ") || !tokenMatches(header.slice(7))) return unauthorized(req);
+    try {
+      return json(await fn(req), { status: okStatus, headers: corsHeaders(req) });
+    } catch (e) {
+      if (e instanceof HandsoffError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+      throw e;
+    }
+  });
+}
+
+/** Recurring task template mutations: Owner bearer header only, never `?token=` (rejects AI Developer / unauthenticated mutations). */
+function recurringRoute(fn: (req: any) => Promise<unknown> | unknown, okStatus = 200) {
+  return (async (req: Request) => {
+    const header = req.headers.get("authorization");
+    if (!header?.startsWith("Bearer ") || !tokenMatches(header.slice(7))) return unauthorized(req);
+    try {
+      return json(await fn(req), { status: okStatus, headers: corsHeaders(req) });
+    } catch (e) {
+      if (e instanceof RecurringError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+      throw e;
+    }
+  });
+}
+
+/** The Owner's QC extension: bearer header only, never `?token=`; QcError carries its own status. */
+function qcOwnerRoute(fn: (req: any) => Promise<unknown> | unknown) {
+  return (async (req: Request) => {
+    const header = req.headers.get("authorization");
+    if (!header?.startsWith("Bearer ") || !tokenMatches(header.slice(7))) return unauthorized(req);
+    try {
+      return json(await fn(req), { headers: corsHeaders(req) });
+    } catch (e) {
+      if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+      throw e;
+    }
+  });
+}
+
+/** Binding mutations use the Owner bearer only, never EventSource query auth. */
+async function headBindingRoute(req: Request): Promise<Response> {
+  const header = req.headers.get("authorization");
+  if (!header?.startsWith("Bearer ") || !tokenMatches(header.slice(7))) return unauthorized(req);
+  const response = await headPortfolioBindingHttp(req);
+  for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+  return response;
+}
+
+/**
+ * Project manager routes (FO-005A). Every one names a registered project
+ * (`path`), checked by `project-manager.ts`; bodies are size-capped before
+ * parsing. `ManagerResult` failures carry their own status.
+ */
+function managerRoute<T>(
+  fn: (req: Request, body: Record<string, unknown>) => Promise<ManagerResult<T>> | ManagerResult<T>,
+  okStatus = 200,
+) {
+  return authed(async (req: Request) => {
+    let body: Record<string, unknown> = {};
+    if (req.method !== "GET" && req.method !== "DELETE") {
+      const text = await req.text().catch(() => "");
+      if (text.length > MANAGER_LIMITS.bodyChars) {
+        return json({ error: "Request too large." }, { status: 413, headers: corsHeaders(req) });
+      }
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) body = parsed as Record<string, unknown>;
+        } catch {
+          return json({ error: "invalid JSON" }, { status: 400, headers: corsHeaders(req) });
+        }
+      }
+    }
+    const result = await fn(req, body);
+    if (!result.ok) {
+      return json({ error: result.error, ...(result.body ?? {}) }, { status: result.status, headers: corsHeaders(req) });
+    }
+    return json(result.value, { status: okStatus, headers: corsHeaders(req) });
+  });
+}
+
+async function parseJsonBody(req: Request): Promise<
+  { ok: true; value: Record<string, unknown> } | { ok: false; status: number; error: string }
+> {
+  const text = await req.text().catch(() => "");
+  if (text.length > MANAGER_LIMITS.bodyChars) return { ok: false, status: 413, error: "Request too large." };
+  if (!text) return { ok: true, value: {} };
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { ok: false, status: 400, error: "invalid JSON" };
+    return { ok: true, value: parsed as Record<string, unknown> };
+  } catch {
+    return { ok: false, status: 400, error: "invalid JSON" };
+  }
+}
+
+function queryPathParam(req: Request): string {
+  return new URL(req.url).searchParams.get("path") ?? "";
+}
+
+function environmentRoute(fn: (req: Request) => Promise<{ status: number; body: unknown }>) {
+  return authed(async (req: Request) => {
+    const result = await fn(req);
+    return json(result.body, { status: result.status, headers: corsHeaders(req) });
+  });
 }
 
 /**
@@ -464,7 +943,7 @@ function authed<F extends (req: any) => Response | Promise<Response>>(fn: F): F 
  * silently ignored like every other unlisted field.
  */
 const ALLOWED_PATCH_FIELDS = new Set<keyof Task>([
-  "title", "prompt", "agent", "workdir", "column", "mode", "model", "effort", "fast", "maxMode", "taskType",
+  "title", "prompt", "agent", "workdir", "column", "mode", "model", "effort", "fast", "maxMode", "taskType", "urgency", "availableFromUtc",
 ]);
 
 /** The 8 reaction contents GitHub's API accepts — validated here before the
@@ -1139,8 +1618,83 @@ const notAvailableHeadless = (req: Request) =>
     { status: 501, headers: corsHeaders(req) },
   );
 
-export function startApiServer(deps: { native?: ApiNative; hostname?: string } = {}) {
+/**
+ * The newest BackupService instance created by `startApiServer`. The desktop
+ * app and the headless daemon each own exactly one; tests may create several
+ * (only the newest is tracked). Disposal is application-lifecycle only —
+ * closing Settings never calls it.
+ */
+let activeBackupService: BackupService | null = null;
+
+/**
+ * The internal FO-P2-005-A activation service for the running backend. There
+ * is deliberately no HTTP route and no UI control in this phase; FO-P2-005-B
+ * exposes `/profile/activation*` routes and the Backup & Recovery activation panel.
+ */
+let activeProfileActivationService: ProfileActivationService | null = null;
+
+export function getProfileActivationService(): ProfileActivationService {
+  if (!activeProfileActivationService) {
+    throw new Error("Profile activation service is not available before the backend starts");
+  }
+  return activeProfileActivationService;
+}
+
+/** Upper bound for shutdown disposal, above the runner's own 4 s grace. */
+const BACKUP_DISPOSE_TIMEOUT_MS = 6_000;
+
+/**
+ * Disposes the tracked BackupService at most once, bounded so a wedged worker
+ * can never prevent the application from exiting. Failures are swallowed: the
+ * runner's disposal already preserves published artifacts and receipts, and
+ * shutdown must remain safe even when teardown itself fails.
+ */
+export async function disposeActiveBackupService(
+  timeoutMs = BACKUP_DISPOSE_TIMEOUT_MS,
+): Promise<void> {
+  const service = activeBackupService;
+  activeBackupService = null;
+  if (!service) return;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, Math.max(250, timeoutMs));
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    await Promise.race([service.dispose().catch(() => {}), timeout]);
+  } catch {
+    /* shutdown must never be blocked by disposal failure */
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export function startApiServer(deps: { native?: ApiNative; hostname?: string; cursorOrganizationAccess?: CursorOrganizationAccess } = {}) {
+  // No credential provider is supplied at production boot. HTTP and environment
+  // inputs cannot install an adapter or create a source authorization.
+  const trustedQuota = new TrustedQuotaRefresh(new AccountCore(accountCoreDb),
+    deps.cursorOrganizationAccess ? [cursorOrganizationQuota(deps.cursorOrganizationAccess)] : []);
+  const codexSource = new CodexSource();
+  const codexEvidence = new CodexEvidenceCollector(new AccountCore(accountCoreDb), {
+    harness: id => { const h = harnesses.get(id); return h ? { id: h.id, kind: h.kind, env: harnessEnv(h) } : null; },
+  });
   const native = deps.native;
+  // FO-P2-004: the approved isolated storage engine, wired to the trusted
+  // active profile. The runner is created lazily so a broken package surfaces
+  // as a descriptive backup error instead of preventing the app from booting.
+  const backup = new BackupService({
+    dataDir,
+    dbPath: path.join(dataDir, "agetor.sqlite"),
+  });
+  activeBackupService = backup;
+  // FO-P2-005-A: activation is a trusted backend operation. Preparing an
+  // activation is refused while the backup worker is busy; the transfer itself
+  // happens at the next controlled startup, before SQLite is opened.
+  activeProfileActivationService = new ProfileActivationService({
+    activeDataDir: dataDir,
+    baseDataDir,
+    isConflictingOperationRunning: () => backup.isBusy(),
+  });
   const blockRouteEnabled = process.env.AGETOR_TEST_BLOCK_ROUTE === "1";
   const blockEventLoopRoute = authed(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as { ms?: unknown };
@@ -1206,6 +1760,9 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
     port: PORT,
     hostname: HOST,
     development: false,
+    // Bun 1.3.13 (the bundled native runtime) can reuse a production-mode
+    // listener unless explicitly disabled. One API owner is required.
+    reusePort: false,
     // Bun's default idleTimeout is 10s, which is far too short here: it closes
     // idle pooled keep-alive sockets that WKWebView then reuses for a POST
     // (CFNetwork never auto-retries on a dropped reused connection, so the
@@ -1217,6 +1774,10 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
     // keep-alive socket usable; see REFUSED_BODY_DRAIN_MAX_BYTES.
     maxRequestBodySize: REFUSED_BODY_DRAIN_MAX_BYTES,
     websocket: terminalWebSocket,
+    // Backstop for routes that are not wrapped in `authed`: a failed request must not stop the Worker.
+    error(err) {
+      return serverErrorResponse(err);
+    },
     routes: {
       // Unauthenticated probes only — never returns data.
       // `app: "agetor"` is a self-identifier the PreToolUse hook script
@@ -1235,24 +1796,27 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       },
 
       "/projects": {
-        GET: authed((req) => json(projects.list(), { headers: corsHeaders(req) })),
+        GET: authed((req) => json(listProjectsWithLifecycle(), { headers: corsHeaders(req) })),
         // Register a project by absolute path — the headless/CLI equivalent of
         // the native folder picker at /projects/pick.
+        // `rejectDuplicate` is the wizard's guard against a second row for the
+        // same directory (realpath, so a symlink doesn't sneak in). Omit it
+        // and this stays the idempotent upsert the CLI and e2e already use.
+        // `createDirectory` mkdirs one missing leaf after the user confirms;
+        // it never writes files inside the folder.
         POST: authed(async (req) => {
-          const body = (await req.json().catch(() => ({}))) as { path?: unknown; name?: unknown };
-          const p = typeof body.path === "string" ? body.path.trim() : "";
-          if (!p) return json({ error: "path required" }, { status: 400, headers: corsHeaders(req) });
-          if (!path.isAbsolute(p)) {
-            return json({ error: "path must be absolute" }, { status: 400, headers: corsHeaders(req) });
-          }
-          if (!existsSync(p)) {
-            return json({ error: `path does not exist: ${p}` }, { status: 404, headers: corsHeaders(req) });
-          }
-          const name =
-            typeof body.name === "string" && body.name.trim()
-              ? body.name.trim()
-              : path.basename(p) || p;
-          return json(projects.upsert(p, name), { headers: corsHeaders(req) });
+          const body = (await req.json().catch(() => ({}))) as {
+            path?: unknown;
+            name?: unknown;
+            rejectDuplicate?: unknown;
+            createDirectory?: unknown;
+          };
+          const result = registerProject(body);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(
+            { ...result.project, lifecycle: getProjectLifecycle(result.project.path) ?? undefined },
+            { headers: corsHeaders(req) },
+          );
         }),
         DELETE: authed(async (req) => {
           const { path: p } = (await req.json().catch(() => ({}))) as { path?: string };
@@ -1260,6 +1824,1059 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           projects.delete(p);
           return new Response(null, { status: 204, headers: corsHeaders(req) });
         }),
+      },
+
+      "/projects/relink": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as {
+            oldPath?: unknown;
+            newPath?: unknown;
+          };
+          try {
+            const result = relinkProject(
+              { oldPath: String(body.oldPath ?? ""), newPath: String(body.newPath ?? "") },
+              {
+                db: accountCoreDb,
+                dataDir,
+                onVersionBump: () => { projects.version(); },
+              },
+            );
+            return json(result, { headers: corsHeaders(req) });
+          } catch (err) {
+            if (err instanceof ProjectRelinkError) {
+              return json({ error: err.message, code: err.code }, { status: err.status, headers: corsHeaders(req) });
+            }
+            return json(
+              { error: err instanceof Error ? err.message : String(err), code: "RELINK_FAILED" },
+              { status: 500, headers: corsHeaders(req) },
+            );
+          }
+        }),
+      },
+
+      "/projects/lifecycle": {
+        GET: authed((req) => {
+          const url = new URL(req.url);
+          const resolved = resolveRegisteredProjectPath(url.searchParams.get("path") ?? "");
+          if (!resolved.ok) {
+            return json({ error: resolved.error, code: "not-found" }, { status: resolved.status, headers: corsHeaders(req) });
+          }
+          const lifecycle = getProjectLifecycle(resolved.projectPath);
+          if (!lifecycle) {
+            return json({ error: "Project is not registered in ForgeOrbit.", code: "not-found" }, { status: 404, headers: corsHeaders(req) });
+          }
+          return json({ lifecycle }, { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/projects/lifecycle/stop": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { path?: unknown; reason?: unknown };
+          try {
+            const outcome = await stopProjectLifecycle(body.path, body.reason);
+            return json(outcome, { headers: corsHeaders(req) });
+          } catch (error) {
+            if (error instanceof ProjectLifecycleError) {
+              return json({ error: error.message, code: error.code }, { status: error.status, headers: corsHeaders(req) });
+            }
+            return json(
+              { error: error instanceof Error ? error.message : String(error), code: "project-lifecycle" },
+              { status: 500, headers: corsHeaders(req) },
+            );
+          }
+        }),
+      },
+
+      "/projects/lifecycle/start": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { path?: unknown };
+          try {
+            const outcome = await startProjectLifecycle(body.path);
+            return json(outcome, { headers: corsHeaders(req) });
+          } catch (error) {
+            if (error instanceof ProjectLifecycleError) {
+              return json({ error: error.message, code: error.code }, { status: error.status, headers: corsHeaders(req) });
+            }
+            return json(
+              { error: error instanceof Error ? error.message : String(error), code: "project-lifecycle" },
+              { status: 500, headers: corsHeaders(req) },
+            );
+          }
+        }),
+      },
+
+      // Read-only roll-up of pending approvals and held batches for "Needs you" and the Head of PM.
+      "/owner-actions": {
+        GET: authed((req) => json(readOwnerActions(), { headers: corsHeaders(req) })),
+      },
+
+      // Hands-off project execution ("Work independently"). Reads change nothing. Every mutation needs the Owner bearer
+      // header. The policy is the Owner's one-time setup; submitting a task is the deliberate act that starts it.
+      "/handsoff/policy": {
+        GET: authed((req) => {
+          try {
+            return json(readHandsoffPolicy(new URL(req.url).searchParams.get("projectPath")), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof HandsoffError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+        PUT: handsoffRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; policy?: unknown };
+          return await saveHandsoffPolicy(body.projectPath, body.policy);
+        }),
+      },
+      // The one native Owner confirmation for a project's hands-off rules. POST opens the native confirmation and waits
+      // for the Owner; DELETE revokes with no confirmation. Reads never prompt.
+      "/handsoff/authorization": {
+        GET: authed((req) => json(authorizationView(new URL(req.url).searchParams.get("projectPath") ?? ""), { headers: corsHeaders(req) })),
+        POST: handsoffRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; hours?: unknown; launches?: unknown; locale?: unknown };
+          if (typeof body.projectPath !== "string") throw new HandsoffError("A project path is required.", 400, "project");
+          return await authorizeProject(body.projectPath, { hours: body.hours, launches: body.launches, locale: body.locale === "ru" ? "ru" : "en" });
+        }),
+        DELETE: handsoffRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown };
+          if (typeof body.projectPath !== "string") throw new HandsoffError("A project path is required.", 400, "project");
+          return await revokeProjectAuthorization(body.projectPath);
+        }),
+      },
+      "/handsoff/submit": {
+        POST: handsoffRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { taskId?: unknown; harnessId?: unknown; model?: unknown; accountId?: unknown };
+          return handsoffView(submitHandsoffTask(body.taskId, body).taskId);
+        }, 201),
+      },
+      "/handsoff/tasks/:taskId": {
+        GET: authed((req) => json(handsoffView(req.params.taskId), { headers: corsHeaders(req) })),
+      },
+      "/handsoff/overview": {
+        GET: authed((req) => json({
+          policies: handsoffStore.listPolicies().map((stored) => ({ projectPath: stored.projectPath, enabled: stored.policy.enabled, revision: stored.revision, autoApply: stored.policy.autoApply, autoDone: stored.policy.autoDone })),
+          runs: handsoffStore.listRecent(Date.now() - 14 * 24 * 3_600_000),
+          queues: allProjectQueuesView().projects,
+        }, { headers: corsHeaders(req) })),
+      },
+      "/handsoff/queue": {
+        GET: authed((req) => {
+          const rawProject = new URL(req.url).searchParams.get("projectPath");
+          if (rawProject) {
+            const resolved = resolveRegisteredProjectPath(rawProject);
+            if (!resolved.ok) return json({ error: resolved.error }, { status: resolved.status, headers: corsHeaders(req) });
+            return json(projectQueueView(resolved.projectPath), { headers: corsHeaders(req) });
+          }
+          return json(allProjectQueuesView(), { headers: corsHeaders(req) });
+        }),
+      },
+      "/handsoff/runs": {
+        GET: authed((req) => {
+          const projectPath = new URL(req.url).searchParams.get("projectPath");
+          const open = handsoffStore.listOpenRuns(projectPath ?? undefined);
+          const recent = projectPath ? handsoffStore.listRunsForProject(projectPath, 50) : [];
+          const seen = new Set(open.map((run) => run.id));
+          return json({ runs: [...open, ...recent.filter((run) => !seen.has(run.id))] }, { headers: corsHeaders(req) });
+        }),
+      },
+      "/handsoff/runs/:id/retry": {
+        POST: handsoffRoute((req) => handsoffView(retryHandsoffRun(req.params.id).taskId)),
+      },
+      "/handsoff/runs/:id/resume": {
+        POST: handsoffRoute((req) => handsoffView(resumeHandsoffRun(req.params.id).taskId)),
+      },
+      "/handsoff/runs/:id/cancel": {
+        POST: handsoffRoute(async (req) => handsoffView((await cancelHandsoffRun(req.params.id)).taskId)),
+      },
+
+      // Recurring tasks & autonomous scheduled workflows (FO-KANBAN-RECURRING01).
+      // Reads are authenticated; every mutation requires the Owner bearer header
+      // (never `?token=`) so ordinary AI Developers cannot mutate schedules.
+      "/recurring/templates": {
+        GET: authed((req) => {
+          const rawProject = new URL(req.url).searchParams.get("projectPath");
+          if (rawProject) {
+            const resolved = resolveRegisteredProjectPath(rawProject);
+            if (!resolved.ok) return json({ error: resolved.error }, { status: resolved.status, headers: corsHeaders(req) });
+            return json({ templates: recurringStore.listTemplateViews(resolved.projectPath) }, { headers: corsHeaders(req) });
+          }
+          return json({ templates: recurringStore.listTemplateViews() }, { headers: corsHeaders(req) });
+        }),
+        POST: recurringRoute(async (req) => {
+          const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            throw new RecurringError("Invalid JSON request body.", 400, "invalid-body");
+          }
+          return await createRecurringTemplate(body as unknown as import("../shared/recurring-tasks.ts").CreateRecurringTemplateInput);
+        }, 201),
+      },
+      "/recurring/templates/:id": {
+        GET: authed((req) => {
+          const template = recurringStore.getTemplateView(req.params.id);
+          if (!template) return json({ error: "Recurring template not found." }, { status: 404, headers: corsHeaders(req) });
+          const history = recurringStore.listOccurrenceHistory(template.id, 100);
+          return json({ template, history }, { headers: corsHeaders(req) });
+        }),
+        PATCH: recurringRoute(async (req) => {
+          const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            throw new RecurringError("Invalid JSON request body.", 400, "invalid-body");
+          }
+          const template = await updateRecurringTemplate(
+            req.params.id,
+            body as unknown as import("../shared/recurring-tasks.ts").UpdateRecurringTemplateInput,
+          );
+          return { template };
+        }),
+      },
+      "/recurring/templates/:id/pause": {
+        POST: recurringRoute(async (req) => ({ template: await pauseRecurringTemplate(req.params.id) })),
+      },
+      "/recurring/templates/:id/resume": {
+        POST: recurringRoute(async (req) => await resumeRecurringTemplate(req.params.id)),
+      },
+      "/recurring/templates/:id/stop": {
+        POST: recurringRoute(async (req) => ({ template: await stopRecurringTemplate(req.params.id) })),
+      },
+      "/recurring/templates/:id/trigger": {
+        POST: recurringRoute(async (req) => await triggerManualOccurrence(req.params.id), 201),
+      },
+      "/recurring/templates/:id/history": {
+        GET: authed((req) => {
+          const template = recurringStore.getTemplateView(req.params.id);
+          if (!template) return json({ error: "Recurring template not found." }, { status: 404, headers: corsHeaders(req) });
+          const rawLimit = Number(new URL(req.url).searchParams.get("limit") ?? "100");
+          const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 500)) : 100;
+          return json({ template, history: recurringStore.listOccurrenceHistory(template.id, limit) }, { headers: corsHeaders(req) });
+        }),
+      },
+      "/recurring/tasks/:taskId/convert": {
+        POST: recurringRoute(async (req) => {
+          const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!body || typeof body !== "object" || Array.isArray(body)) {
+            throw new RecurringError("Invalid JSON request body.", 400, "invalid-body");
+          }
+          return await convertTaskToRecurringTemplate(
+            req.params.taskId,
+            body as unknown as Parameters<typeof convertTaskToRecurringTemplate>[1],
+          );
+        }, 201),
+      },
+      "/recurring/reconcile": {
+        POST: recurringRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown };
+          let projectPath: string | undefined;
+          if (typeof body.projectPath === "string" && body.projectPath.trim()) {
+            const resolved = resolveRegisteredProjectPath(body.projectPath);
+            if (!resolved.ok) throw new RecurringError(resolved.error, resolved.status, "invalid-project");
+            projectPath = resolved.projectPath;
+          }
+          return await reconcileDueRecurringTasks(projectPath);
+        }),
+      },
+
+      // Project permissions (run one fixed project test in the offline sandbox).
+      // Reads change nothing. Every mutation needs the Owner bearer header (never the
+      // EventSource query token), and approving never starts anything but the one
+      // request it names. See project-permissions.ts.
+      "/project-permissions": {
+        GET: authed((req) => {
+          const projectPath = new URL(req.url).searchParams.get("projectPath");
+          return json(readProjectPermissions({ projectPath }), { headers: corsHeaders(req) });
+        }),
+      },
+      "/project-permissions/tasks/:taskId": {
+        GET: authed((req) => json(previewProjectTest(req.params.taskId), { headers: corsHeaders(req) })),
+      },
+      "/project-permissions/tasks/:taskId/evidence": {
+        // Read-only. A missing task is a plain 404, never a 500.
+        GET: authed((req) => {
+          try {
+            return json(readProjectTestEvidence(req.params.taskId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof ProjectPermissionError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+      "/project-permissions/default": {
+        PUT: permissionRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; mode?: unknown };
+          setProjectDefault(body.projectPath, body.mode);
+          return readProjectPermissions({ projectPath: String(body.projectPath) });
+        }),
+      },
+      "/project-permissions/workspace-development": {
+        PUT: permissionRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; enabled?: unknown };
+          const project = setProjectWorkspaceDevelopment(body.projectPath, body.enabled);
+          return { project, ...readProjectPermissions({ projectPath: project.path }) };
+        }),
+      },
+      "/project-permissions/rules": {
+        POST: permissionRoute(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; command?: unknown };
+          addAllowRule(body.projectPath, body.command);
+          return readProjectPermissions({ projectPath: String(body.projectPath) });
+        }, 201),
+      },
+      "/project-permissions/rules/:id": {
+        DELETE: permissionRoute(async (req) => revokePermissionRule(req.params.id)),
+      },
+      "/project-permissions/requests": {
+        POST: permissionRoute(async (req) => {
+          server.timeout(req, 0);
+          const body = (await req.json().catch(() => ({}))) as { taskId?: unknown; testPath?: unknown; reviewed?: { projectPath?: unknown; commandFingerprint?: unknown; sourceFingerprint?: unknown } };
+          // The route always requires the reviewed target: the Owner-facing path never submits blind.
+          if (!body.reviewed || typeof body.reviewed.projectPath !== "string" || typeof body.reviewed.commandFingerprint !== "string" || typeof body.reviewed.sourceFingerprint !== "string") {
+            throw new ProjectPermissionError("Review the exact command and directory first, then submit it.", 400, "review-required");
+          }
+          return requestProjectTest({ taskId: body.taskId, testPath: body.testPath, reviewed: body.reviewed });
+        }, 201),
+      },
+      "/project-permissions/requests/:id/approve": {
+        POST: permissionRoute(async (req) => {
+          server.timeout(req, 0);
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; commandFingerprint?: unknown };
+          return approveOnce(req.params.id, body);
+        }),
+      },
+      "/project-permissions/requests/:id/deny": {
+        POST: permissionRoute(async (req) => denyPermissionRequest(req.params.id)),
+      },
+      "/project-permissions/requests/:id/cancel": {
+        POST: permissionRoute(async (req) => cancelPermissionRequest(req.params.id)),
+      },
+
+      "/portfolio/analysis": {
+        GET: authed((req) => {
+          const result = getPortfolioAnalysis();
+          return json(result.body, { status: result.status, headers: corsHeaders(req) });
+        }),
+      },
+
+      // Global portfolio manager (FO-008C). One logical manager over every
+      // registered project. A turn starts only when the owner sends a
+      // message; plans are read-only cards, and a delegation reaches a
+      // project's own manager only through `approve`, which reuses that
+      // manager's turn (and its agent, consent and checks). No route here
+      // starts a task, a batch, a shell command or a container.
+      "/portfolio-manager": {
+        GET: managerRoute(() => getPortfolioManagerState()),
+      },
+      "/portfolio-manager/head-binding": {
+        GET: headBindingRoute,
+        PUT: headBindingRoute,
+      },
+      "/portfolio-manager/config": {
+        PUT: managerRoute((_req, body) => updatePortfolioManagerConfig(body.config)),
+      },
+      "/portfolio-manager/context": {
+        GET: managerRoute(() => getPortfolioContextSources()),
+      },
+      "/portfolio-manager/coordination": {
+        GET: managerRoute(() => getHeadPmCoordination()),
+      },
+      "/head-pm/initiatives": {
+        GET: authed((req) => json(listHeadPmInitiatives(), { headers: corsHeaders(req) })),
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          const result = createHeadPmInitiative(body.value);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { status: 201, headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiatives/:id/coordination": {
+        GET: authed((req) => json(getHeadAuto(req.params.id), { headers: corsHeaders(req) })),
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          try { return json(prepareHeadAuto(req.params.id, body.value.batchIds), { headers: corsHeaders(req) }); }
+          catch (e) { return json({ error: (e as Error).message }, { status: 409, headers: corsHeaders(req) }); }
+        }),
+      },
+      "/head-pm/initiatives/:id/coordination/:action": {
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          try {
+            initHeadAuto();
+            const result = req.params.action === "authorize"
+              ? authorizeHeadAuto(req.params.id, body.value.digest)
+              : await actHeadAuto(req.params.id, req.params.action);
+            return json(result, { headers: corsHeaders(req) });
+          } catch (e) { return json({ error: (e as Error).message }, { status: 409, headers: corsHeaders(req) }); }
+        }),
+      },
+      "/head-pm/initiatives/:id": {
+        GET: authed((req) => {
+          const view = getHeadPmInitiative(req.params.id);
+          if (!view) return json({ error: "initiative not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(view, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const result = cancelHeadPmInitiative(req.params.id);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiatives/:id/contributions/:projectPath/prepare-delegation": {
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          const projectPath = decodeURIComponent(req.params.projectPath);
+          const result = prepareHeadPmDelegation(req.params.id, projectPath, body.value);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { status: 201, headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiatives/:id/contributions/:projectPath/close": {
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          const projectPath = decodeURIComponent(req.params.projectPath);
+          const reason = typeof body.value.reason === "string" ? body.value.reason : "";
+          const result = closeHeadPmContribution(req.params.id, projectPath, reason);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiatives/:id/contributions/:projectPath/link-batch": {
+        POST: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          const projectPath = decodeURIComponent(req.params.projectPath);
+          const batchId = typeof body.value.batchId === "string" ? body.value.batchId : "";
+          const result = linkHeadPmBatch(req.params.id, projectPath, batchId);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiative-proposals/:id": {
+        GET: authed((req) => {
+          const proposal = getHeadPmInitiativeProposal(req.params.id);
+          if (!proposal) return json({ error: "proposal not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(proposal, { headers: corsHeaders(req) });
+        }),
+        PATCH: authed(async (req) => {
+          const body = await parseJsonBody(req);
+          if (!body.ok) return json({ error: body.error }, { status: body.status, headers: corsHeaders(req) });
+          const result = patchHeadPmInitiativeProposal(req.params.id, body.value);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiative-proposals/:id/approve": {
+        POST: authed((req) => {
+          const result = approveHeadPmInitiativeProposal(req.params.id);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiative-proposals/:id/reject": {
+        POST: authed((req) => {
+          const result = rejectHeadPmInitiativeProposal(req.params.id);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/head-pm/initiative-proposals/:id/dismiss": {
+        POST: authed((req) => {
+          const result = dismissHeadPmInitiativeProposal(req.params.id);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(result.value, { headers: corsHeaders(req) });
+        }),
+      },
+      "/portfolio-manager/preflight": {
+        POST: managerRoute(() => portfolioManagerPreflight()),
+      },
+      "/portfolio-manager/messages": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          const lang = req.headers.get("accept-language") ?? "";
+          const locale = lang.toLowerCase().startsWith("ru") ? "ru" : "en";
+          return sendPortfolioMessage(body, {}, { locale });
+        }, 202),
+      },
+      "/head-pm/board-proposals/:id/approve": {
+        POST: managerRoute((req, body) => resolveHeadBoardProposal((req as Request & { params: { id: string } }).params.id, body, "approve")),
+      },
+      "/head-pm/board-proposals/:id/reject": {
+        POST: managerRoute((req, body) => resolveHeadBoardProposal((req as Request & { params: { id: string } }).params.id, body, "reject")),
+      },
+      "/portfolio-manager/turns/:id": {
+        GET: authed((req) => {
+          const turn = getPortfolioTurn(req.params.id);
+          if (!turn) return json({ error: "turn not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(turn, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const cancelled = cancelPortfolioTurn(req.params.id);
+          return json({ cancelled }, { status: cancelled ? 200 : 404, headers: corsHeaders(req) });
+        }),
+      },
+      "/portfolio-manager/plans/:id/accept": {
+        POST: managerRoute((req) => setPlanStatus((req as Request & { params: { id: string } }).params.id, "accepted")),
+      },
+      "/portfolio-manager/plans/:id/dismiss": {
+        POST: managerRoute((req) => setPlanStatus((req as Request & { params: { id: string } }).params.id, "dismissed")),
+      },
+      "/portfolio-manager/delegations/:id/approve": {
+        POST: managerRoute((req, body) => approveDelegation((req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/portfolio-manager/delegations/:id/reject": {
+        POST: managerRoute((req) => rejectDelegation((req as Request & { params: { id: string } }).params.id)),
+      },
+      "/portfolio-manager/decisions": {
+        POST: managerRoute((_req, body) => addPortfolioDecision(body)),
+      },
+      "/portfolio-manager/decisions/:id": {
+        DELETE: managerRoute((req) => deletePortfolioDecision((req as Request & { params: { id: string } }).params.id)),
+      },
+
+      // Read-only project scan for the creation wizard. Does not register the
+      // directory and does not create it. `folderName` plans a new leaf under
+      // `path` without mkdir.
+      "/projects/discover": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { path?: unknown; folderName?: unknown };
+          const result = await discoverProject(body);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          const duplicate = findRegisteredDuplicate(result.report.path);
+          return json(
+            {
+              ...result.report,
+              duplicate: duplicate ? { path: duplicate.path, name: duplicate.name } : null,
+            },
+            { headers: corsHeaders(req) },
+          );
+        }),
+      },
+
+      // Local environment manager (FO-004B). One manager for this process.
+      // Profiles are bound to a registered project path. Start/stop/restart
+      // go through EnvironmentManager, which will not signal a process it
+      // cannot prove it owns.
+      "/projects/environment": {
+        GET: environmentRoute((req) => getEnvironmentIndex(req)),
+        POST: environmentRoute((req) => createEnvironmentProfile(req)),
+      },
+      "/projects/environment/:profileId": {
+        GET: environmentRoute((req) => getEnvironmentProfile(req)),
+        PATCH: environmentRoute((req) => updateEnvironmentProfile(req)),
+        DELETE: environmentRoute((req) => deleteEnvironmentProfile(req)),
+      },
+      "/projects/environment/:profileId/start": {
+        POST: environmentRoute((req) => postEnvironmentAction(req, "start")),
+      },
+      "/projects/environment/:profileId/stop": {
+        POST: environmentRoute((req) => postEnvironmentAction(req, "stop")),
+      },
+      "/projects/environment/:profileId/restart": {
+        POST: environmentRoute((req) => postEnvironmentAction(req, "restart")),
+      },
+      "/projects/environment/:profileId/refresh": {
+        POST: environmentRoute((req) => postEnvironmentAction(req, "refresh")),
+      },
+      "/projects/environment/:profileId/logs": {
+        GET: environmentRoute((req) => getEnvironmentLogs(req)),
+      },
+      "/projects/environment/:profileId/urls": {
+        GET: environmentRoute((req) => getEnvironmentUrls(req)),
+      },
+
+      // Project estimation (FO-006B). Reads and writes manual planning inputs
+      // for one registered project. The handlers do not spawn a process.
+      "/projects/estimation": {
+        GET: environmentRoute((req) => getProjectEstimation(req)),
+        PUT: environmentRoute((req) => putProjectEstimation(req)),
+      },
+      "/projects/estimation/dependencies": {
+        GET: environmentRoute((req) => getProjectEstimationDependencies(req)),
+      },
+
+      // AI project interview (FO-003). A turn is started only by a wizard
+      // click; the agent runs one-shot in a scratch folder in a read-only
+      // mode, never in the project, and is polled rather than held open.
+      "/project-interviews/turns": {
+        POST: authed(async (req) => {
+          const body = await req.json().catch(() => null);
+          const prepared = prepareInterviewTurn(body);
+          if (!prepared.ok) return json({ error: prepared.error }, { status: prepared.status, headers: corsHeaders(req) });
+          const started = await startInterviewTurn(prepared.turn);
+          if (!started.ok) {
+            return json(
+              { error: started.error, ...(started.isolation ? { isolation: started.isolation } : {}) },
+              { status: started.status, headers: corsHeaders(req) },
+            );
+          }
+          return json(started.turn, { status: 202, headers: corsHeaders(req) });
+        }),
+      },
+      // What an interview turn on this harness may still do, for the
+      // wizard's confirmation. Runs local CLI probes only, never a model.
+      "/project-interviews/preflight": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { harness?: unknown; model?: unknown; effort?: unknown };
+          const harnessId = typeof body.harness === "string" ? body.harness.trim() : "";
+          if (!harnessId) return json({ error: "harness required" }, { status: 400, headers: corsHeaders(req) });
+          const result = await interviewPreflight(
+            harnessId,
+            typeof body.model === "string" ? body.model : null,
+            typeof body.effort === "string" ? body.effort : null,
+          );
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json(
+            { harness: { id: result.harness.id, label: result.harness.label, kind: result.harness.kind }, isolation: result.isolation },
+            { headers: corsHeaders(req) },
+          );
+        }),
+      },
+      "/project-interviews/turns/:id": {
+        GET: authed((req) => {
+          const turn = getInterviewTurn(req.params.id);
+          if (!turn) return json({ error: "turn not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(turn, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const cancelled = cancelInterviewTurn(req.params.id);
+          return json({ cancelled }, { status: cancelled ? 200 : 404, headers: corsHeaders(req) });
+        }),
+      },
+      // The interview draft for a planned project folder. Stored in its own
+      // table (migration 068), outside the project.
+      "/project-interviews/draft": {
+        GET: authed((req) => {
+          const projectPath = new URL(req.url).searchParams.get("path") ?? "";
+          if (!path.isAbsolute(projectPath)) return json({ error: "path must be absolute" }, { status: 400, headers: corsHeaders(req) });
+          const raw = projectInterviews.get(projectPath);
+          let state = null;
+          if (raw) {
+            try {
+              state = sanitizeInterviewState(JSON.parse(raw));
+            } catch {
+              state = null;
+            }
+          }
+          return json({ state }, { headers: corsHeaders(req) });
+        }),
+        PUT: authed(async (req) => {
+          const text = await req.text().catch(() => "");
+          if (text.length > INTERVIEW_LIMITS.stateChars) {
+            return json({ error: "The interview draft is too large to save." }, { status: 413, headers: corsHeaders(req) });
+          }
+          let parsed: unknown = null;
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = null;
+          }
+          const state = sanitizeInterviewState((parsed as { state?: unknown } | null)?.state);
+          if (!state) return json({ error: "invalid interview draft" }, { status: 400, headers: corsHeaders(req) });
+          projectInterviews.set(state.projectPath, JSON.stringify(state));
+          return json({ ok: true }, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const projectPath = new URL(req.url).searchParams.get("path") ?? "";
+          if (!path.isAbsolute(projectPath)) return json({ error: "path must be absolute" }, { status: 400, headers: corsHeaders(req) });
+          return json({ deleted: projectInterviews.delete(projectPath) }, { headers: corsHeaders(req) });
+        }),
+      },
+      // Read-only: where accepted drafts would be created and whether each
+      // path is free. Never creates folders.
+      "/project-interviews/check-docs": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; files?: unknown };
+          const result = checkDocTargets(body);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json({ projectExists: result.projectExists, checks: result.checks }, { headers: corsHeaders(req) });
+        }),
+      },
+      // Create the accepted drafts in a registered project. Never overwrites.
+      "/project-interviews/write-docs": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { projectPath?: unknown; files?: unknown };
+          const result = writeProjectDocs(body);
+          if (!result.ok) {
+            return json(
+              { error: result.error, ...("checks" in result && result.checks ? { checks: result.checks } : {}) },
+              { status: result.status, headers: corsHeaders(req) },
+            );
+          }
+          return json({ results: result.results }, { headers: corsHeaders(req) });
+        }),
+      },
+
+      // Project manager (FO-005A). One logical manager per registered
+      // project. A turn starts only when the owner sends a message; it runs
+      // like an interview turn (scratch folder, restricted mode, context
+      // inline) and is polled. Tasks are created only by `approve`, in the
+      // backlog, without starting an agent.
+      "/project-manager": {
+        GET: managerRoute((req) => getManagerState(queryPathParam(req))),
+      },
+      "/project-manager/config": {
+        PUT: managerRoute((_req, body) => updateManagerConfig(body.path, body.config)),
+      },
+      "/project-manager/context": {
+        GET: managerRoute(async (req) => {
+          const result = await getManagerContextSources(queryPathParam(req));
+          return result.ok ? { ok: true as const, value: { sources: result.value } } : result;
+        }),
+      },
+      "/project-manager/preflight": {
+        POST: managerRoute((_req, body) => managerPreflight(body.path)),
+      },
+      "/project-manager/messages": {
+        POST: managerRoute((_req, body) => sendManagerMessage(body.path, body), 202),
+      },
+      "/project-manager/turns/:id": {
+        GET: authed((req) => {
+          const turn = getManagerTurn(req.params.id);
+          if (!turn) return json({ error: "turn not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(turn, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const cancelled = cancelManagerTurn(req.params.id);
+          return json({ cancelled }, { status: cancelled ? 200 : 404, headers: corsHeaders(req) });
+        }),
+      },
+      "/project-manager/proposals/:id": {
+        PATCH: managerRoute((req, body) =>
+          saveProposalEdits(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/proposals/:id/approve": {
+        POST: managerRoute((req, body) =>
+          approveProposal(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/proposals/:id/reject": {
+        POST: managerRoute((req, body) =>
+          rejectProposal(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      // Supervised execution (FO-005B). The manager never starts a task on
+      // its own: `POST …/executions` prepares a proposal from the task's
+      // settings (local checks only, no model call), and only `approve` —
+      // the owner's explicit action — starts it, through `startTask`.
+      "/project-manager/executions": {
+        GET: managerRoute((req) => listExecutions(queryPathParam(req))),
+        POST: managerRoute((_req, body) => prepareExecution(body.path, body)),
+      },
+      "/project-manager/executions/:id": {
+        GET: managerRoute((req) =>
+          getExecution(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+        PATCH: managerRoute((req, body) =>
+          updateExecution(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/executions/:id/check": {
+        POST: managerRoute((req, body) =>
+          recheckExecution(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/executions/:id/approve": {
+        POST: managerRoute((req, body) => {
+          // Starting can materialize a worktree, like POST /tasks/:id/start.
+          server.timeout(req, 0);
+          return approveExecution(body.path, (req as Request & { params: { id: string } }).params.id, body);
+        }),
+      },
+      "/project-manager/executions/:id/dismiss": {
+        POST: managerRoute((req, body) =>
+          dismissExecution(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/executions/:id/result": {
+        GET: managerRoute((req) =>
+          executionResult(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/executions/:id/review": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return reviewExecution(body.path, (req as Request & { params: { id: string } }).params.id, body);
+        }),
+      },
+      // Structured scheduling and approved execution batches (FO-005C.1).
+      // Dependencies and priorities are real rows, validated per project.
+      // A batch is prepared and approved without starting anything; only
+      // `start` (an explicit owner action) runs it, and every task it
+      // starts goes through the supervised path above (`startTask`).
+      "/project-manager/scheduling": {
+        GET: managerRoute((req) => listScheduling(queryPathParam(req))),
+      },
+      "/project-manager/tasks/:id/scheduling": {
+        PUT: managerRoute((req, body) =>
+          updateScheduling(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      // Task plans (FO-ORCH04): a read-only view of a proposal and the board
+      // it produced. Nothing here assigns, reviews or starts anything.
+      "/project-manager/plans": {
+        GET: managerRoute((req) => listPlans(queryPathParam(req))),
+      },
+      "/project-manager/plans/:id": {
+        GET: managerRoute((req) => getPlan(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/plans/:id/verify": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return verifyPlan(body.path, (req as Request & { params: { id: string } }).params.id, body.planKey);
+        }),
+      },
+      // Controlled execution queue of a plan (FO-ORCH05). Stores the Owner's
+      // order and pause/stop only; it starts nothing. Each start still goes
+      // through Employee Review, Permission Review and Confirm.
+      "/project-manager/plans/:id/queue": {
+        GET: managerRoute((req) => getQueue(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+        PUT: managerRoute((req, body) =>
+          saveQueue(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/queues/:id/pause": {
+        POST: managerRoute((req, body) => setQueueStatus(body.path, (req as Request & { params: { id: string } }).params.id, "pause", body.revision)),
+      },
+      "/project-manager/queues/:id/resume": {
+        POST: managerRoute((req, body) => setQueueStatus(body.path, (req as Request & { params: { id: string } }).params.id, "resume", body.revision)),
+      },
+      "/project-manager/queues/:id/stop": {
+        POST: managerRoute((req, body) => setQueueStatus(body.path, (req as Request & { params: { id: string } }).params.id, "stop", body.revision)),
+      },
+      // Owner opt-in to keep the next task's review prepared (FO-ORCH06).
+      // Read-only preparation: it never confirms a plan or starts anything.
+      "/project-manager/queues/:id/auto-prepare": {
+        POST: managerRoute((req, body) => setAutoPrepare(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/queues/:id/next": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return nextQueueTask(body.path, (req as Request & { params: { id: string } }).params.id, body);
+        }),
+      },
+      // Hand queue tasks to a new Execution Batch draft (FO-ORCH07). Creates a
+      // draft only; approve and start stay the batch's own Owner controls.
+      "/project-manager/queues/:id/batch": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return prepareQueueBatch(body.path, (req as Request & { params: { id: string } }).params.id, body);
+        }, 201),
+      },
+      "/project-manager/proposals/:id/batch": {
+        POST: managerRoute((req, body) =>
+          createBatchFromProposal(body.path, (req as Request & { params: { id: string } }).params.id, body), 201),
+      },
+      "/project-manager/batches": {
+        GET: managerRoute((req) => listBatches(queryPathParam(req))),
+        POST: managerRoute((_req, body) => createBatch(body.path, body), 201),
+      },
+      "/project-manager/batches/:id": {
+        GET: managerRoute((req) => getBatch(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+        PATCH: managerRoute((req, body) =>
+          updateBatch(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/batches/:id/events": {
+        GET: managerRoute((req) => batchEvents(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/preview": {
+        POST: managerRoute((req, body) => previewBatch(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/approve": {
+        POST: managerRoute((req, body) => approveBatch(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/batches/:id/autonomy/preview": {
+        POST: managerRoute((req, body) => previewAutonomy(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/autonomy": {
+        POST: managerRoute((req, body) => grantAutonomy(body.path, (req as Request & { params: { id: string } }).params.id, body)),
+      },
+      "/project-manager/batches/:id/autonomy/revoke": {
+        POST: managerRoute((req, body) => revokeAutonomy(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/start": {
+        POST: managerRoute((req, body) => {
+          // The first starts can materialize worktrees, like POST /tasks/:id/start.
+          server.timeout(req, 0);
+          return startBatch(body.path, (req as Request & { params: { id: string } }).params.id);
+        }),
+      },
+      "/project-manager/batches/:id/pause": {
+        POST: managerRoute((req, body) => pauseBatch(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/resume": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return resumeBatch(body.path, (req as Request & { params: { id: string } }).params.id);
+        }),
+      },
+      "/project-manager/batches/:id/cancel": {
+        POST: managerRoute((req, body) => cancelBatch(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/batches/:id/stop-runs": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return stopBatchRuns(body.path, (req as Request & { params: { id: string } }).params.id);
+        }),
+      },
+      "/project-manager/batches/:id/tasks/:taskId/release": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          const params = (req as Request & { params: { id: string; taskId: string } }).params;
+          return releaseBatchTask(body.path, params.id, params.taskId);
+        }),
+      },
+      // FO-AUTO02: bounded multi-task employee + QC batches (sequential FO-AUTO01 grants).
+      "/project-manager/orchestrated-batches": {
+        GET: managerRoute((req) => listOrchestratedBatchesRoute(queryPathParam(req))),
+        POST: managerRoute((_req, body) =>
+          createOrchestratedBatchRoute(body.path, body as unknown as import("../shared/pm-orchestrated-batch.ts").OrchestratedBatchDraftBody), 201),
+      },
+      "/project-manager/orchestrated-batches/:id": {
+        GET: managerRoute((req) =>
+          getOrchestratedBatchRoute(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/orchestrated-batches/:id/approve": {
+        POST: managerRoute((req, body) =>
+          approveOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id, body as unknown as import("../shared/pm-orchestrated-batch.ts").OrchestratedBatchApproveBody)),
+      },
+      "/project-manager/orchestrated-batches/:id/start": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return startOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id);
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/pause": {
+        POST: managerRoute((req, body) =>
+          pauseOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/orchestrated-batches/:id/resume": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return resumeOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id);
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/cancel": {
+        POST: managerRoute((req, body) =>
+          cancelOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/orchestrated-batches/:id/phase-grants": {
+        POST: managerRoute((req, body) => {
+          server.timeout(req, 0);
+          return phaseGrantOrchestratedBatchRoute(body.path, (req as Request & { params: { id: string } }).params.id, body);
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery": {
+        GET: managerRoute(async (req) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const path = queryPathParam(req);
+          const taskId = new URL(req.url).searchParams.get("taskId") ?? "";
+          if (!taskId) return { ok: false as const, error: "taskId is required", status: 400 };
+          try {
+            return { ok: true as const, value: await previewProviderRecoveryRoute(path, id, taskId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }),
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          try {
+            return { ok: true as const, value: await approveProviderRecoveryRoute(body.path, id, body) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }, 201),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId": {
+        GET: managerRoute((req) => {
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          const auth = getProviderRecovery(recoveryId);
+          if (!auth) return { ok: false as const, error: "Recovery authorization not found.", status: 404 };
+          return { ok: true as const, value: auth };
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/apply": {
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await applyProviderRecoveryRoute(body.path, id, recoveryId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/phase-grant": {
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await mintProviderRecoveryPhaseGrantRoute(body.path, id, recoveryId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }, 201),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/prelaunch-classification": {
+        GET: managerRoute(async (req) => {
+          const id = (req as Request & { params: { id: string; recoveryId: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await classifyPrelaunchClaimRoute(queryPathParam(req), id, recoveryId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/prelaunch-reauthorization": {
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await approvePrelaunchReauthorizationRoute(body.path, id, recoveryId, body) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }, 201),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/prelaunch-reauthorization/apply": {
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await applyPrelaunchReauthorizationRoute(body.path, id, recoveryId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }),
+      },
+      "/project-manager/orchestrated-batches/:id/provider-recovery/:recoveryId/prelaunch-reauthorization/phase-grant": {
+        POST: managerRoute(async (req, body) => {
+          const id = (req as Request & { params: { id: string } }).params.id;
+          const recoveryId = (req as Request & { params: { recoveryId: string } }).params.recoveryId;
+          try {
+            return { ok: true as const, value: await mintPrelaunchReplacementRoute(body.path, id, recoveryId) };
+          } catch (e) {
+            const status = e instanceof ProviderRecoveryError ? e.status : 400;
+            return { ok: false as const, error: e instanceof Error ? e.message : String(e), status };
+          }
+        }, 201),
+      },
+      "/project-manager/decisions": {
+        POST: managerRoute((_req, body) => addManagerDecision(body.path, body), 201),
+      },
+      "/project-manager/decisions/:id": {
+        DELETE: managerRoute((req) =>
+          deleteManagerDecision(queryPathParam(req), (req as Request & { params: { id: string } }).params.id)),
+      },
+      "/project-manager/intake-grants": {
+        POST: managerRoute((_req, body) => {
+          const projectPath = typeof body.path === "string" ? body.path : null;
+          if (!projectPath) return { ok: false as const, error: "path is required", status: 400 };
+          const taskIds = Array.isArray(body.taskIds)
+            ? body.taskIds.filter((id): id is string => typeof id === "string")
+            : null;
+          const created = createIntakeGrant(projectPath, taskIds?.length ? taskIds : null);
+          if (!created.ok) return { ok: false as const, error: created.error, status: 400 };
+          return { ok: true as const, value: { grantId: created.grantId } };
+        }, 201),
       },
 
       // Clone repository: clone an existing GitHub/GitLab/Bitbucket repo,
@@ -1529,7 +3146,10 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
             return json({ project: null }, { headers: corsHeaders(req) });
           }
           const project = projects.upsert(picked, path.basename(picked) || picked);
-          return json({ project }, { headers: corsHeaders(req) });
+          return json(
+            { project: { ...project, lifecycle: getProjectLifecycle(project.path) ?? undefined } },
+            { headers: corsHeaders(req) },
+          );
         }),
         // Removal-by-path lives on `DELETE /projects` (used by both the webview
         // and the CLI); /projects/pick is the native add-picker only.
@@ -1576,6 +3196,37 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
             return json({ error: "project not found" }, { status: 404, headers: corsHeaders(req) });
           }
           return json(updated, { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/projects/rules": {
+        GET: authed((req) => {
+          const url = new URL(req.url);
+          const p = url.searchParams.get("path");
+          const result = listProjectRules(p);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json({ rules: result.rules, version: result.version }, { headers: corsHeaders(req) });
+        }),
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+          const result = createProjectRule(body);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json({ rule: (result as { rule: unknown }).rule, rules: result.rules, version: result.version }, { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/projects/rules/:ruleId": {
+        PATCH: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+          const result = updateProjectRule(req.params.ruleId, body);
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json({ rule: (result as { rule: unknown }).rule, rules: result.rules, version: result.version }, { headers: corsHeaders(req) });
+        }),
+        DELETE: authed((req) => {
+          const url = new URL(req.url);
+          const result = deleteProjectRule(req.params.ruleId, url.searchParams.get("path"));
+          if (!result.ok) return json({ error: result.error }, { status: result.status, headers: corsHeaders(req) });
+          return json({ rules: result.rules, version: result.version }, { headers: corsHeaders(req) });
         }),
       },
 
@@ -3711,12 +5362,17 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
         },
       },
 
-      // App info — currently just the version. Read at module-load time
-      // from the bundled package.json so the value tracks releases without
-      // a CI-time env injection step.
+      // App info — packaged provenance (when built) plus package.json version/build
+      // and migration ceiling. Read at request time from the bundle metadata file.
       "/info": {
         GET: authed((req) =>
-          json({ version: pkg.version }, { headers: corsHeaders(req) })),
+          json(
+            {
+              ...readBuildInfo(),
+              profileIdentity: profileIdentityForPath(canonicalizeProfilePath(dataDir)),
+            },
+            { headers: corsHeaders(req) },
+          )),
       },
 
       // Double-clicking the custom app bar in App.tsx hits this route to
@@ -3879,8 +5535,48 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           // request waiting on it — never throws, so it can't affect the
           // response below either way.
           noteHarnessStatuses(statuses);
+          const installations = [discoverDeepSeekInstallation()];
+          const cursorStatus = statuses.find((status) => status.kind === "cursor");
+          const deepseek = installations[0]!;
+          const probe = (kind: string) => statuses.find((status) => status.kind === kind);
+          const auth = (kind: string): "unknown" | "cli-reported" | "absent" => {
+            const status = probe(kind);
+            return status?.loggedIn === true ? "cli-reported" : status?.loggedIn === false ? "absent" : "unknown";
+          };
+          // The built-in harness of each kind, resolved by the launch's own resolver. A read starts no process:
+          // the version is whatever an earlier explicit probe read of the same file (or "not checked").
+          const target = (kind: string) => profileLaunchTarget(kind);
+          const runtimeReadiness = readinessMatrix({
+            codex: { installed: probe("codex") ? probe("codex")!.available : null, cliVersion: probe("codex")?.version ?? null, authentication: auth("codex"), launchTarget: target("codex") },
+            "claude-code": { installed: probe("claude-code") ? probe("claude-code")!.available : null, cliVersion: probe("claude-code")?.version ?? null, authentication: auth("claude-code"), launchTarget: target("claude-code") },
+            cursor: { installed: cursorStatus?.available === true, cliVersion: cursorStatus?.version ?? null, authentication: auth("cursor"), launchTarget: target("cursor") },
+            antigravity: { installed: probe("antigravity") ? probe("antigravity")!.available : null, cliVersion: probe("antigravity")?.version ?? null, authentication: auth("antigravity"), launchTarget: target("antigravity") },
+            gemini: { installed: probe("gemini") ? probe("gemini")!.available : null, cliVersion: probe("gemini")?.version ?? null, authentication: auth("gemini"), launchTarget: target("gemini") },
+            fx: { installed: probe("fx") ? probe("fx")!.available : null, cliVersion: probe("fx")?.version ?? null, authentication: auth("fx"), launchTarget: target("fx") },
+            "deepseek-dsh": {
+              installed: deepseek.status !== "missing" && deepseek.status !== "unidentified",
+              cliVersion: deepseek.version,
+              authentication: "unknown",
+            },
+          });
           return json(
-            { harnesses: harnesses.list(), statuses },
+            {
+              harnesses: harnesses.list(),
+              statuses,
+              installations,
+              runtimeReadiness,
+              providerDiagnostics: [
+                cursorProviderDiagnostic({
+                  installed: cursorStatus?.available === true,
+                  version: cursorStatus?.version ?? null,
+                  loggedIn: cursorStatus?.loggedIn ?? null,
+                }),
+                deepseekProviderDiagnostic({
+                  installed: deepseek.status !== "missing" && deepseek.status !== "unidentified",
+                  version: deepseek.version,
+                }),
+              ],
+            },
             { headers: corsHeaders(req) },
           );
         }),
@@ -4545,6 +6241,316 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
         }),
       },
 
+      // ── Backup & Recovery (FO-P2-004) ───────────────────────────────────
+      // The approved BackupProcessRunner lives behind ./backup-service.ts.
+      // Every route is authenticated and local-only; no request field can name
+      // the source profile database. Destination folders arrive from the
+      // native panel as short-lived, single-use grants.
+      "/backup/profile": {
+        GET: authed((req) => json(backup.getProfileInfo(), { headers: corsHeaders(req) })),
+      },
+
+      "/backup/destinations/pick": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          const purpose = body.purpose;
+          if (
+            purpose !== "backup-parent" &&
+            purpose !== "restore-parent" &&
+            purpose !== "history-location" &&
+            purpose !== "snapshot"
+          ) {
+            return json({ error: "purpose must be backup-parent, restore-parent, history-location or snapshot" }, { status: 400, headers: corsHeaders(req) });
+          }
+          if (!native) return notAvailableHeadless(req);
+          // The request stays open while the native panel is up.
+          server.timeout(req, 0);
+          const picks = await openFileDialogLabelled(native, {
+            startingFolder: homedir(),
+            canChooseFiles: false,
+            canChooseDirectory: true,
+            allowsMultipleSelection: false,
+          });
+          const picked = singlePickedPath(picks);
+          if (!picked) return json({ cancelled: true }, { headers: corsHeaders(req) });
+          try {
+            if (purpose === "snapshot") {
+              // Read-only selection: record the user's choice so the inspect,
+              // verify and restore routes accept this snapshot (and only
+              // snapshots the user picked or the app already knows).
+              const snapshotPath = backup.issueSnapshotSelection(picked);
+              return json({ path: snapshotPath, cancelled: false }, { headers: corsHeaders(req) });
+            }
+            const grant = backup.issueDestinationGrant(picked, purpose);
+            return json({ path: grant.path, grantId: grant.id, cancelled: false }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/create": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json({ operation: backup.startCreate(body.grantId) }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/verify": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json({ operation: backup.startVerify(body.snapshotPath) }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/inspect": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json({ snapshot: backup.inspectSnapshot(body.snapshotPath) }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/snapshots/select": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            const snapshotPath = backup.issueSnapshotSelection(body.path);
+            return json({ path: snapshotPath, cancelled: false }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/restore/preview": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json(await backup.previewRestore(body.snapshotPath, body.verificationId), {
+              headers: corsHeaders(req),
+            });
+          } catch (err) {
+            if (
+              err instanceof BackupServiceError &&
+              (err.code === "VERIFICATION_REQUIRED" || err.code === "SNAPSHOT_CHANGED")
+            ) {
+              return json(
+                { error: err.message, code: err.code, requiresVerification: true },
+                { status: err.status, headers: corsHeaders(req) },
+              );
+            }
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/restore": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json(
+              {
+                operation: backup.startRestore({
+                  snapshotPath: body.snapshotPath,
+                  grantId: body.grantId,
+                  verificationId: body.verificationId,
+                  destinationName: body.destinationName,
+                  managed: body.managed === true,
+                }),
+              },
+              { headers: corsHeaders(req) },
+            );
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/history": {
+        GET: authed((req) => json(backup.listHistory(), { headers: corsHeaders(req) })),
+      },
+
+      "/backup/history/locations": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            return json({ locations: backup.addLocation(body.grantId) }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/operations": {
+        GET: authed((req) => json({ operations: backup.listOperations() }, { headers: corsHeaders(req) })),
+      },
+
+      "/backup/operations/:id": {
+        GET: authed((req) => {
+          try {
+            return json({ operation: backup.getOperation(req.params.id) }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      "/backup/operations/:id/cancel": {
+        POST: authed(async (req) => {
+          try {
+            const result = await backup.cancelOperation(req.params.id);
+            return json(result, { headers: corsHeaders(req) });
+          } catch (err) {
+            return backupRouteError(req, err);
+          }
+        }),
+      },
+
+      // ── Profile activation (FO-P2-005-B) ────────────────────────────────
+      // Trusted local-only routes over ProfileActivationService. Preparing a
+      // transition never switches the live database; the owner must relaunch so
+      // resolveStartupProfile can apply the journal before SQLite opens.
+      "/profile/activation": {
+        GET: authed((req) => {
+          try {
+            return json(buildActivationStatus(getProfileActivationService()), { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
+      "/profile/activation/candidate/inspect": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            const candidatePath = readCandidatePath(body);
+            const inspection = getProfileActivationService().inspectCandidate(candidatePath);
+            return json(buildCandidateView(inspection), { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
+      "/profile/activation/candidate/relink": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          try {
+            const candidatePath = readCandidatePath(body);
+            const oldPath = typeof body.oldPath === "string" ? body.oldPath : "";
+            const newPath = typeof body.newPath === "string" ? body.newPath : "";
+            const service = getProfileActivationService();
+            const result = service.relinkCandidateProject({ candidatePath, oldPath, newPath });
+            return json(result, { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
+      "/profile/activation/prepare": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          if (!requireActivationConfirm(body)) {
+            return json(
+              { error: "Set confirm: true after reviewing the candidate inspection", code: "INVALID_INPUT" },
+              { status: 400, headers: corsHeaders(req) },
+            );
+          }
+          try {
+            const candidatePath = readCandidatePath(body);
+            const result = getProfileActivationService().prepareActivation({ candidatePath });
+            return json(buildPrepareView(result), { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
+      "/profile/activation/rollback/prepare": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          if (!requireActivationConfirm(body)) {
+            return json(
+              { error: "Set confirm: true before rolling back to the previous profile", code: "INVALID_INPUT" },
+              { status: 400, headers: corsHeaders(req) },
+            );
+          }
+          try {
+            const result = getProfileActivationService().requestRollback();
+            return json(buildPrepareView(result), { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
+      "/profile/activation/relaunch": {
+        POST: authed(async (req) => {
+          const body = await readBackupJsonBody(req);
+          if (isResponse(body)) return body;
+          if (!requireActivationConfirm(body)) {
+            return json(
+              { error: "Set confirm: true to relaunch and apply the pending profile transition", code: "INVALID_INPUT" },
+              { status: 400, headers: corsHeaders(req) },
+            );
+          }
+          if (!native) return notAvailableHeadless(req);
+          try {
+            const service = getProfileActivationService();
+            const pending = service.getPendingTransition();
+            if (!pending) {
+              return json(
+                { error: "No profile transition is waiting for a relaunch", code: "NOT_READY" },
+                { status: 409, headers: corsHeaders(req) },
+              );
+            }
+            await disposeActiveBackupService();
+            const armed = armForceQuit();
+            if (!armed) {
+              return json({ ok: true, alreadyArmed: true, pendingTransitionId: pending.transitionId }, {
+                headers: corsHeaders(req),
+              });
+            }
+            setTimeout(() => {
+              try {
+                native.quit();
+              } catch {
+                /* safe to swallow */
+              }
+            }, 0);
+            return json({ ok: true, pendingTransitionId: pending.transitionId }, { headers: corsHeaders(req) });
+          } catch (err) {
+            return activationRouteError(err, json, corsHeaders(req));
+          }
+        }),
+      },
+
       // ── Agents + Pipelines bundle export/import ─────────────────────────
       // docs/plans/agents-pipelines-import-export.md K4. The logic lives in
       // ./bundle.ts; these routes only validate, call it and map results to
@@ -4964,6 +6970,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
               ...(t.pipelineRun ? { pipelineRun: trimPipelineRunForList(t.pipelineRun) } : {}),
               runningSubagents: counts.get(t.id) ?? 0,
               stalledSince: stalledSince(t.id),
+              ...ownershipFields(t.workdir),
             })),
             { headers: corsHeaders(req) },
           );
@@ -4986,6 +6993,9 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           }
           if (body.issueUrl !== undefined && typeof body.issueUrl !== "string") {
             return json({ error: "issueUrl must be a string" }, { status: 400, headers: corsHeaders(req) });
+          }
+          if (body.accessMode !== undefined && normalizeAccessMode(body.accessMode) === null) {
+            return json({ error: "accessMode must be workspace, isolated, or full-computer" }, { status: 400, headers: corsHeaders(req) });
           }
           // Additive agent-profile binding (docs/plans/agent-profiles.md):
           // `createTask` resolves it and overrides agent/model/effort/mode/
@@ -5068,10 +7078,28 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           // persist) can land during the parse and move the column; a
           // snapshot taken beforehand would still treat the run as `done`
           // and write `column: "done"` onto a run that is no longer finished.
-          const patch = filterPatch(await req.json());
+          const raw = await req.json();
+          const patch = filterPatch(raw);
           const before = tasks.get(req.params.id);
           if (!before) {
             return json({ error: "not found" }, { status: 404, headers: corsHeaders(req) });
+          }
+          if (raw && typeof raw === "object" && Object.hasOwn(raw, "expectedUpdatedAt")) {
+            const expected = (raw as { expectedUpdatedAt?: unknown }).expectedUpdatedAt;
+            if (typeof expected !== "number" || !Number.isFinite(expected)) {
+              return json({ error: "expectedUpdatedAt must be a finite number", code: "invalid-expected-updated-at" }, { status: 400, headers: corsHeaders(req) });
+            }
+            if (before.updatedAt !== expected) {
+              return json({ error: "The task changed since you loaded it. Refresh and try again.", code: "stale-task", task: withRunningSubagents(before) }, { status: 409, headers: corsHeaders(req) });
+            }
+          }
+          // Isolation is create-only. Refuse the entire request instead of
+          // silently applying other fields while dropping this security setting.
+          if (raw && typeof raw === "object" && Object.hasOwn(raw, "isolation") && raw.isolation !== before.isolation) {
+            return json({ error: "Task isolation is immutable. Create a separately reviewed task to select another isolation mode.", code: "isolation-immutable" }, { status: 409, headers: corsHeaders(req) });
+          }
+          if (raw && typeof raw === "object" && Object.hasOwn(raw, "accessMode") && raw.accessMode !== (before.accessMode ?? "workspace")) {
+            return json({ error: "Task access mode is immutable. Create a separately reviewed task to select another access mode.", code: "access-mode-immutable" }, { status: 409, headers: corsHeaders(req) });
           }
           // Archived rows are frozen — the UI hides every mutator (drag is
           // disabled, action buttons are stripped, the composer is replaced
@@ -5173,6 +7201,20 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
               );
             }
           }
+          // Kanban urgency is an integer 1..5. Changing it repositions the card at the end of its new group
+          // (`tasks.update`) and touches nothing else: not the status, the assignee, a grant or a run.
+          if ("urgency" in patch && !isUrgency(patch.urgency)) {
+            return json({ error: "urgency must be a whole number from 1 (Minimal) to 5 (Critical)", code: "invalid-urgency" }, { status: 400, headers: corsHeaders(req) });
+          }
+          // Scheduled availability (FO-KANBAN-SCHEDULE01): canonical UTC ISO-8601 instant or null.
+          // Rejects malformed or timezone-less strings; editing touches nothing else (no status, urgency, rank, or grant change).
+          if ("availableFromUtc" in patch) {
+            const parsedAvail = parseAvailableFromUtc(patch.availableFromUtc);
+            if (!parsedAvail.ok) {
+              return json({ error: parsedAvail.error, code: parsedAvail.code }, { status: 400, headers: corsHeaders(req) });
+            }
+            patch.availableFromUtc = parsedAvail.value;
+          }
           if (
             "taskType" in patch
             && !TASK_TYPES.some((t) => t.id === patch.taskType)
@@ -5216,7 +7258,30 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
               }
             }
           }
-          const updated = tasks.update(req.params.id, patch);
+          if ("column" in patch && patch.column === "done") {
+            const block = assertCanMoveTaskToDone(before);
+            if (block) {
+              return json({ error: block }, { status: 409, headers: corsHeaders(req) });
+            }
+          }
+          const updated = accountCoreDb.transaction(() => {
+            const result = tasks.update(req.params.id, patch);
+            // Kanban and the task panel share this Owner acceptance transition.
+            // Persist the QC acknowledgement with Done so reopened history does
+            // not keep asking the Owner to accept an already accepted result.
+            if (result && patch.column === "done" && result.qcState?.awaitingOwnerApproval && result.qcState.latestVerdict === "PASS") {
+              acknowledgeQcOwnerReview(result.id);
+              return tasks.get(result.id);
+            }
+            // Return for changes: leaving Review for anything but Done declines
+            // the pending acceptance. Clear only that flag, in the same
+            // transaction; the verdict and review history stay.
+            if (result && before.column === "review" && "column" in patch && patch.column !== "review" && patch.column !== "done"
+              && withdrawQcOwnerAcceptance(result.id)) {
+              return tasks.get(result.id);
+            }
+            return result;
+          })();
           if (!updated) {
             return json({ error: "not found" }, { status: 404, headers: corsHeaders(req) });
           }
@@ -5235,6 +7300,24 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           reconcileTaskSession(req.params.id, before, updated).catch((err: unknown) => {
             console.error("reconcileTaskSession failed:", err);
           });
+          // A column moved on the board (e.g. a result accepted by dragging
+          // it to Done) may unblock a running execution batch.
+          if (updated.column !== before.column) notifyBatchTaskChanged(updated.id);
+          if ((updated.availableFromUtc ?? null) !== (before.availableFromUtc ?? null)) {
+            notifyTaskAvailabilityChanged(updated.id, updated.availableFromUtc ?? null);
+          }
+          if (
+            updated.urgency !== before.urgency ||
+            updated.column !== before.column ||
+            (updated.availableFromUtc ?? null) !== (before.availableFromUtc ?? null)
+          ) {
+            notifySmartQueueChanged(ownerProjectOf(updated.workdir), "task-updated");
+          }
+          if (updated.column === "done" && before.column !== "done") {
+            noteTaskCompleted(updated, updated.runId ?? null);
+            void import("./pm-orchestrated-batch.ts").then((batch) => batch.onOrchestratedOwnerDone(updated.id));
+            void missionScheduler.onOwnerTaskDone(updated.id).catch((error) => console.warn("[orchestration] Owner Done reconciliation failed:", error));
+          }
           return json(withRunningSubagents(updated), { headers: corsHeaders(req) });
         }),
         DELETE: authed(async (req) => {
@@ -5259,6 +7342,332 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           server.timeout(req, 0);
           await deleteTask(req.params.id);
           return new Response(null, { status: 204, headers: corsHeaders(req) });
+        }),
+      },
+
+      "/tasks/:id/computer-workflow": {
+        GET: authed(req => {
+          const task = tasks.get(req.params.id);
+          if (!task) return json({ error: "Task not found." }, { status: 404, headers: corsHeaders(req) });
+          return json(taskComputerView(task), { headers: { ...corsHeaders(req), "cache-control": "no-store" } });
+        }),
+        PUT: authed(async req => {
+          try {
+            const view = await saveTaskComputerScope(req.params.id, await req.json());
+            return json(view, { headers: corsHeaders(req) });
+          } catch (error) {
+            return json({ error: (error as Error).message }, { status: 409, headers: corsHeaders(req) });
+          }
+        }),
+      },
+      "/tasks/:id/computer-workflow/screenshot/:runId": {
+        GET: authed(req => {
+          const bytes = taskComputerScreenshot(req.params.id, req.params.runId);
+          if (!bytes) return json({ error: "Screenshot unavailable." }, { status: 404, headers: corsHeaders(req) });
+          return json({ image: Buffer.from(bytes).toString("base64") }, { headers: { ...corsHeaders(req), "cache-control": "no-store" } });
+        }),
+      },
+
+      "/tasks/:id/admit-inbox": {
+        POST: authed((req) => {
+          const task = tasks.get(req.params.id);
+          if (!task) return json({ error: "not found" }, { status: 404, headers: corsHeaders(req) });
+          if (task.archivedAt != null) {
+            return json({ error: "task is archived — unarchive it before editing" }, { status: 400, headers: corsHeaders(req) });
+          }
+          const projectPath = task.ownerProjectPath ?? task.workdir;
+          const result = admitTaskToInbox(task.id, projectPath);
+          if (!result.ok) return json({ error: result.error }, { status: 409, headers: corsHeaders(req) });
+          return json(withRunningSubagents(result.task), { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/tasks/:id/supervised-workflow": {
+        GET: authed(async (req) => {
+          try {
+            const out = getTaskSupervisedLive(req.params.id);
+            if ("error" in out) return json({ error: out.error }, { status: out.status, headers: corsHeaders(req) });
+            return json(out, { headers: corsHeaders(req) });
+          } catch (e) {
+            // Known client errors keep their status (a malformed task id is a 400); anything
+            // else is rethrown to the request boundary in `authed`.
+            if (e instanceof AssignmentCoreError) return json({ error: e.message }, { status: e.status, headers: corsHeaders(req) });
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/orchestrated-workflow": {
+        GET: authed(async (req) => {
+          return json(getOrchestratedWorkflowView(req.params.id), { headers: corsHeaders(req) });
+        }),
+        POST: authed(async (req) => {
+            const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+            try {
+              approveOrchestratedWorkflow(req.params.id, body as unknown as import("../shared/pm-orchestrated-workflow.ts").OrchestratedWorkflowApproveBody);
+              return json(getOrchestratedWorkflowView(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof OrchestratedWorkflowError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/orchestrated-workflow/cancel": {
+        POST: authed(async (req) => {
+          try {
+            cancelOrchestratedWorkflow(req.params.id);
+            return json(getOrchestratedWorkflowView(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof OrchestratedWorkflowError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/orchestrated-workflow/resume": {
+        POST: authed(async (req) => {
+          try {
+            resumeOrchestratedWorkflow(req.params.id);
+            return json(getOrchestratedWorkflowView(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof OrchestratedWorkflowError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/orchestrated-workflow/tick": {
+        POST: authed(async (req) => {
+          const record = (await import("./pm-orchestrated-workflow.ts")).getWorkflowForTask(req.params.id);
+          if (!record) return json({ error: "No orchestrated workflow." }, { status: 404, headers: corsHeaders(req) });
+          await tickOrchestratedWorkflow(record.id);
+          return json(getOrchestratedWorkflowView(req.params.id), { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/tasks/:id/qc": {
+        GET: authed(async (req) => {
+          try {
+            return json(getTaskQcBundle(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc/reviews": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+          try {
+            const out = prepareQcReview({ ...body, taskId: req.params.id });
+            return json(out, { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc/extension": {
+        POST: qcOwnerRoute(async (req) => {
+          const text = await req.text().catch(() => "");
+          if (text.length > 4096) throw new QcError("Request is too large.", 413, "too-large");
+          let body: Record<string, unknown> = {};
+          try { body = text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { throw new QcError("Invalid JSON.", 400, "invalid"); }
+          return authorizeQcExtension(req.params.id, body);
+        }),
+      },
+
+      "/tasks/:id/qc/reviews/:reviewId/start": {
+        POST: authed(async (req) => {
+          server.timeout(req, 0);
+          try {
+            const result = await startQcReview(req.params.reviewId);
+            if ("error" in result) {
+              const status = result.code === "incomplete-evidence" || result.code === "evidence-stale" ? 409 : 400;
+              return json(result, { status, headers: corsHeaders(req) });
+            }
+            return json(result, { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc/reviews/:reviewId": {
+        DELETE: authed(async (req) => {
+          try {
+            const review = cancelPendingQcReview(req.params.reviewId);
+            return json({ review }, { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-recovery": {
+        GET: authed(async (req) => {
+          try {
+            return json(await getQcRecoveryView(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+          try {
+            return json(await prepareQcRecovery(req.params.id, body), { status: 201, headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-recovery/reconcile": {
+        POST: authed(async (req) => {
+          try {
+            return json(await reconcileQcRecovery(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-recovery/:grantId/approve": {
+        POST: authed(async (req) => {
+          try {
+            return json(await approveQcRecovery(req.params.id, req.params.grantId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-recovery/:grantId/start": {
+        POST: authed(async (req) => {
+          server.timeout(req, 0);
+          try {
+            return json(await startQcRecovery(req.params.id, req.params.grantId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-recovery/:grantId/cancel": {
+        POST: authed(async (req) => {
+          try {
+            return json(await cancelQcRecovery(req.params.id, req.params.grantId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-evidence": {
+        GET: authed(async (req) => {
+          try {
+            return json(await getTaskQcEvidencePreview(req.params.id), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcEvidencePreviewError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-evidence/test-authorization": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => ({}))) as { acknowledgeRisk?: unknown; validMinutes?: unknown; purpose?: unknown };
+          try {
+            return json(await prepareReviewTestAuthorization(req.params.id, body), { status: 201, headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-evidence/test-authorization/:authId/approve": {
+        POST: authed(async (req) => {
+          try {
+            return json(await approveReviewTestAuthorization(req.params.id, req.params.authId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-evidence/test-authorization/:authId/execute": {
+        POST: authed(async (req) => {
+          server.timeout(req, 0);
+          try {
+            return json(await executeReviewTestAuthorization(req.params.id, req.params.authId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc-evidence/test-authorization/:authId/cancel": {
+        POST: authed(async (req) => {
+          try {
+            return json(cancelReviewTestAuthorization(req.params.id, req.params.authId), { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcRecoveryError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/qc/ack-owner": {
+        POST: authed(async (req) => {
+          try {
+            const state = acknowledgeQcOwnerReview(req.params.id);
+            const task = tasks.get(req.params.id);
+            return json({ state, task: task ? withRunningSubagents(task) : null }, { headers: corsHeaders(req) });
+          } catch (e) {
+            if (e instanceof QcError) return json({ error: e.message, code: e.code }, { status: e.status, headers: corsHeaders(req) });
+            throw e;
+          }
+        }),
+      },
+
+      "/tasks/:id/launch-diagnostics": {
+        GET: authed(async (req) => {
+          const task = tasks.get(req.params.id);
+          if (!task) return json({ error: "not found" }, { status: 404, headers: corsHeaders(req) });
+          return json(await diagnoseTaskLaunch(task), { headers: corsHeaders(req) });
+        }),
+      },
+
+      "/launch-diagnostics": {
+        POST: authed(async (req) => {
+          const raw = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!raw || typeof raw !== "object") {
+            return json({ error: "invalid request body" }, { status: 400, headers: corsHeaders(req) });
+          }
+          return json(await diagnoseDraftLaunch({
+            accessMode: raw.accessMode,
+            harnessId: typeof raw.harnessId === "string" ? raw.harnessId : undefined,
+            mode: typeof raw.mode === "string" || raw.mode === null ? raw.mode : undefined,
+            isolation: raw.isolation,
+            workdir: typeof raw.workdir === "string" ? raw.workdir : undefined,
+            branch: typeof raw.branch === "string" || raw.branch === null ? raw.branch : undefined,
+            isPipeline: raw.isPipeline === true,
+          }), { headers: corsHeaders(req) });
         }),
       },
 
@@ -5536,7 +7945,18 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       },
 
       "/tasks/:id/runs": {
-        GET: authed((req) => json(runs.listForTask(req.params.id), { headers: corsHeaders(req) })),
+        GET: authed((req) => {
+          const list = runs.listForTask(req.params.id);
+          // Read-only: the provider refusal a run's own process evidence proved, if any.
+          const refusals = providerRefusalsForRuns(list.map((run) => run.id));
+          // Read-only: what a Stop or a time limit did to each run's process, when one applied.
+          const terminations = runTerminations.forRuns(list.map((run) => run.id));
+          return json(list.map((run) => {
+            const termination = terminations.get(run.id);
+            const base = termination ? { ...run, termination } : run;
+            return refusals.has(run.id) ? { ...base, providerRefusal: refusals.get(run.id)! } : base;
+          }), { headers: corsHeaders(req) });
+        }),
       },
 
       // Snapshot of the background/sub agents tracked for a task — drives the
@@ -5629,6 +8049,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           if (!task) {
             return json({ error: "task not found" }, { status: 404, headers: corsHeaders(req) });
           }
+          if (requiresProfessionalInputReview(accountCoreDb, task.id)) return json({ error: "Professional task input requires an Owner Turn review; raw tmux attach is unavailable." }, { status: 409, headers: corsHeaders(req) });
           const harness = harnesses.getByIdOrKind(task.agent);
           if (harness?.kind !== "claude-code") {
             return json(
@@ -5797,9 +8218,18 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
         }),
       },
 
+      "/runs/:id/execution": {
+        GET: authed(async (req) => {
+          const view = (await import("./run-execution.ts")).getRunExecution(req.params.id);
+          return view ? json(view, { headers: corsHeaders(req) }) : json({ error: "Run not found." }, { status: 404, headers: corsHeaders(req) });
+        }),
+      },
       "/runs/:id/cancel": {
-        POST: authed(async (req) =>
-          json({ cancelled: await cancelRun(req.params.id) }, { headers: corsHeaders(req) })),
+        POST: authed(async (req) => {
+          // `cancelled` says a stop was accepted; `termination` says what the core observed about the process.
+          const result = await stopRun(req.params.id, "manual");
+          return json({ cancelled: result.cancelled, termination: result.termination }, { headers: corsHeaders(req) });
+        }),
       },
 
       // Forward a line of user input to the running agent's stdin. Returns
@@ -5999,10 +8429,9 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       // the tracked files at a given ref (`ref` mode, for previewing a
       // worktree that hasn't been materialized yet). Thin wrapper over
       // `listProjectFiles` — see its header for the two listing shapes.
-      // Trust posture matches `/projects/branches?path=`: the bearer token +
-      // 127.0.0.1 bind (the default; see AGETOR_API_HOST) is the only
-      // boundary, there's no additional path allow-list, so any absolute
-      // directory the caller names is listable.
+      // Git scopes retain their bearer/loopback trust posture. The non-Git
+      // fallback additionally requires an exact registered project root;
+      // subdirectories/ancestors and client-provided authority are rejected.
       // Deliberately has NO `native` dependency (unlike `/refs/pick` above)
       // so it works under `headless.ts` (CLI/e2e), not just the packaged app.
       // `q` (present, even as `q=`) switches to server-side search mode for
@@ -6027,7 +8456,11 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
           const q = url.searchParams.has("q") ? (url.searchParams.get("q") ?? "") : undefined;
           const limitParam = url.searchParams.get("limit");
           const limit = limitParam === null ? undefined : Number.parseInt(limitParam, 10);
-          const result = await listProjectFiles({ dir, ref: refParam ? refParam : undefined, q, limit });
+          const registered = projects.get(dir);
+          const result = await listProjectFiles({ dir, ref: refParam ? refParam : undefined, q, limit,
+            nonGitRoot: registered?.path,
+            excludedProjectRoots: registered ? projects.list().filter(p => p.path !== registered.path).map(p => p.path) : undefined,
+          });
           if ("error" in result) {
             return json({ error: result.error }, { status: 400, headers: corsHeaders(req) });
           }
@@ -6250,6 +8683,9 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
             return json({ error: "answers required" }, { status: 400, headers: corsHeaders(req) });
           }
           const pending = getAskQuestionsById(req.params.id);
+          if (pending && sanitised.some(a => a.custom?.trim()) && requiresProfessionalInputReview(accountCoreDb, pending.taskId)) {
+            return json({ error: "Professional free-text answers require an Owner Turn review." }, { status: 409, headers: corsHeaders(req) });
+          }
           if (pending && pending.source === "scraper") {
             // Claimed synchronously, before the first answer-delivery await: a
             // second request for the same card must not send keys or a
@@ -6609,6 +9045,25 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       // archived check for either verb — both are user-side read state, not
       // a task mutation, and the archived board view still needs to be able
       // to set/clear a dot (plan §3/§4).
+      // Kanban vertical order (FO-KANBAN-URGENCY01). Moves one task inside its own project + column + urgency
+      // group and writes nothing else: no status, urgency, content, assignee, run or grant. It does not consult
+      // the project lifecycle, so a paused project can be reordered without being resumed.
+      "/tasks/:id/reorder": {
+        POST: authed(async (req) => {
+          const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+          if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "A JSON body is required.", code: "body" }, { status: 400, headers: corsHeaders(req) });
+          const extra = Object.keys(body).filter((key) => !["expectedColumn", "expectedUrgency", "placement"].includes(key));
+          if (extra.length > 0) return json({ error: `Unknown field "${extra[0]}". A reorder carries only the placement.`, code: "unknown-field" }, { status: 400, headers: corsHeaders(req) });
+          try {
+            const result = reorderTask(req.params.id, body);
+            return json(result, { headers: corsHeaders(req) });
+          } catch (error) {
+            if (error instanceof KanbanOrderError) return json({ error: error.message, code: error.code, order: error.order ?? null }, { status: error.status, headers: corsHeaders(req) });
+            throw error;
+          }
+        }),
+      },
+
       "/tasks/:id/seen": {
         POST: authed((req) => {
           const updated = tasks.markSeen(req.params.id);
@@ -7361,7 +9816,13 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       // the 200 flush before the process goes away (same pattern as force-quit).
       "/daemon/shutdown": {
         POST: authed((req) => {
-          setTimeout(() => {
+          setTimeout(async () => {
+            try {
+              await disposeActiveBackupService();
+            } catch {
+              /* never block shutdown */
+            }
+            codexSource.disconnect();
             removeCoreCreds(dataDir);
             if (native) native.quit();
             else process.exit(0);
@@ -7601,6 +10062,218 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
       // can't upgrade, so we match it here. Token-gated via `?token=` like the
       // SSE endpoints (WebSockets can't set the Authorization header).
       const url = new URL(req.url);
+      if (url.pathname === "/model-router" || url.pathname.startsWith("/model-router/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return modelRouterHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname.startsWith("/api/usage-analytics/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return usageAnalyticsHttp(req, authorized, trustedQuota).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/api/router-v2" || url.pathname.startsWith("/api/router-v2/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return routerV2Http(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/api/orchestration" || url.pathname.startsWith("/api/orchestration/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return orchestrationHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/api/self-improvement" || url.pathname.startsWith("/api/self-improvement/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return selfImprovementHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/api/autonomy" || url.pathname.startsWith("/api/autonomy/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return autonomyHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/api/owner-trust" || url.pathname.startsWith("/api/owner-trust/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return ownerTrustHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/allocation-plans" || url.pathname.startsWith("/allocation-plans/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return allocationPlanHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/account-core" || url.pathname.startsWith("/account-core/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return accountHttp(req, new AccountCore(accountCoreDb), new LegacyUsageBridge(accountCoreDb), authorized, trustedQuota, codexSource, codexEvidence, () => {
+          void missionScheduler.tickAllRunningMissions().catch(error => console.warn("[missions] Quota refresh wake failed:", error));
+        })
+          .then(response => { for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value); return response; });
+      }
+      if (url.pathname === "/clusters" || url.pathname.startsWith("/clusters/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return clusterHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/employees" || url.pathname.startsWith("/employees/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return employeeHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/task-assignments" || url.pathname.startsWith("/task-assignments/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return assignmentHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/employee-execution" || url.pathname.startsWith("/employee-execution/")) {
+        if (req.method === "POST") server.timeout(req, 0);
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return employeeExecutionHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/task-workspace" || url.pathname.startsWith("/task-workspace/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return taskWorkspaceHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/assignment-proposals" || url.pathname.startsWith("/assignment-proposals/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return assignmentProposalHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/hiring-proposals" || url.pathname.startsWith("/hiring-proposals/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return hiringProposalHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/knowledge" || url.pathname.startsWith("/knowledge/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return knowledgeHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/browser" || url.pathname.startsWith("/browser/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return browserHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/native-computer" || url.pathname.startsWith("/native-computer/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return nativeComputerHttp(req, authorized).then((response) => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        }).catch((err) => {
+          console.error("[native-computer] HTTP handler error:", err);
+          return Response.json({ error: "The native session failed.", code: "helper_failed" }, { status: 500, headers: corsHeaders(req) });
+        });
+      }
+      if (url.pathname === "/brain" || url.pathname.startsWith("/brain/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return brainHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/infrastructure" || url.pathname.startsWith("/infrastructure/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return infrastructureHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/infra-auto" || url.pathname.startsWith("/infra-auto/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return infraAutoHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/deployment-requests" || url.pathname.startsWith("/deployment-requests/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return deploymentRequestHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/deployment-staging-integrations" || url.pathname.startsWith("/deployment-staging-integrations/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return stagingIntegrationHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/catalog" || url.pathname.startsWith("/catalog/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return catalogHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
+      if (url.pathname === "/activity" || url.pathname.startsWith("/activity/") || url.pathname === "/activity-events" || url.pathname.startsWith("/activity-events/")) {
+        const header = req.headers.get("authorization");
+        const authorized = header?.startsWith("Bearer ") === true && tokenMatches(header.slice(7));
+        return activityHttp(req, authorized).then(response => {
+          for (const [key, value] of Object.entries(corsHeaders(req))) response.headers.set(key, value);
+          return response;
+        });
+      }
       const wsMatch = url.pathname.match(/^\/terminals\/([^/]+)\/ws$/);
       if (wsMatch) {
         if (!isAuthorized(req)) return unauthorized(req);
@@ -7622,5 +10295,12 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string } =
   console.log(`[agetor] api listening on http://${formatHostForUrl(HOST)}:${server.port}`);
   const bindWarning = nonLoopbackBindWarning(HOST, server.port!);
   if (bindWarning) console.warn(bindWarning);
+  void import("./autonomy/coordinator.ts").then(async (autonomy) => {
+    await autonomy.recoverAutonomy();
+    await missionScheduler.recoverOrchestrationMissions();
+  });
+  void import("./self-improve/engine.ts").then((engine) => {
+    engine.reconcileSelfImprovement();
+  });
   return server;
 }

@@ -5,6 +5,7 @@ import path from "node:path";
 import { ensureCore, stopDaemon } from "./daemon/supervisor.ts";
 import { AgetorClient, discoverCore } from "./api-client.ts";
 import { coreCredsPath } from "../bun/core-creds.ts";
+import { canonicalizeProfilePath, profileIdentityForPath } from "../bun/profile-paths.ts";
 
 // End-to-end: the supervisor spawns a real headless daemon, the typed client
 // talks to it over HTTP, a second ensureCore discovers the SAME daemon (no
@@ -27,7 +28,9 @@ test("supervisor spawns a daemon and the client talks to it", async () => {
     expect(again.pid).toBe(core.pid);
 
     // discoverCore directly also finds it.
-    const found = await discoverCore(dir);
+    const found = await discoverCore(dir, {
+      expectedProfileIdentity: profileIdentityForPath(canonicalizeProfilePath(dir)),
+    });
     expect(found?.port).toBe(4489);
   } finally {
     await stopDaemon(dir);

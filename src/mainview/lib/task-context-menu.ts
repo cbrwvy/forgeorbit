@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { canOwnerApproveDone } from "../../shared/task-quality-control.ts";
 import type { Task } from "../../shared/types.ts";
 import { isTaskFxPaused } from "../../shared/fx-recovery.ts";
 
@@ -25,6 +27,7 @@ export type TaskMenuAction =
   | "mark-unread"
   | "copy-branch"
   | "copy-worktree-path"
+  | "admit-inbox"
   | "delete";
 
 /** Visual/semantic grouping — T3 inserts a separator between consecutive
@@ -96,15 +99,18 @@ export function buildTaskContextMenu(task: Task, ctx: { isOpen: boolean }): Task
 
   // primary
   if (isPipelineParent) {
-    entries.push({ action: "open-pipeline", label: "Open pipeline", group: "primary" });
+    entries.push({ action: "open-pipeline", label: tr("common.open_pipeline"), group: "primary" });
   } else {
-    entries.push({ action: "open", label: "Open details", group: "primary" });
+    entries.push({ action: "open", label: tr("common.open_details"), group: "primary" });
   }
-  if (!archived && !awaiting && !active && !openable) {
-    entries.push({ action: "start", label: "Run", group: "primary" });
+  if (!archived && !awaiting && !active && !openable && task.column !== "backlog" && task.column !== "inbox") {
+    entries.push({ action: "start", label: tr("common.run"), group: "primary" });
+  }
+  if (!archived && !awaiting && !active && task.column === "backlog" && !isPipelineParent && !isStepTask) {
+    entries.push({ action: "admit-inbox", label: tr("uxfix.task.admitInbox"), group: "primary" });
   }
   if (stoppable && !archived) {
-    entries.push({ action: "stop", label: "Stop", group: "primary" });
+    entries.push({ action: "stop", label: tr("common.stop"), group: "primary" });
   }
   // A resumable fx pause (see TaskFxRecovery) offers its own quick actions
   // right after Stop — "Resume paused response" whenever the task is
@@ -112,29 +118,29 @@ export function buildTaskContextMenu(task: Task, ctx: { isOpen: boolean }): Task
   // orchestrator has a pending timer armed for it (`fxRecovery.autoResume`
   // non-null). Both are hidden once archived — archiving clears the row.
   if (isTaskFxPaused(task) && !archived) {
-    entries.push({ action: "resume-recovery", label: "Resume paused response", group: "primary" });
+    entries.push({ action: "resume-recovery", label: tr("common.resume_paused_response"), group: "primary" });
     if (task.fxRecovery?.autoResume) {
-      entries.push({ action: "cancel-auto-resume", label: "Cancel auto-resume", group: "primary" });
+      entries.push({ action: "cancel-auto-resume", label: tr("common.cancel_auto_resume"), group: "primary" });
     }
   }
-  if (task.column === "review" && !archived) {
-    entries.push({ action: "mark-done", label: "Mark done", group: "primary" });
+  if (task.column === "review" && !archived && !canOwnerApproveDone(task.qcState, task.column)) {
+    entries.push({ action: "mark-done", label: tr("common.mark_done"), group: "primary" });
   }
   if (!archived && !isStepTask && (task.column === "done" || active)) {
-    entries.push({ action: "archive", label: active ? "Stop & archive…" : "Archive", group: "primary" });
+    entries.push({ action: "archive", label: active ? tr("common.stop_archive_63d3e6") : tr("common.archive"), group: "primary" });
   }
   if (archived && !isStepTask) {
-    entries.push({ action: "unarchive", label: "Unarchive", group: "primary" });
+    entries.push({ action: "unarchive", label: tr("common.unarchive"), group: "primary" });
   }
 
   // inspect
-  entries.push({ action: "diff", label: "View changes", group: "inspect" });
-  entries.push({ action: "open-in-finder", label: "Open in Finder", group: "inspect" });
+  entries.push({ action: "diff", label: tr("common.view_changes"), group: "inspect" });
+  entries.push({ action: "open-in-finder", label: tr("common.open_in_finder"), group: "inspect" });
   if (task.prUrl) {
-    entries.push({ action: "view-pr", label: "View pull request", group: "inspect" });
+    entries.push({ action: "view-pr", label: tr("common.view_pull_request"), group: "inspect" });
   }
   if (task.issueUrl) {
-    entries.push({ action: "view-issue", label: "View issue", group: "inspect" });
+    entries.push({ action: "view-issue", label: tr("common.view_issue"), group: "inspect" });
   }
 
   // utility — read/unread + copy entries share one group so they render as a
@@ -143,22 +149,22 @@ export function buildTaskContextMenu(task: Task, ctx: { isOpen: boolean }): Task
   // message; `hasAssistantMessages` is what lets "Mark as unread" avoid
   // re-flagging a task that never said anything.
   if (task.unread === true && !ctx.isOpen) {
-    entries.push({ action: "mark-read", label: "Mark as read", group: "utility" });
+    entries.push({ action: "mark-read", label: tr("common.mark_as_read"), group: "utility" });
   }
   if (!task.unread && !ctx.isOpen && task.hasAssistantMessages === true) {
-    entries.push({ action: "mark-unread", label: "Mark as unread", group: "utility" });
+    entries.push({ action: "mark-unread", label: tr("common.mark_as_unread"), group: "utility" });
   }
   if (task.branch) {
-    entries.push({ action: "copy-branch", label: "Copy branch name", group: "utility" });
+    entries.push({ action: "copy-branch", label: tr("common.copy_branch_name"), group: "utility" });
   }
   if (task.worktreePath) {
-    entries.push({ action: "copy-worktree-path", label: "Copy worktree path", group: "utility" });
+    entries.push({ action: "copy-worktree-path", label: tr("common.copy_worktree_path"), group: "utility" });
   }
 
   // danger — always last. A step task can't be deleted individually — the
   // parent pipeline task owns its lifecycle (409 server-side, D9).
   if (!isStepTask) {
-    entries.push({ action: "delete", label: "Delete…", group: "danger", danger: true });
+    entries.push({ action: "delete", label: tr("common.delete_9ce78f"), group: "danger", danger: true });
   }
 
   return entries;

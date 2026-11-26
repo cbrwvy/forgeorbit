@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TodoItem, TodoProgress } from "@/lib/todo-progress";
@@ -9,12 +11,13 @@ import type { TodoItem, TodoProgress } from "@/lib/todo-progress";
  * of any interactive/mutating controls.
  */
 export function TodoProgressCard({ progress }: { progress: TodoProgress }) {
+  useUILocale();
   const open = progress.total - progress.completed;
   return (
     <div className="rounded-md border border-border/60 bg-card">
       <div className="flex items-center gap-2 border-b border-border/40 px-2 py-1.5 text-[11px]">
         <ListTodo className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="truncate font-medium text-foreground">{progress.activeForm ?? "To-dos"}</span>
+        <span className="truncate font-medium text-foreground">{progress.activeForm ?? tr("common.to_dos")}</span>
         <span className="ml-auto shrink-0 text-muted-foreground">
           {progress.completed}/{progress.total}
         </span>
@@ -23,11 +26,11 @@ export function TodoProgressCard({ progress }: { progress: TodoProgress }) {
        *  line Claude Code's own Task-tools UI shows, so the card reads the
        *  same whether it's watching a TodoWrite or Task-tools session. */}
       <div className="flex items-center gap-1.5 border-b border-border/40 px-2 py-1 text-[10px] text-muted-foreground">
-        <span>{progress.total} tasks</span>
+        <span>{progress.total}{" "}<I18nText id="common.tasks" /></span>
         <span aria-hidden>·</span>
-        <span className="text-success">{progress.completed} done</span>
+        <span className="text-success">{progress.completed}{" "}<I18nText id="common.done_a4c3ed" /></span>
         <span aria-hidden>·</span>
-        <span>{open} open</span>
+        <span>{open}{" "}<I18nText id="common.open_2348f9" /></span>
       </div>
       <ul className="max-h-48 space-y-0.5 overflow-y-auto px-2 py-1.5 text-[11px]">
         {progress.todos.map((todo, i) => (
@@ -39,6 +42,7 @@ export function TodoProgressCard({ progress }: { progress: TodoProgress }) {
 }
 
 function TodoRow({ todo }: { todo: TodoItem }) {
+  useUILocale();
   return (
     <li className="flex items-start gap-2">
       <span className="shrink-0 text-muted-foreground">

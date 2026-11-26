@@ -53,6 +53,13 @@ test("insert rejects ids that aren't slugs", () => {
   ).toThrow(/invalid harness id/);
 });
 
+test("DeepSeek diagnostic identity cannot silently alias a different executable harness", () => {
+  for (const kind of ["claude-code", "codex", "fx", "cursor", "gemini", "antigravity"] as const) {
+    expect(() => harnesses.insert({ id: "deepseek-dsh", kind, label: "DeepSeek" })).toThrow("cannot alias another harness");
+  }
+  expect(harnesses.get("deepseek-dsh")).toBeNull();
+});
+
 test("update mutates fields and refuses to touch built-ins", () => {
   harnesses.insert({ id: "claude-alt", kind: "claude-code", label: "Alt" });
   const after = harnesses.update("claude-alt", { home: "/tmp/alt-home" });

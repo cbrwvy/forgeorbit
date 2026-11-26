@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { Workflow } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ interface PipelineBadgeProps {
  * pipeline.ts`) for the label format.
  */
 export function PipelineBadge({ run, className }: PipelineBadgeProps) {
+  useUILocale();
   const progress = pipelineStepProgress(run);
   return (
     <Badge

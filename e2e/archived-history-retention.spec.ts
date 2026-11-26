@@ -131,7 +131,7 @@ test.describe("archived history retention", () => {
     expect(unarchiveRes.ok(), `POST unarchive -> ${unarchiveRes.status()}: ${await unarchiveRes.text()}`).toBeTruthy();
 
     await gotoApp(page, backend.bootBase);
-    await page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) }).click();
+    await page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) }).click();
     const panel = page.locator("aside").last();
     // The paired tool card renders collapsed; expand it to reach the result.
     const toolCard = panel.getByRole("button", { name: /Bash/ }).first();

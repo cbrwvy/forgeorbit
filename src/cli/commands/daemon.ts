@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ensureCore, stopDaemon } from "../daemon/supervisor.ts";
 import { discoverCore, type CoreInfo } from "../api-client.ts";
-import { resolveDataDir } from "../../bun/core-creds.ts";
+import {
+  expectedProfileIdentityForActiveDir,
+  resolveCliActiveDataDir,
+} from "../../bun/profile-activation-state.ts";
+import { ProfileActivationError } from "../../bun/profile-activation-errors.ts";
 import { c, out, printJson } from "../output.ts";
 import type { Flags } from "../context.ts";
 
@@ -15,6 +19,28 @@ function publicCore(core: CoreInfo) {
     version: core.version,
     startedAt: core.startedAt,
   };
+}
+
+function reportActivationError(err: ProfileActivationError, flags: Flags): void {
+  if (flags.json) {
+    printJson({ running: false, activationError: { code: err.code, message: err.message } });
+  } else {
+    out(`${c.red("!")} ${err.code}: ${err.message}`);
+  }
+  process.exitCode = 1;
+}
+
+function resolveDiscovery(flags: Flags): { activeDataDir: string; expectedIdentity: string } {
+  try {
+    const activeDataDir = resolveCliActiveDataDir(flags.dataDir);
+    return {
+      activeDataDir,
+      expectedIdentity: expectedProfileIdentityForActiveDir(activeDataDir),
+    };
+  } catch (err) {
+    if (err instanceof ProfileActivationError) reportActivationError(err, flags);
+    throw err;
+  }
 }
 
 export async function cmdDaemon(args: string[], flags: Flags): Promise<void> {
@@ -31,24 +57,31 @@ export async function cmdDaemon(args: string[], flags: Flags): Promise<void> {
       return;
     }
     case "stop": {
-      const stopped = await stopDaemon(flags.dataDir);
-      if (flags.json) return printJson({ stopped });
-      out(stopped ? `${c.yellow("○")} shutdown requested` : `${c.gray("○")} no core was running`);
+      try {
+        const stopped = await stopDaemon(flags.dataDir);
+        if (flags.json) return printJson({ stopped });
+        out(stopped ? `${c.yellow("○")} shutdown requested` : `${c.gray("○")} no core was running`);
+      } catch (err) {
+        if (err instanceof ProfileActivationError) reportActivationError(err, flags);
+        throw err;
+      }
       return;
     }
     case "status": {
-      const core = await discoverCore(flags.dataDir);
+      const { activeDataDir, expectedIdentity } = resolveDiscovery(flags);
+      const core = await discoverCore(activeDataDir, { expectedProfileIdentity: expectedIdentity });
       if (flags.json) {
         return printJson(core ? { running: true, ...publicCore(core) } : { running: false });
       }
       if (!core) {
         out(`${c.gray("○")} no ForgeOrbit core running`);
+        tailLog(activeDataDir);
         return;
       }
       out(
         `${c.green("●")} ${c.bold(core.kind)} · 127.0.0.1:${core.port} · v${core.version} · pid ${core.pid}`,
       );
-      tailLog(flags.dataDir);
+      tailLog(activeDataDir);
       return;
     }
     default:
@@ -56,8 +89,8 @@ export async function cmdDaemon(args: string[], flags: Flags): Promise<void> {
   }
 }
 
-function tailLog(dataDir: string | undefined, n = 6): void {
-  const logPath = path.join(dataDir ?? resolveDataDir(), "daemon.log");
+function tailLog(activeDataDir: string, n = 6): void {
+  const logPath = path.join(activeDataDir, "daemon.log");
   try {
     const lines = readFileSync(logPath, "utf8")
       .trimEnd()

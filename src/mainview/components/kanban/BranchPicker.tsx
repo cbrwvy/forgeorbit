@@ -1,3 +1,6 @@
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowDownUp, GitBranch, RefreshCw } from "lucide-react";
 import { api, type BranchInfo } from "@/lib/api";
@@ -30,9 +33,9 @@ const formatAge = (ms: number): string => {
   const day = 24 * 60 * 60 * 1000;
   if (diff < day) return "today";
   if (diff < 2 * day) return "yesterday";
-  if (diff < 30 * day) return `${Math.floor(diff / day)}d ago`;
-  if (diff < 365 * day) return `${Math.floor(diff / (30 * day))}mo ago`;
-  return `${Math.floor(diff / (365 * day))}y ago`;
+  if (diff < 30 * day) return tr("common.d_ago", { p0: String(Math.floor(diff / day)) });
+  if (diff < 365 * day) return tr("common.mo_ago", { p0: String(Math.floor(diff / (30 * day))) });
+  return tr("common.y_ago", { p0: String(Math.floor(diff / (365 * day))) });
 };
 
 /**
@@ -44,6 +47,7 @@ const formatAge = (ms: number): string => {
  * value still means "use HEAD" downstream so the picker can sit unselected.
  */
 export function BranchPicker({ workdir, value, onChange, className, label, title, placement, disabled }: Props) {
+  useUILocale();
   // Branches are tagged with the workdir they were fetched for. Without the
   // tag, switching projects would let the auto-select effect below see the
   // previous repo's `branches` array (state updates from `setBranches([])`
@@ -187,8 +191,8 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
   if (branches.length === 0) {
     items.push({
       value: HEAD_VALUE,
-      label: "HEAD",
-      hint: "Use the workdir's current HEAD when the task starts.",
+      label: tr("tasks.head"),
+      hint: tr("common.use_the_workdir_s_current_head_when_the"),
       pinned: true,
     });
   }
@@ -197,7 +201,7 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
     items.push({
       value: b.name,
       label: b.name,
-      hint: b.behind ? `${age} · ↓${b.behind} behind` : age,
+      hint: b.behind ? tr("common.behind_b74a11", { p0: String(age), p1: String(b.behind) }) : age,
       pinned: b.current,
     });
   }
@@ -208,7 +212,7 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
   if (!displayedItem && value) {
     // Custom value the user typed (e.g. a sha) — render an entry so the
     // trigger label matches what will actually be sent.
-    items.push({ value, label: value, hint: "custom ref", pinned: false });
+    items.push({ value, label: value, hint: tr("common.custom_ref"), pinned: false });
   }
 
   return (
@@ -221,19 +225,16 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
           diverged ? (
             <span
               className="ml-auto inline-flex items-center gap-0.5 text-xs font-medium text-warning"
-              title={`${selected?.name} has diverged from ${selected?.upstream ?? "the remote"} (${ahead} ahead, ${behind} behind) — fast-forward not possible`}
+              title={tr("common.has_diverged_from_ahead_behind_fast_forward_not", { p0: String(selected?.name), p1: String(selected?.upstream ?? tr("common.the_remote")), p2: String(ahead), p3: String(behind) })}
             >
-              <ArrowDownUp className="size-3" aria-hidden />
-              diverged
-            </span>
+              <ArrowDownUp className="size-3" aria-hidden /><I18nText id="common.diverged" />{" "}</span>
           ) : (
             <span
               className="ml-auto inline-flex items-center gap-0.5 text-xs font-medium text-warning"
-              title={`${behind} commit${behind === 1 ? "" : "s"} behind ${selected?.upstream ?? "the remote"} — pull to fast-forward`}
+              title={tr("common.commit_behind_pull_to_fast_forward", { p0: String(behind), p1: String(behind === 1 ? "" : englishPluralSuffix()), p2: String(selected?.upstream ?? tr("common.the_remote")) })}
             >
               <ArrowDownToLine className="size-3" aria-hidden />
-              {behind} behind
-            </span>
+              {behind}{" "}<I18nText id="common.behind" />{" "}</span>
           )
         )}
         <button
@@ -242,14 +243,14 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
           disabled={disabled || !workdir || pulling || fetching || !canPull}
           title={
             pullError
-              ? `Git pull failed: ${pullError}`
+              ? tr("common.git_pull_failed", { p0: String(pullError) })
               : !selected || selected.remote
-                ? "Select a local branch to pull"
+                ? tr("common.select_a_local_branch_to_pull")
                 : !selected.upstream
-                  ? `No upstream configured for ${selected.name}`
+                  ? tr("common.no_upstream_configured_for", { p0: String(selected.name) })
                   : diverged
-                    ? `${selected.name} has diverged from ${selected.upstream} — fast-forward will fail; reconcile it manually`
-                    : `Fast-forward ${selected.name} to ${selected.upstream} (git pull --ff-only)`
+                    ? tr("common.has_diverged_from_fast_forward_will_fail_reconcile", { p0: String(selected.name), p1: String(selected.upstream) })
+                    : tr("common.fast_forward_to_git_pull_ff_only", { p0: String(selected.name), p1: String(selected.upstream) })
           }
           className={cn(
             "inline-flex items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -258,7 +259,7 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
           )}
         >
           <ArrowDownToLine className={cn("size-3", pulling && "animate-pulse")} aria-hidden />
-          {pulling ? "Pulling…" : "Pull"}
+          {pulling ? tr("common.pulling") : tr("common.pull")}
         </button>
         <button
           type="button"
@@ -266,7 +267,7 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
           disabled={disabled || !workdir || fetching || pulling}
           title={
             fetchError
-              ? `Git fetch failed: ${fetchError}`
+              ? tr("common.git_fetch_failed", { p0: String(fetchError) })
               : "Fetch all branches from remote (git fetch --all --prune)"
           }
           className={cn(
@@ -275,7 +276,7 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
           )}
         >
           <RefreshCw className={cn("size-3", fetching && "animate-spin")} aria-hidden />
-          {fetching ? "Fetching…" : "Fetch"}
+          {fetching ? tr("common.fetching") : tr("common.fetch")}
         </button>
       </div>
       <SearchSelect
@@ -285,11 +286,11 @@ export function BranchPicker({ workdir, value, onChange, className, label, title
         className="w-full"
         placement={placement}
         disabled={disabled}
-        title={title ?? (error ? `Couldn't list branches: ${error}` : undefined)}
-        placeholder="Search branches…"
+        title={title ?? (error ? tr("common.couldn_t_list_branches", { p0: String(error) }) : undefined)}
+        placeholder={tr("tasks.search_branches")}
         emptyLabel="HEAD"
         leadingIcon={<GitBranch className="size-3.5" />}
-        displayValue={(v) => (v === HEAD_VALUE ? "HEAD" : v)}
+        displayValue={(v) => (v === HEAD_VALUE ? tr("tasks.head") : v)}
       />
     </div>
   );

@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
@@ -26,6 +27,7 @@ const TRIGGER_GAP = 4;
  * dialog panes) must not be able to cut it off.
  */
 export function InfoTip({ text, className, label = "More info", side = "bottom", align = "right" }: Props) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -119,7 +121,7 @@ export function InfoTip({ text, className, label = "More info", side = "bottom",
             }}
             onMouseDown={(e) => e.stopPropagation()}
             style={pos ? { top: pos.top, left: pos.left } : { top: 0, left: 0, visibility: "hidden" }}
-            className="fixed z-50 max-w-[min(16rem,calc(100vw-2rem))] w-64 rounded-md border border-border bg-card p-2 text-left text-[11px] leading-snug text-muted-foreground shadow-xl"
+            className="glass-floating fixed z-50 max-w-[min(16rem,calc(100vw-2rem))] w-64 rounded-xl border p-2 text-left text-[11px] leading-snug text-muted-foreground shadow-xl"
           >
             {text}
           </div>,

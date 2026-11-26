@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+import { t as tr } from "@/i18n/core";
+import { staticLabel } from "@/i18n/presentation";
+import { useLocale as useUILocale } from "@/i18n/react";
+import { type Dispatch, type ReactNode, type RefObject, type SetStateAction, useEffect, useId, useMemo, useRef, useState } from "react";
+
 import { api, type AvailableCommand, type AvailableExtension } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -450,9 +453,9 @@ export function PromptComposer({
   capabilities,
   savedPrompts: savedPromptsProp,
   rows = 6,
-  placeholder = "What should the agent do? Type / for commands, @ for files.",
+  placeholder,
   label = "Prompt",
-  referencesLabel = "Files / Folders",
+  referencesLabel,
   startingFolder,
   disabled,
   footer,
@@ -473,6 +476,9 @@ export function PromptComposer({
   hint,
   hintClassName,
 }: PromptComposerProps) {
+  const { locale: uiLocale } = useUILocale();
+  const inputId = useId();
+  const inputLabel = label ? staticLabel(label) : tr("tasks.prompt");
   const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
   const ref = textareaRef ?? internalTextareaRef;
 
@@ -548,7 +554,7 @@ export function PromptComposer({
   const referencesPicker = (
     <ReferencesPicker
       variant={referencesVariant}
-      label={referencesLabel}
+      label={referencesLabel ? staticLabel(referencesLabel) : tr("tasks.files_folders")}
       refs={references}
       onChange={onReferencesChange}
       startingFolder={startingFolder}
@@ -609,13 +615,13 @@ export function PromptComposer({
   // absent set can't prove any token unresolved.
   const extensionNames = useMemo(
     () => new Set(extensions.map((e) => (e.insert.startsWith("@") ? e.insert.slice(1) : e.name))),
-    [extensions],
+    [extensions, uiLocale],
   );
   const unlistedTokens = useMemo(() => {
     if (!hasFileScope || projectFiles.loading || projectFiles.error) return [];
     if (projectFiles.entries.length === 0) return [];
     return unresolvedAtTokens(value, projectFiles.validPaths).filter((t) => !extensionNames.has(t.path));
-  }, [hasFileScope, projectFiles.loading, projectFiles.error, projectFiles.entries.length, projectFiles.validPaths, value, extensionNames]);
+  }, [hasFileScope, projectFiles.loading, projectFiles.error, projectFiles.entries.length, projectFiles.validPaths, value, extensionNames, uiLocale]);
   // Paths the live-scope stat check confirmed on disk, keyed by token path
   // with any trailing "/" stripped.
   const [existsOnDisk, setExistsOnDisk] = useState<ReadonlySet<string>>(EMPTY_PATH_SET);
@@ -772,7 +778,7 @@ export function PromptComposer({
     return unresolved.length === 1
       ? `${shown} doesn't match a project file — it will be sent as plain text, not expanded to a path`
       : `${unresolved.length} @ references don't match a project file (${shown}${extra}) — they'll be sent as plain text, not expanded to paths`;
-  }, [unlistedTokens, existsOnDisk, verifiedListed, checkedMissing, projectFiles.truncated]);
+  }, [unlistedTokens, existsOnDisk, verifiedListed, checkedMissing, projectFiles.truncated, uiLocale]);
 
   // Union in server-verified past-the-cap entries so a truncated scope's
   // highlight backdrop isn't limited to the (possibly incomplete) base
@@ -781,7 +787,7 @@ export function PromptComposer({
     () => (verifiedEntryPaths.size
       ? new Set([...projectFiles.validPaths, ...verifiedEntryPaths])
       : projectFiles.validPaths),
-    [projectFiles.validPaths, verifiedEntryPaths],
+    [projectFiles.validPaths, verifiedEntryPaths, uiLocale],
   );
 
   const textareaBlock = (
@@ -790,7 +796,9 @@ export function PromptComposer({
       <Textarea
         ref={ref}
         data-testid={textareaTestId}
-        placeholder={placeholder}
+        id={inputId}
+        aria-label={inputLabel}
+        placeholder={placeholder ?? tr("tasks.composer_placeholder")}
         value={value}
         onChange={(e) => { onChange(e.target.value); if (activeCapture.dropHint) activeCapture.clearDropHint(); }}
         onPaste={activeCapture.onPaste}
@@ -818,6 +826,7 @@ export function PromptComposer({
       {hasFileScope && (
         <AtFileAutocomplete
           entries={projectFiles.entries}
+          loading={projectFiles.loading}
           truncated={projectFiles.truncated}
           error={projectFiles.error}
           value={value}
@@ -847,7 +856,7 @@ export function PromptComposer({
         {notice}
         {toolbar && (
           <div className="flex items-center justify-between gap-2">
-            {label !== null && <label className="text-muted-foreground">{label}</label>}
+            {label !== null && <label htmlFor={inputId} className="text-muted-foreground">{inputLabel}</label>}
             <ExtensionPicker
               extensions={extensions}
               savedPrompts={savedPrompts}

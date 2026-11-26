@@ -1,5 +1,6 @@
 import {
   existsSync,
+  realpathSync,
   watch as fsWatch,
   type FSWatcher,
   openSync as fsOpenSync,
@@ -71,6 +72,12 @@ export type ChunkHandler = (stream: RunEventStream, data: string, lineUuid?: str
 export interface SpawnedAgent {
   /** Interrupt the in-progress turn. Does not destroy the session. */
   kill: () => void;
+  /**
+   * Stop the agent's process and report what was observed (see process-termination.ts). Only the one-shot
+   * tmux drivers provide it; for any other driver a stop is a request whose process exit is not verified.
+   * While the process is still alive after every signal, `done` does not resolve.
+   */
+  terminate?: () => Promise<import("./process-termination.ts").TerminationEvidence>;
   /** Send a new user prompt. Returns false when the session no longer exists. */
   writeInput: (line: string) => boolean;
   /**
@@ -383,6 +390,7 @@ function fireLocalSettingChanged(taskId: string, info: LocalSettingInfo): void {
 }
 
 export interface ClaudeLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   /**
    * Full argv passed to tmux after `--`, e.g. `["claude", "--session-id",
@@ -1625,6 +1633,12 @@ export async function sessionExists(taskId: string): Promise<boolean> {
  * `sessionExists` can be true with no `SessionState` to paste into. The
  * follow-up router (`sendClaudeTurn`) gates the paste path on BOTH.
  */
+/** Exact identity of the driver state, not a most-recent-session lookup. */
+export function attachedClaudeIdentity(taskId: string): { sessionId: string; cwd: string } | null {
+  const state = sessions.get(taskId);
+  return state ? { sessionId: path.basename(state.jsonlPath, ".jsonl"), cwd: state.cwd } : null;
+}
+
 export function hasSessionState(taskId: string): boolean {
   return sessions.has(taskId);
 }
@@ -1854,12 +1868,14 @@ export async function sessionLiveness(name: string): Promise<SessionLiveness> {
  * `createDeathProbe` in session-liveness.ts.
  */
 export async function panePidFor(name: string): Promise<number | null> {
-  const r = await tmux(["list-panes", "-a", "-F", "#{session_name}\t#{pane_pid}"]);
+  // A space separates the fields: tmux 3.8 rewrites a raw TAB in `-F` output to `_`, which made a tab-separated
+  // listing never match. The pid is the last field, so a session name is matched whole whatever it contains.
+  const r = await tmux(["list-panes", "-a", "-F", "#{session_name} #{pane_pid}"]);
   if (!r.ok) return null;
   for (const line of r.stdout.split("\n")) {
-    const tab = line.indexOf("\t");
-    if (tab < 0 || line.slice(0, tab) !== name) continue;
-    const pid = line.slice(tab + 1).trim();
+    const space = line.lastIndexOf(" ");
+    if (space < 0 || line.slice(0, space) !== name) continue;
+    const pid = line.slice(space + 1).trim();
     // Strict all-digit check BEFORE Number(): `Number("")` is 0, which
     // `Number.isFinite` happily accepts (the tmux 3.6a empty-format trap).
     if (!/^[0-9]+$/.test(pid)) return null;
@@ -3310,11 +3326,17 @@ function bumpKeystroke(state: SessionState): void {
  * JSONL discovery + tail.
  * ────────────────────────────────────────────────────────────────────────── */
 
-/** Absolute filesystem path to the JSONL claude writes for this session.
+/** cwd spellings Claude may encode, then the JSONL path for a session.
+ *  Absolute filesystem path to the JSONL claude writes for this session.
  *  `configDir` is the per-harness CLAUDE_CONFIG_DIR — claude treats that
  *  path itself as the `.claude/` equivalent, so new writes land at
  *  `<configDir>/projects/<encoded>/<sid>.jsonl` (no `.claude/` segment).
  *  When NULL, the default `~/.claude/projects/…` layout applies.
+ *
+ *  The encoded directory is `realpath(cwd)`. Claude does the same, so a
+ *  macOS `/tmp/…` workspace (a symlink of `/private/tmp/…`) is `-private-tmp-…`.
+ *  An existing file under the unresolved path is still returned, so a
+ *  session written before that resolution can be rebuilt.
  *
  *  Migration fallback: agetor used to set HOME=<harness home> instead of
  *  CLAUDE_CONFIG_DIR, which made claude write under
@@ -3322,17 +3344,31 @@ function bumpKeystroke(state: SessionState): void {
  *  new-layout file is missing, fall back to the legacy path so rebuild +
  *  reattach can still read pre-upgrade JSONLs. New writes always use the
  *  new layout. */
-export function jsonlPathFor(cwd: string, sessionId: string, configDir: string | null): string {
-  const encoded = encodeProjectPath(cwd);
-  const fileName = `${sessionId}.jsonl`;
-  if (configDir) {
-    const fresh = path.join(configDir, "projects", encoded, fileName);
-    if (existsSync(fresh)) return fresh;
-    const legacy = path.join(configDir, ".claude", "projects", encoded, fileName);
-    if (existsSync(legacy)) return legacy;
-    return fresh;
+function claudeProjectCwds(cwd: string): string[] {
+  const cwds = [cwd];
+  try {
+    const real = realpathSync(cwd);
+    if (real !== cwd) cwds.push(real);
+  } catch {
+    // The directory is not there yet. Encode the path we were given.
   }
-  return path.join(homedir(), ".claude", "projects", encoded, fileName);
+  return cwds;
+}
+
+export function jsonlPathFor(cwd: string, sessionId: string, configDir: string | null): string {
+  const fileName = `${sessionId}.jsonl`;
+  const encodings = claudeProjectCwds(cwd).map(encodeProjectPath);
+  const roots = configDir
+    ? [path.join(configDir, "projects"), path.join(configDir, ".claude", "projects")]
+    : [path.join(homedir(), ".claude", "projects")];
+  // Realpath encoding first: that is where a current Claude writes.
+  for (const encoded of [...encodings].reverse()) {
+    for (const root of roots) {
+      const candidate = path.join(root, encoded, fileName);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return path.join(roots[0]!, encodings[encodings.length - 1]!, fileName);
 }
 
 /**
@@ -8019,6 +8055,7 @@ export async function spawnClaudeViaTmux(opts: ClaudeLaunchOptions): Promise<Spa
   // un-disclaimed can't be re-disclaimed afterward, and every session it
   // hosts (this one included) would inherit Agetor's TCC responsibility.
   await ensureDisclaimedServer();
+  if (opts.authorize && !opts.authorize()) throw new Error("Owner authorization changed before adapter submission.");
   const launch = await tmux(tmuxArgs);
   const afterNewSessionAt = performance.now();
 
@@ -8270,6 +8307,7 @@ export async function spawnClaudeViaTmux(opts: ClaudeLaunchOptions): Promise<Spa
           // delay a prompt that's already known to be ready (or already
           // given up waiting).
           modalGuardGraceMs: 0,
+              authorize: opts.authorize,
           onPasteFailure: () => {
             // Mirror `sendTurn`'s onPasteFailure idiom exactly: guard against
             // the (theoretical) race where the slot already popped normally
@@ -8723,7 +8761,7 @@ export async function sendTurn(
   taskId: string,
   prompt: string,
   onChunk: ChunkHandler,
-  opts?: { onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
+  opts?: { authorize?: () => boolean; onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
 ): Promise<SpawnedAgent> {
   const state = sessions.get(taskId);
   if (!state) {
@@ -8777,6 +8815,7 @@ export async function sendTurn(
   void queuePaste(taskId, state.sessionName, prompt, 0, state, {
     bracketed: true,
     onPasteOutcome: (outcome) => settlePasteOutcome(outcome),
+    authorize: opts?.authorize,
     onPasteFailure: (outcome) => {
       // Guard against a (theoretical) race where the slot already popped
       // normally between the push above and this failure callback firing —
@@ -8863,7 +8902,7 @@ export async function sendTurn(
 export async function pasteFollowUp(
   taskId: string,
   prompt: string,
-  opts?: { onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
+  opts?: { authorize?: () => boolean; onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
 ): Promise<{ delivered: true; pasteOutcome: Promise<PasteOutcome> } | false> {
   const state = sessions.get(taskId);
   if (!state) return false;
@@ -8886,6 +8925,7 @@ export async function pasteFollowUp(
     bracketed: true,
     onPasteOutcome: (outcome) => settlePasteOutcome(outcome),
     onPasteFailure: opts?.onPasteFailure,
+    authorize: opts?.authorize,
   });
   return { delivered: true, pasteOutcome };
 }
@@ -9381,7 +9421,7 @@ export type MirrorModelResult =
 export async function mirrorModelViaPicker(
   taskId: string,
   targetFamily: string,
-  opts?: { onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
+  opts?: { authorize?: () => boolean; onPasteFailure?: (outcome: Extract<PasteOutcome, { ok: false }>) => void },
 ): Promise<MirrorModelResult> {
   const state = sessions.get(taskId);
   if (!state) return { ok: false, reason: "no live session" };
@@ -10912,6 +10952,7 @@ function queuePaste(
   expectedState?: SessionState,
   opts: {
     bracketed?: boolean;
+    authorize?: () => boolean;
     /** Called with the failing outcome when the paste (or its deferred
      *  bracketed Enter) doesn't land — i.e. any `PasteOutcome` with
      *  `ok: false`. Lets a caller that pushed a turn slot for this paste
@@ -11035,7 +11076,9 @@ function queuePaste(
     opts.onPasteOutcome?.(outcome);
     if (!outcome.ok) opts.onPasteFailure?.(outcome);
   };
-  const chain = queueTmuxOp(taskId, async (stillCurrent) => {
+  const chain = queueTmuxOp(taskId, async (identityCurrent) => {
+    const stillCurrent = () => identityCurrent() && (opts.authorize?.() ?? true);
+    if (!stillCurrent()) return;
     // Modal guard — see this function's doc. Runs BEFORE either paste path,
     // and only when there's a real SessionState to gate on (the identity
     // check `queueTmuxOp` already relies on) and the caller hasn't opted
@@ -11240,6 +11283,7 @@ function queuePaste(
         return;
       }
     }
+    if (!stillCurrent()) return;
     if (opts.bracketed) {
       if (expectedState) bumpKeystroke(expectedState);
       // No `stillCurrent()` gate right after this await (unlike the pane-read

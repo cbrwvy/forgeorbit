@@ -1,0 +1,151 @@
+{
+  "task": "FO-009C",
+  "auditDate": "2026-10-24",
+  "timezone": "UTC",
+  "base": "5c72792e53c503d374af2a8539dd1993a0480125",
+  "unitIntegration": {
+    "command": "bun scripts/test-trusted-quota.ts",
+    "passed": 182,
+    "failed": 0,
+    "suites": [
+      {
+        "suite": "src/bun/trusted-quota.test.ts",
+        "passed": 17,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_trusted-quota.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-core.test.ts",
+        "passed": 32,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_account-core.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-migration.test.ts",
+        "passed": 2,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_account-migration.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-endpoint.test.ts",
+        "passed": 7,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_account-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/bun/portfolio-adapter.test.ts",
+        "passed": 28,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_portfolio-adapter.test.ts.log"
+      },
+      {
+        "suite": "src/shared/portfolio/portfolio.test.ts",
+        "passed": 40,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_shared_portfolio_portfolio.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-usage.test.ts",
+        "passed": 13,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_account-usage.test.ts.log"
+      },
+      {
+        "suite": "src/bun/usage/poller.test.ts",
+        "passed": 11,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_bun_usage_poller.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/accounts.test.ts",
+        "passed": 18,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_mainview_lib_accounts.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/account-api.test.ts",
+        "passed": 8,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_mainview_lib_account-api.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/portfolio.test.ts",
+        "passed": 6,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009c-validation-PkKLIp/src_mainview_lib_portfolio.test.ts.log"
+      }
+    ]
+  },
+  "playwright": {
+    "specs": [
+      "e2e/accounts-dashboard.spec.ts",
+      "e2e/portfolio-dashboard.spec.ts"
+    ],
+    "passed": 17,
+    "failed": 0,
+    "finalAffectedRerun": {
+      "passed": 6,
+      "failed": 0
+    },
+    "output": "/tmp/fo009c-playwright-unrestricted",
+    "finalOutput": "/tmp/fo009c-playwright-final",
+    "initialSandboxAttempt": "Chromium bootstrap_check_in MachPortRendezvous permission denied before application tests; authorized execution outside sandbox passed.",
+    "screenshotsReviewed": [
+      "/tmp/fo009c-playwright-final/accounts-dashboard-audited-90835--page-load-or-local-refresh-chromium/quota-source-390.png",
+      "/tmp/fo009c-playwright-final/accounts-dashboard-audited-90835--page-load-or-local-refresh-chromium/quota-source-1280.png"
+    ]
+  },
+  "typecheck": {
+    "command": "bun run typecheck",
+    "exitCode": 0,
+    "log": "/tmp/fo009c-final-typecheck.log"
+  },
+  "viteBuild": {
+    "command": "bun node_modules/vite/bin/vite.js build",
+    "exitCode": 0,
+    "warnings": [
+      "Existing __dirname Vite config compatibility warning",
+      "Large client chunks"
+    ]
+  },
+  "diffCheck": {
+    "command": "git diff --check",
+    "exitCode": 0
+  },
+  "liveProviderValidation": false,
+  "productionAdapters": [],
+  "newMigrations": [],
+  "fullSuiteRun": false,
+  "sha256": {
+    "docs/architecture/fo-009c-trusted-quota-sources.md": "281a10d14a24e8b303083c23f731d0274aad3f6b6642db86fa60597a3c83cb9e",
+    "e2e/accounts-dashboard.spec.ts": "f46d039c7b2693ee85de39f8fc34410a48be24470d98a476fb79f200c6c01909",
+    "scripts/test-trusted-quota.ts": "fb7b0604f2cd6d9f4fff7c938d8bd8849704ad79361ffd2c6fcd1ec7b4ebcf13",
+    "src/bun/account-core.ts": "f4a3dc871684f4ac4d27be066e8a17ddb709782526a8d45bf576b49e9074f508",
+    "src/bun/account-endpoint.test.ts": "4274c25b947cd6a8c5791a57afa0645e6aab43217da58819bcff8b57835e33b8",
+    "src/bun/account-http.ts": "db14d9597f61cb27ee2976c32a62b6dc67b94219c2bcd6c12b0a7bc4df1fc421",
+    "src/bun/account-portfolio.ts": "8a39443f7c0da7dc664ae78ff02bd41375c93f9b2d057f81d9030d8577f236c1",
+    "src/bun/server.ts": "19171dca6dcb32a0bfd929c2f9e3bbb7cb86db26cc9eaade91f33b3d623d2cf5",
+    "src/bun/trusted-quota.test.ts": "1f2fba6b32052738af27b4f570ae7c3be640bdf30de33b540064968951b876d0",
+    "src/bun/trusted-quota.ts": "e777bf8e3b3b70530182470efb74352e3c5e8b226c2744d1b9abda254d144d4c",
+    "src/mainview/components/accounts/AccountDetails.tsx": "f02a21f5ea5c2ce16bbe4bad2fd0c996073f933cc09e2896edfbc92daf4a5bb7",
+    "src/mainview/components/accounts/AccountEvidence.tsx": "25630eb65a18a7ff52db568d394b5edaa9a5f2fb3a8ebe77bf65106840bc2369",
+    "src/mainview/components/accounts/AccountsDashboard.tsx": "6eb162072a01fa8120d676300aa54a666cc312a750aefd39fd6c137f08d01af3",
+    "src/mainview/components/accounts/QuotaSources.tsx": "3a4badfc8d6832f0ad6b51448ffa0851dc7ecfc6ec859321423653cbfe3a8165",
+    "src/mainview/lib/account-api.test.ts": "04f4d37e691b81a170844f748e64794889ded280bb24f760f5177fd816cb0b50",
+    "src/mainview/lib/account-api.ts": "3f02f44a09d3dd7b398e3a7662c294404d50928e53fd717b14ec7e6b261cc559",
+    "src/shared/accounts/capabilities.ts": "7c3b1a431dd27c21e3cebcb1a6c4361eda86ae46c957504cd287f32d9d5e6566",
+    "src/shared/accounts/quota-sources.ts": "cf2d94ae9731ac83f813016dee86a13b6afddba29328eed6bb6b1a4042d35caf",
+    "src/shared/accounts/types.ts": "ff93fb1dc54040e0191312c9668912eaee893e809e02f19acb9e8f21d64874d3"
+  }
+}

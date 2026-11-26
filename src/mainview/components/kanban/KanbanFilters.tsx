@@ -1,4 +1,6 @@
-import { Cpu, Folder, Search, Shapes, Tag } from "lucide-react";
+import { countLabel, formatNumber, t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
+import { Cpu, Folder, Search, Shapes, Tag, X } from "lucide-react";
 import { AgentIcon } from "@/components/kanban/AgentIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +9,8 @@ import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { IDENTIFIER_INPUT_PROPS } from "@/lib/identifier-input";
 import { taskTypeIcon } from "@/lib/task-type-icon";
-import { COLUMNS, TASK_TYPES, type ColumnId, type Harness, type Project, type TaskType } from "../../../shared/types.ts";
+import { columnLabel } from "@/lib/status-presenters";
+import { COLUMNS, TASK_TYPES, type ColumnId, type Harness, type Project, type TaskType } from "@/i18n/options";
 
 export type ArchivedView = "active" | "all" | "archived";
 
@@ -35,6 +38,13 @@ interface Props {
    *  Cmd/Ctrl+F handler focuses (and selects) the box through it when no
    *  task details panel is open. */
   searchInputRef?: React.Ref<HTMLInputElement>;
+  /** Project workspace already chose the directory, so the repo multi-select
+   *  would fight that scope. The control (and its "active filter" bit) hide;
+   *  the stored `repoFilter` is left alone for the all-projects board. */
+  hideRepoFilter?: boolean;
+  visibleCount?: number;
+  totalCount?: number;
+  decisionFilter?: React.ReactNode;
 }
 
 const basename = (p: string) => {
@@ -42,6 +52,10 @@ const basename = (p: string) => {
   const idx = trimmed.lastIndexOf("/");
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 };
+
+/** Filter pickers share the row: they grow and shrink between 8rem and 14rem
+ *  instead of wrapping the last one onto a row of its own. */
+const FILTER_FLUID = "min-w-[8rem] max-w-[14rem] flex-[1_1_9rem]";
 
 export function KanbanFilters({
   textQuery,
@@ -60,13 +74,18 @@ export function KanbanFilters({
   harnesses,
   taskAgentIds,
   searchInputRef,
+  hideRepoFilter = false,
+  visibleCount,
+  totalCount,
+  decisionFilter,
 }: Props) {
+  useUILocale();
   const repoItems = projects.map((p) => ({
     value: p.path,
     label: p.name || basename(p.path) || p.path,
     hint: p.path,
   }));
-  const statusItems = COLUMNS.map((c) => ({ value: c.id, label: c.label } as const));
+  const statusItems = COLUMNS.map((c) => ({ value: c.id, label: columnLabel(c.id) } as const));
   // Order: enabled harnesses first, then disabled (marked with a hint), then
   // orphan ids referenced by tasks but no longer registered as a harness — so
   // historical runs of a removed harness stay filterable.
@@ -79,7 +98,7 @@ export function KanbanFilters({
   const disabledItems = harnesses.filter((h) => !h.enabled).map((h) => ({
     value: h.id,
     label: h.label,
-    hint: "disabled",
+    hint: tr("common.disabled"),
     icon: <AgentIcon kind={h.kind} className="size-3.5" />,
   }));
   const orphanItems = taskAgentIds
@@ -96,32 +115,59 @@ export function KanbanFilters({
   });
   const anyActive =
     textQuery !== ""
-    || repoFilter.length > 0
+    || (!hideRepoFilter && repoFilter.length > 0)
     || statusFilter.length > 0
     || archivedView !== "active"
     || harnessFilter.length > 0
     || typeFilter.length > 0;
 
+  // Active filters as removable chips: what narrows the board is visible at a glance, and each
+  // one can be dropped on its own (FO-UX02-D stage 2). "Clear filters" resets all of them.
+  const labelOf = (items: { value: string; label: string }[], value: string) => items.find((item) => item.value === value)?.label ?? value;
+  const chips: { key: string; group: string; label: string; remove: () => void }[] = [
+    ...(textQuery !== "" ? [{ key: "text", group: tr("tasks.search_tasks"), label: `“${textQuery}”`, remove: () => onTextQueryChange("") }] : []),
+    ...harnessFilter.map((v) => ({ key: `h:${v}`, group: tr("uxfix.filter.harness"), label: labelOf(harnessItems, v), remove: () => onHarnessFilterChange(harnessFilter.filter((x) => x !== v)) })),
+    ...(!hideRepoFilter ? repoFilter.map((v) => ({ key: `r:${v}`, group: tr("uxfix.filter.project"), label: labelOf(repoItems, v), remove: () => onRepoFilterChange(repoFilter.filter((x) => x !== v)) })) : []),
+    ...statusFilter.map((v) => ({ key: `s:${v}`, group: tr("uxfix.filter.status"), label: labelOf(statusItems as { value: string; label: string }[], v), remove: () => onStatusFilterChange(statusFilter.filter((x) => x !== v)) })),
+    ...typeFilter.map((v) => ({ key: `t:${v}`, group: tr("uxfix.filter.type"), label: labelOf(typeItems, v), remove: () => onTypeFilterChange(typeFilter.filter((x) => x !== v)) })),
+    ...(archivedView !== "active" ? [{ key: "archived", group: tr("uxfix.filter.archive"), label: archivedView === "all" ? tr("common.all") : tr("tasks.archived_only"), remove: () => onArchivedViewChange("active") }] : []),
+  ];
+  const clearAll = () => {
+    onTextQueryChange("");
+    onRepoFilterChange([]);
+    onStatusFilterChange([]);
+    onArchivedViewChange("active");
+    onHarnessFilterChange([]);
+    onTypeFilterChange([]);
+  };
+
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-2">
+    <div className="relative z-10 flex shrink-0 flex-col border-b border-[hsl(var(--glass-border)/var(--glass-border-alpha))]">
+    <div className="flex flex-wrap items-center gap-2 px-4 py-2">
+      <details data-testid="board-technical-filters" className="shrink-0">
+        <summary className="cursor-pointer text-xs text-muted-foreground">{tr("manager.details")}</summary>
+        <div className="mt-2">
       <MultiSearchSelect
         values={harnessFilter}
         onChange={onHarnessFilterChange}
         items={harnessItems}
-        emptyLabel="All harnesses"
-        placeholder="Search harnesses…"
+        emptyLabel={tr("tasks.all_harnesses")}
+        placeholder={tr("tasks.search_harnesses")}
         leadingIcon={<Cpu className="size-3.5" />}
-        className="w-48"
+        className={FILTER_FLUID}
       />
-      <div className="relative flex-1 max-w-md">
+        </div>
+      </details>
+      <div className="relative min-w-[10rem] max-w-md flex-1">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <Input
           {...IDENTIFIER_INPUT_PROPS}
           ref={searchInputRef}
           value={textQuery}
           onChange={(e) => onTextQueryChange(e.target.value)}
-          placeholder="Search title, prompt, workdir, branch…"
-          aria-label="Search tasks"
+          placeholder={tr("uxfix.filter.searchPlaceholder")}
+          title={tr("tasks.search_title_prompt_workdir_branch")}
+          aria-label={tr("tasks.search_tasks")}
           className="pl-8"
           onKeyDown={(e) => {
             // Owner decision: Escape leaves the field but keeps the query
@@ -145,59 +191,77 @@ export function KanbanFilters({
           }}
         />
       </div>
-      <MultiSearchSelect
-        values={repoFilter}
-        onChange={onRepoFilterChange}
-        items={repoItems}
-        emptyLabel="All repos"
-        placeholder="Search projects…"
-        leadingIcon={<Folder className="size-3.5" />}
-        className="w-56"
-      />
+      {!hideRepoFilter && (
+        <MultiSearchSelect
+          values={repoFilter}
+          onChange={onRepoFilterChange}
+          items={repoItems}
+          emptyLabel={tr("tasks.all_repos")}
+          placeholder={tr("common.search_projects")}
+          leadingIcon={<Folder className="size-3.5" />}
+          className={FILTER_FLUID}
+        />
+      )}
       <MultiSearchSelect
         values={statusFilter}
         onChange={onStatusFilterChange}
         items={statusItems}
-        emptyLabel="All statuses"
-        placeholder="Search statuses…"
+        emptyLabel={tr("common.all_statuses")}
+        placeholder={tr("common.search_statuses")}
         leadingIcon={<Tag className="size-3.5" />}
-        className="w-48"
+        className={FILTER_FLUID}
       />
       <MultiSearchSelect
         values={typeFilter}
         onChange={onTypeFilterChange}
         items={typeItems}
-        emptyLabel="All types"
-        placeholder="Search types…"
+        emptyLabel={tr("tasks.all_types")}
+        placeholder={tr("tasks.search_types")}
         leadingIcon={<Shapes className="size-3.5" />}
-        className="w-44"
+        className={FILTER_FLUID}
       />
       <Select
         value={archivedView}
         onChange={(e) => onArchivedViewChange(e.target.value as ArchivedView)}
-        className="w-36"
-        title="Filter by archive state"
+        className="w-auto max-w-full"
+        title={tr("tasks.filter_by_archive_state")}
+        aria-label={tr("tasks.filter_by_archive_state")}
       >
-        <option value="active">Active only</option>
-        <option value="all">All</option>
-        <option value="archived">Archived only</option>
+        <option value="active"><I18nText id="tasks.active_only" /></option>
+        <option value="all"><I18nText id="common.all" /></option>
+        <option value="archived"><I18nText id="tasks.archived_only" /></option>
       </Select>
       {anyActive && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            onTextQueryChange("");
-            onRepoFilterChange([]);
-            onStatusFilterChange([]);
-            onArchivedViewChange("active");
-            onHarnessFilterChange([]);
-            onTypeFilterChange([]);
-          }}
-        >
-          Clear
+        <Button variant="ghost" size="sm" onClick={clearAll} data-testid="kanban-clear-filters">
+          {tr("uxfix.filter.clear", { count: chips.length })}
         </Button>
       )}
+      {decisionFilter}
+      {visibleCount !== undefined && totalCount !== undefined && (
+        <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground" data-testid="board-task-count">
+          {visibleCount === totalCount
+            ? countLabel(totalCount, "task")
+            : tr("common.of_tasks", { p0: formatNumber(visibleCount), p1: formatNumber(totalCount) })}
+        </span>
+      )}
+    </div>
+    {chips.length > 0 && (
+      <ul className="flex flex-wrap items-center gap-1.5 px-4 pb-2" aria-label={tr("uxfix.filter.active")} data-testid="kanban-active-filters">
+        {chips.map((chip) => (
+          <li key={chip.key} className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-muted/50 py-0.5 pl-2 pr-1 text-xs" data-testid="kanban-filter-chip">
+            <span className="min-w-0 truncate"><span className="text-muted-foreground">{chip.group}:</span> {chip.label}</span>
+            <button
+              type="button"
+              className="glass-nav-item grid size-4 shrink-0 place-items-center rounded-full"
+              onClick={chip.remove}
+              aria-label={tr("uxfix.filter.remove", { group: chip.group, label: chip.label })}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
     </div>
   );
 }

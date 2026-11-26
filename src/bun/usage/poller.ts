@@ -58,7 +58,18 @@ export const USAGE_PROVIDERS: Partial<Record<AgentKind, UsageProvider>> &
 // `USAGE_PROVIDERS[kind]` directly.
 const providerOverrides = new Map<AgentKind, UsageProvider>();
 
+/**
+ * e2e seam: `AGETOR_USAGE_OFFLINE=1` (or `FORGEORBIT_USAGE_OFFLINE=1`) leaves
+ * only test overrides, so a core under test never reads a real account's
+ * credentials or Keychain entry and never calls a provider's usage API
+ * (`e2e/isolated-env.ts`). Read per call, like the other test seams.
+ */
+function usageOffline(): boolean {
+  return (process.env.FORGEORBIT_USAGE_OFFLINE ?? process.env.AGETOR_USAGE_OFFLINE) === "1";
+}
+
 function resolveProvider(kind: AgentKind): UsageProvider | undefined {
+  if (usageOffline()) return providerOverrides.get(kind);
   return providerOverrides.get(kind) ?? USAGE_PROVIDERS[kind];
 }
 

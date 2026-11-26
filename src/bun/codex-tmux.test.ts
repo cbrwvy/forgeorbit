@@ -125,6 +125,16 @@ test("turn.completed resolves done=0; turn.failed emits stderr + done=1", () => 
   expect(b.chunks).toEqual([{ stream: "stderr", data: "model 400", lineUuid: "turn.failed:0" }]);
 });
 
+test("provider usage-limit code survives the CLI error adapter", () => {
+  const b = collect();
+  const result = mapCodexEvent({ type: "turn.failed", error: { message: "Provider request failed", codex_error_info: "usage_limit_exceeded" } }, b.onChunk, { n: 0 });
+  expect(result.done).toBe(1);
+  expect(b.chunks).toEqual([
+    { stream: "stderr", data: "Provider request failed", lineUuid: "turn.failed:0" },
+    { stream: "stderr", data: "usage_limit_exceeded", lineUuid: "turn.failed:1" },
+  ]);
+});
+
 test("id-less events (error, turn.failed) get a deterministic per-run seq suffix", () => {
   const { chunks, onChunk } = collect();
   const seq = { n: 0 };

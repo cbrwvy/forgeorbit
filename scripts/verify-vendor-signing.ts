@@ -32,6 +32,9 @@ const OWNERS: Record<string, string> = {
   tmux: "scripts/fetch-tmux.ts",
   notifier: "scripts/build-notifier.ts",
   disclaim: "scripts/build-disclaim.ts",
+  "owner-trust": "scripts/build-owner-trust.ts",
+  "computer-use": "scripts/build-native-computer.ts",
+  chromium: "scripts/prepare-browser.ts",
 };
 
 async function run(cmd: string[]): Promise<{ code: number; out: string }> {

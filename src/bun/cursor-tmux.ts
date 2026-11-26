@@ -30,6 +30,7 @@ import {
   type ChunkHandler,
   type SpawnedAgent,
 } from "./claude-tmux.ts";
+import { makeTerminator, type TerminationEvidence } from "./process-termination.ts";
 
 /**
  * Driver that hosts a single `cursor-agent -p` turn inside a per-task tmux
@@ -62,8 +63,8 @@ const CURSOR_LOG_DIR = path.join(dataDir, "cursor-logs");
 export function cursorLogPath(runId: string): string {
   return path.join(CURSOR_LOG_DIR, `${runId}.jsonl`);
 }
-function cursorPromptPath(runId: string): string {
-  return path.join(CURSOR_LOG_DIR, `${runId}.prompt.txt`);
+function cursorPromptPath(logPath: string): string {
+  return logPath.replace(/\.jsonl$/, ".prompt.txt");
 }
 /** Exit-code sidecar written by the hosting shell's trailing `echo $? >
  *  <exitfile>` (see `spawnCursorViaTmux`). Its presence is what lets the
@@ -71,8 +72,8 @@ function cursorPromptPath(runId: string): string {
  *  turn that errored out before printing one) apart from a genuine session
  *  death (crash, external kill, tmux server gone) — only the latter should
  *  ever surface the `SESSION_DIED_STATUS_PREFIX` sentinel. */
-function cursorExitPath(runId: string): string {
-  return path.join(CURSOR_LOG_DIR, `${runId}.exit`);
+function cursorExitPath(logPath: string): string {
+  return logPath.replace(/\.jsonl$/, ".exit");
 }
 function ensureLogDir(): void {
   if (!existsSync(CURSOR_LOG_DIR)) mkdirSync(CURSOR_LOG_DIR, { recursive: true });
@@ -84,9 +85,13 @@ function ensureLogDir(): void {
  *  not as exit code 0. Exported so the parse logic is unit-testable without
  *  a real tmux session. */
 export function readCursorExitCode(runId: string): number | null {
+  return readCursorExitFile(cursorLogPath(runId));
+}
+
+function readCursorExitFile(logPath: string): number | null {
   let raw: string;
   try {
-    raw = readFileSync(cursorExitPath(runId), "utf8").trim();
+    raw = readFileSync(cursorExitPath(logPath), "utf8").trim();
   } catch {
     return null;
   }
@@ -275,9 +280,9 @@ export function mapCursorEvent(
 
 interface CursorSessionState {
   taskId: string;
-  runId: string;
   sessionName: string;
   logPath: string;
+  waitForExit?: boolean;
   offset: number;
   /** Holds incomplete trailing UTF-8 byte sequences across reads so a
    *  multi-byte character split on a poll boundary isn't corrupted. */
@@ -302,6 +307,8 @@ interface CursorSessionState {
   onSessionId?: (id: string) => void;
   sessionIdSent: boolean;
   resolved: boolean;
+  /** Set once a Stop begins: the vanished session is the Owner's doing, not a crash. */
+  terminating?: boolean;
   lastCode: number | null;
   resolveDone: (code: number) => void;
 }
@@ -388,7 +395,7 @@ function dispatchCursorEvent(state: CursorSessionState, evt: CursorEvent): void 
   }
   if (typeof result.done === "number") {
     state.lastCode = result.done;
-    resolveCursorDone(state, result.done);
+    if (!state.waitForExit) resolveCursorDone(state, result.done);
   }
 }
 
@@ -402,8 +409,8 @@ function resolveCursorDone(state: CursorSessionState, code: number): void {
   // running turns, so the per-run log + prompt files are dead weight. Prune
   // them best-effort so dataDir/cursor-logs/ doesn't grow unbounded. Timers
   // are already cleared above, so nothing will try to read them after this.
-  try { unlinkSync(cursorPromptPath(state.runId)); } catch { /* already gone */ }
-  try { unlinkSync(cursorExitPath(state.runId)); } catch { /* already gone */ }
+  try { unlinkSync(cursorPromptPath(state.logPath)); } catch { /* already gone */ }
+  try { unlinkSync(cursorExitPath(state.logPath)); } catch { /* already gone */ }
   try { unlinkSync(state.logPath); } catch { /* already gone */ }
   state.resolveDone(code);
 }
@@ -419,7 +426,18 @@ function startCursorTailer(state: CursorSessionState): Promise<number> {
   // Poll the log for appends. macOS FSEvents drops appends to a file written
   // by another process, so polling — not fs.watch — is the reliable backstop;
   // we add an fs.watch opportunistically once the file exists for low latency.
-  state.pollTimer = setInterval(() => flushCursorLog(state), POLL_MS);
+  state.pollTimer = setInterval(() => {
+    flushCursorLog(state);
+    // Isolated turns own the whole runtime tree. Wait for the wrapper to
+    // finish writing before the runner removes it, even after a result.
+    if (state.waitForExit) {
+      const exit = readCursorExitFile(state.logPath);
+      if (exit !== null) {
+        flushCursorLog(state);
+        resolveCursorDone(state, exit === 0 ? state.lastCode ?? 0 : exit);
+      }
+    }
+  }, POLL_MS);
   const tryWatch = () => {
     if (state.watcher || !existsSync(state.logPath)) return;
     try {
@@ -458,6 +476,7 @@ function startCursorTailer(state: CursorSessionState): Promise<number> {
     tickInFlight = true;
     void (async () => {
       try {
+        if (state.terminating) return;
         tryWatch();
         // Compute the log-recency veto lazily — only a `gone` probe uses it.
         const liveness = await probe.probe();
@@ -485,7 +504,7 @@ function startCursorTailer(state: CursorSessionState): Promise<number> {
             // not a death, so it must NOT get the session-died sentinel (which
             // the orchestrator maps to `blocked`, not the normal
             // running->ready/review flow).
-            const exitCode = readCursorExitCode(state.runId);
+            const exitCode = readCursorExitFile(state.logPath);
             if (exitCode !== null) {
               if (exitCode !== 0) {
                 state.onChunk("stderr", `cursor-agent exited with code ${exitCode}`);
@@ -531,8 +550,11 @@ const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 // tmux-resolution.ts — shared verbatim with codex-tmux.ts/gemini-tmux.ts.
 
 export interface CursorLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   runId: string;
+  /** Private transport directory for disposable manager turns. */
+  logDir?: string;
   /** cursor-agent argv from `buildCommand` — `[bin, "-p", "--output-format",
    *  "stream-json", …flags, ("--resume" sid)?]`. The prompt is NOT included
    *  here — it rides as a separate `promptText` field and is appended as the
@@ -584,14 +606,14 @@ export interface CursorLaunchOptions {
  * agetor-generated (derived from `runId`), never user text.
  */
 export async function spawnCursorViaTmux(opts: CursorLaunchOptions): Promise<SpawnedAgent> {
-  ensureLogDir();
-  const logPath = cursorLogPath(opts.runId);
-  const promptPath = cursorPromptPath(opts.runId);
-  const exitPath = cursorExitPath(opts.runId);
-  writeFileSync(promptPath, opts.promptText);
+  if (!opts.logDir) ensureLogDir();
+  const logPath = opts.logDir ? path.join(opts.logDir, `${opts.runId}.jsonl`) : cursorLogPath(opts.runId);
+  const promptPath = cursorPromptPath(logPath);
+  const exitPath = cursorExitPath(logPath);
+  writeFileSync(promptPath, opts.promptText, opts.logDir ? { mode: 0o600, flag: "wx" } : undefined);
   // Truncate/create the log up front so the tailer's first stat succeeds and
   // offsets start at 0 cleanly even if a stale file from a reused id lingers.
-  writeFileSync(logPath, "");
+  writeFileSync(logPath, "", opts.logDir ? { mode: 0o600, flag: "wx" } : undefined);
   // Clear any stale exit-code sidecar from a reused runId so a leftover file
   // can't be mistaken for this run's verdict before the shell writes its own.
   try { unlinkSync(exitPath); } catch { /* already gone */ }
@@ -625,13 +647,13 @@ export async function spawnCursorViaTmux(opts: CursorLaunchOptions): Promise<Spa
     ...envArgs,
     "--", "sh", "-c", inner, "sh", ...opts.argv,
   ];
-  const res = await spawnTmuxNewSession(tmux, args);
+  const res = await spawnTmuxNewSession(tmux, args, opts.authorize);
 
   const state: CursorSessionState = {
     taskId: opts.taskId,
-    runId: opts.runId,
     sessionName,
     logPath,
+    waitForExit: opts.logDir !== undefined,
     offset: 0,
     decoder: new StringDecoder("utf8"),
     partial: "",
@@ -661,6 +683,7 @@ export async function spawnCursorViaTmux(opts: CursorLaunchOptions): Promise<Spa
   const done = startCursorTailer(state);
   return {
     kill: () => killCursorState(state),
+    terminate: () => cursorTerminator(state)(),
     // cursor-agent -p doesn't accept conversational input mid-turn;
     // follow-ups are delivered as fresh `--resume` turns (new run rows) by
     // the orchestrator.
@@ -676,25 +699,30 @@ export async function spawnCursorViaTmux(opts: CursorLaunchOptions): Promise<Spa
  * decides cancelled-vs-failed from its own `handle.cancelled` flag, so the
  * resolution code here is immaterial to the recorded status.
  */
+const cursorTerminators = new WeakMap<CursorSessionState, () => Promise<TerminationEvidence>>();
+
+/** One terminator per session: a stop kills the tmux session, escalates, and settles only when the process is gone. */
+function cursorTerminator(state: CursorSessionState): () => Promise<TerminationEvidence> {
+  let terminator = cursorTerminators.get(state);
+  if (!terminator) {
+    terminator = makeTerminator({
+      sessionName: state.sessionName,
+      begin: () => { state.terminating = true; },
+      settle: () => {
+        setTimeout(() => {
+          flushCursorLog(state);
+          resolveCursorDone(state, state.lastCode ?? 1);
+        }, DEATH_GRACE_MS);
+      },
+    });
+    cursorTerminators.set(state, terminator);
+  }
+  return terminator;
+}
+
+/** `kill` is a synchronous `SpawnedAgent` field; the confirmed stop is `terminate`. */
 function killCursorState(state: CursorSessionState): void {
-  // `kill` is a synchronous `SpawnedAgent` field (shared contract in
-  // claude-tmux.ts), so the now-async tmux kill is fired-and-forgotten here
-  // rather than awaited — never left unhandled: a rejection still falls
-  // through to schedule the flush + resolve so the run can't hang.
-  void (async () => {
-    try {
-      await killSessionByName(state.sessionName);
-    } catch {
-      // best-effort — killSessionByName is expected to never throw (its
-      // underlying tmux() swallows spawn errors into an ok:false result),
-      // but this path must never leave the run stuck in `running` even if
-      // that changes.
-    }
-    setTimeout(() => {
-      flushCursorLog(state);
-      resolveCursorDone(state, state.lastCode ?? 1);
-    }, DEATH_GRACE_MS);
-  })();
+  void cursorTerminator(state)().catch(() => undefined);
 }
 
 export interface CursorReattachOptions {
@@ -717,7 +745,6 @@ export async function reattachCursorSession(opts: CursorReattachOptions): Promis
   if (!(await sessionExistsByName(opts.sessionName))) return null;
   const state: CursorSessionState = {
     taskId: opts.taskId,
-    runId: opts.runId,
     sessionName: opts.sessionName,
     logPath: cursorLogPath(opts.runId),
     offset: 0,
@@ -739,6 +766,7 @@ export async function reattachCursorSession(opts: CursorReattachOptions): Promis
   const done = startCursorTailer(state);
   return {
     kill: () => killCursorState(state),
+    terminate: () => cursorTerminator(state)(),
     writeInput: () => false,
     done,
   };

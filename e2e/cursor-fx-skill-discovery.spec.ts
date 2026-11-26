@@ -72,7 +72,7 @@ async function openSettingsAgents(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Agents", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   await expect(dialog.getByTestId("agent-profiles-section")).toBeVisible();
   return dialog;
 }

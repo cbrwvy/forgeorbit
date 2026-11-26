@@ -1,0 +1,17 @@
+# Explicit legacy profile import — design only
+
+Status: proposed follow-up to FO-MVP-PROFILE01; no importer or user-data migration is implemented by this change.
+
+ForgeOrbit starts a fresh platform-specific profile unless `FORGEORBIT_DATA_DIR` or legacy `AGETOR_DATA_DIR` explicitly selects another directory. Startup does not discover `~/.agetor`, inspect it, or offer suggestions based on its contents. Existing SQLite filenames, migration ledger, IDs and WAL contracts remain unchanged. A user who intentionally wants to keep using an old profile can supply the existing explicit override; that is direct profile selection, not an import.
+
+A future full-profile importer should follow these rules:
+
+1. The user supplies a source path and chooses **Preview import**. No directory scanning, implicit source, or filesystem access to a suggested legacy path before that action. Explain which application data will be read and where the new copy will live.
+2. Require all source owners, daemons and executions to be closed. Prove exclusive ownership and use SQLite's backup API or a validated closed snapshot including committed WAL content. Never copy only the main SQLite file while a live WAL exists. Failure to establish ownership stops the operation; do not kill another owner or remove its lock.
+3. Keep the original untouched and create a private, temporary destination beside the selected new profile. Initially support an empty destination only; conflicting durable IDs or a nonempty destination stop the operation. Preview source schema, row counts, selected application records and external project/workdir references. Do not automatically open those external paths.
+4. Preserve durable Task/Run/Turn/Journal IDs and migration history in the copy; apply only reviewed forward migrations in the copy, then verify integrity, foreign keys, append-only Journal invariants and exact preservation of selected records. A failure leaves the active profile selection unchanged and retains a diagnosable copy/backup.
+5. Exclude core API tokens/pidfiles/locks, GitHub/provider credentials, account HOME payloads, Keychain records, caches and executable environment overrides from automatic import. Stored harness/project/account configuration needs its own explicit preview and choice. Keep historical execution attribution and Owner approval evidence immutable; do not reinterpret old evidence as permission for a new execution. An exclusion that would make the schema inconsistent blocks the plan rather than silently altering history.
+6. After the user reviews the concrete preview, confirm the import, finish verification, atomically move the completed private copy into place and record the profile choice outside the replaceable `.app`. Both CLI and native app must honor that choice consistently with explicit env overrides. Starting a provider or restoring an execution remains a separate authorized action.
+7. Rollback selects the preserved source/backup after all owners close. Do not reverse DDL on a database already written by a newer version. Never delete the source as a side effect of successful import or app uninstall.
+
+Acceptance for that separate task needs synthetic pre/post-schema databases, live-WAL/lock refusal, source-read authorization, empty/conflicting destination cases, interrupted-copy retry, atomic activation, exclusion preview, credential non-copying, duplicate prevention, and exact Task/Run/Turn/Journal preservation. None of this authorizes migration of a real profile during PROFILE01.

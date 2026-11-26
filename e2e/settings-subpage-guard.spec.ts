@@ -69,7 +69,7 @@ async function openSettingsHarnesses(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const modal = settingsModal(page);
   await expect(modal.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await modal.getByRole("button", { name: "Harnesses", exact: true }).click();
+  await modal.getByRole("button", { name: "AI providers and accounts", exact: true }).click();
   await expectHarnessesList(modal);
   return modal;
 }
@@ -77,7 +77,7 @@ async function openSettingsHarnesses(page: Page): Promise<Locator> {
 /** Asserts the modal is on the plain Harnesses list (section view). */
 async function expectHarnessesList(modal: Locator): Promise<void> {
   await expect(modal.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(modal.getByRole("button", { name: "Harnesses", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(modal.getByRole("button", { name: "AI providers and accounts", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(modal.getByRole("button", { name: "Add harness", exact: true })).toBeVisible({
     timeout: CONVERGE_TIMEOUT,
   });
@@ -140,7 +140,7 @@ test.describe("Settings → Harnesses editor — dirty-leave guard", () => {
     const { modal } = await openAddHarnessEditor(page);
     // Sanity: on the editor subpage — Back shown, list hidden.
     await expect(modal.getByRole("button", { name: "Back", exact: true })).toBeVisible();
-    await expect(modal.getByRole("button", { name: "Harnesses", exact: true })).toHaveAttribute(
+    await expect(modal.getByRole("button", { name: "AI providers and accounts", exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -272,7 +272,7 @@ test.describe("Settings → Harnesses editor — dirty-leave guard", () => {
     await expect(confirm).toBeHidden();
     await expect(modal.getByRole("heading", { name: "Add harness" })).toBeVisible();
     await expect(labelInput).toHaveValue(typed);
-    await expect(modal.getByRole("button", { name: "Harnesses", exact: true })).toHaveAttribute(
+    await expect(modal.getByRole("button", { name: "AI providers and accounts", exact: true })).toHaveAttribute(
       "aria-current",
       "page",
     );

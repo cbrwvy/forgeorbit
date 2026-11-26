@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 /**
  * Pure presentation logic for the per-harness usage tracker (topbar chip
  * mini-bar + popover). No DOM, no React, no I/O — mirrors the split in
@@ -104,14 +105,14 @@ export function formatResetsIn(resetsAtMs: number | null, nowMs: number): string
   if (deltaMs <= 0) return "";
   if (deltaMs < HOUR_MS) {
     const mins = Math.max(1, Math.round(deltaMs / MINUTE_MS));
-    return `resets in ${mins}m`;
+    return tr("common.resets_in_m", { p0: String(mins) });
   }
   if (deltaMs < DAY_MS) {
     const hours = Math.round(deltaMs / HOUR_MS);
-    return `resets in ${hours}h`;
+    return tr("common.resets_in_h", { p0: String(hours) });
   }
   const days = Math.round(deltaMs / DAY_MS);
-  return `resets in ${days}d`;
+  return tr("common.resets_in_d", { p0: String(days) });
 }
 
 /**
@@ -123,15 +124,15 @@ export function formatResetsIn(resetsAtMs: number | null, nowMs: number): string
  */
 export function formatUpdatedAgo(fetchedAtMs: number, nowMs: number): string {
   const deltaMs = Math.max(0, nowMs - fetchedAtMs);
-  if (deltaMs < MINUTE_MS) return "updated just now";
+  if (deltaMs < MINUTE_MS) return tr("common.updated_just_now");
   if (deltaMs < HOUR_MS) {
     const mins = Math.round(deltaMs / MINUTE_MS);
-    return `updated ${mins}m ago`;
+    return tr("common.updated_m_ago", { p0: String(mins) });
   }
   if (deltaMs < DAY_MS) {
     const hours = Math.round(deltaMs / HOUR_MS);
-    return `updated ${hours}h ago`;
+    return tr("common.updated_h_ago", { p0: String(hours) });
   }
   const days = Math.round(deltaMs / DAY_MS);
-  return `updated ${days}d ago`;
+  return tr("common.updated_d_ago", { p0: String(days) });
 }

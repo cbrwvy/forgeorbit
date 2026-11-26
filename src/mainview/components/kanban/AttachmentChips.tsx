@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 // Renders the paths parsed from a user message's trailing "Referenced
 // files/folders:" block as clickable chips below the message bubble — a real
 // thumbnail for an image path, an icon chip (matching the existing
@@ -25,6 +27,7 @@ export function AttachmentChips({
    *  server-side instead of always requiring an absolute path. */
   taskId?: string;
 }) {
+  useUILocale();
   // Paths whose thumbnail failed to load, or whose openPath call 404'd (path
   // genuinely gone) — once known missing we skip re-hitting the server on a
   // repeat click and go straight to the not-found dialog. Cleared when that
@@ -57,7 +60,7 @@ export function AttachmentChips({
       if (!result.opened) {
         // The server found the path but the OS declined to open it — not a
         // "missing" state, so the thumbnail must stay intact.
-        setOpenError({ path, message: "The OS declined to open this file." });
+        setOpenError({ path, message: tr("common.the_os_declined_to_open_this_file") });
       }
     } catch (e) {
       // A 404 from /open-path means the path genuinely doesn't exist
@@ -143,13 +146,14 @@ function ImageChip({
   onMissing: () => void;
   onClick: () => void;
 }) {
+  useUILocale();
   const base = refBasename(path);
 
   if (isMissing) {
     return (
       <button
         type="button"
-        title={`Image not found: ${path}`}
+        title={tr("common.image_not_found", { p0: String(path) })}
         onClick={onClick}
         className="inline-flex max-w-full items-center gap-1 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-mono text-[10px] text-warning"
       >

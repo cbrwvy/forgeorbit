@@ -84,6 +84,7 @@ async function newCursorTask(opts: { mode?: string } = {}): Promise<{ id: string
  *  detection it triggers in attachDoneHandler) to resolve. Returns the
  *  freshly-read task plus the run id that produced the plan. */
 async function startAndDetect(id: string): Promise<{ task: Task; runId: string }> {
+  tasks.update(id, { column: "ready" });
   const started = await startTask(id);
   if ("error" in started) throw new Error(started.error);
   const runId = "runId" in started ? started.runId : "";

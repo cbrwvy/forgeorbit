@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { BookText, Sparkles, Terminal } from "lucide-react";
 import type { AvailableCommand } from "@/lib/api";
@@ -73,6 +75,7 @@ function findActiveQuery(text: string, caret: number): {
  * itself, so the form keeps full control over styling, placeholder, etc.
  */
 export function SlashAutocomplete({ commands, savedPrompts, value, onChange, textareaRef, placement = "below" }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const [caret, setCaret] = useState<number>(0);
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -93,7 +96,7 @@ export function SlashAutocomplete({ commands, savedPrompts, value, onChange, tex
     };
   }, [textareaRef]);
 
-  const slice = useMemo(() => findActiveQuery(value, caret), [value, caret]);
+  const slice = useMemo(() => findActiveQuery(value, caret), [value, caret, uiLocale]);
 
   // Escape dismisses the popover WITHOUT moving the caret — see the Escape
   // branch below for why forcing the caret to the end of the textarea was
@@ -128,7 +131,7 @@ export function SlashAutocomplete({ commands, savedPrompts, value, onChange, tex
     }) : commands).map((cmd) => ({ tag: "cmd", cmd }));
     const promptRows: Row[] = filterPromptsForSlash(savedPrompts ?? [], slice.query).map((prompt) => ({ tag: "prompt", prompt }));
     return [...cmdRows, ...promptRows];
-  }, [commands, savedPrompts, slice]);
+  }, [commands, savedPrompts, slice, uiLocale]);
 
   const listboxId = useId();
 
@@ -260,7 +263,7 @@ export function SlashAutocomplete({ commands, savedPrompts, value, onChange, tex
         placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
       )}
     >
-      <ul ref={listRef} role="listbox" id={listboxId} aria-label="Command and prompt suggestions" className="py-1">
+      <ul ref={listRef} role="listbox" id={listboxId} aria-label={tr("tasks.command_and_prompt_suggestions")} className="py-1">
         {filtered.map((row, i) => {
           // Group label right before the first prompt row — commands (if any)
           // always come first, so this fires at most once.
@@ -273,9 +276,7 @@ export function SlashAutocomplete({ commands, savedPrompts, value, onChange, tex
           >
             {showPromptLabel && (
               <div className="flex items-center gap-1.5 px-3 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                <BookText className="size-3 opacity-70" />
-                Saved Prompts
-              </div>
+                <BookText className="size-3 opacity-70" /><I18nText id="common.saved_prompts" />{" "}</div>
             )}
             <button
               type="button"

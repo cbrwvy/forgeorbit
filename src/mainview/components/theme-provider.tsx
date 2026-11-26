@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import * as React from "react";
 import { toast } from "sonner";
 import type { ResolvedTheme, ThemePreference } from "../../shared/types.ts";
@@ -58,6 +60,7 @@ function readInjectedTheme(): string | undefined {
  * disagree with itself on the next launch.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const { locale: uiLocale } = useUILocale();
   const [preference, setPreferenceState] = React.useState<ThemePreference>(() => {
     if (typeof window === "undefined") return "auto";
     const injected = readInjectedTheme();
@@ -102,15 +105,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // doc comment above for why silently swallowing this (as
       // SettingsDialog's onPickDefault/onPickTmuxSource do) isn't safe here.
       setPreferenceState(previous);
-      toast.error("Couldn't save theme preference", {
-        description: "Reverted to the previous setting — try again.",
+      toast.error(tr("common.couldn_t_save_theme_preference"), {
+        description: tr("common.reverted_to_the_previous_setting_try_again"),
       });
     });
   }, []);
 
   const value = React.useMemo<ThemeContextValue>(
     () => ({ preference, resolved, setPreference }),
-    [preference, resolved, setPreference],
+    [preference, resolved, setPreference, uiLocale],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

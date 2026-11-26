@@ -3,6 +3,7 @@ import { mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { probeLiveCore, waitForPortFree, readCoreCreds } from "./core-creds.ts";
+import { canonicalizeProfilePath } from "./profile-paths.ts";
 
 function spawnDaemon(dir: string, port: number) {
   return Bun.spawn(["bun", "src/bun/headless.ts"], {
@@ -38,14 +39,15 @@ async function waitUp(port: number): Promise<boolean> {
 // same shared helpers (probeLiveCore, waitForPortFree) that index.ts uses.
 test("cli-daemon releases its port on /daemon/shutdown so a new owner can bind", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "agetor-handoff-"));
+  const profileDir = canonicalizeProfilePath(dir);
   const port = 4473;
-  const credsPath = path.join(dir, "agetor-core.json");
+  const credsPath = path.join(profileDir, "agetor-core.json");
 
   const d1 = spawnDaemon(dir, port);
   let d2: ReturnType<typeof spawnDaemon> | null = null;
   try {
     expect(await waitUp(port)).toBe(true);
-    const creds = readCoreCreds(dir);
+    const creds = readCoreCreds(profileDir);
     expect(creds?.kind).toBe("cli-daemon");
     expect(await probeLiveCore(creds!)).toBe(true);
 
@@ -62,7 +64,7 @@ test("cli-daemon releases its port on /daemon/shutdown so a new owner can bind",
     // A fresh owner can now bind the just-freed port.
     d2 = spawnDaemon(dir, port);
     expect(await waitUp(port)).toBe(true);
-    expect(readCoreCreds(dir)?.pid).toBe(d2.pid);
+    expect(readCoreCreds(profileDir)?.pid).toBe(d2.pid);
   } finally {
     d1.kill();
     d2?.kill();

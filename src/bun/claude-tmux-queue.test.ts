@@ -1029,7 +1029,7 @@ test("queuePaste(bracketed): trailing Enter is skipped when the session is dispo
   // branch's `stillCurrent()` check fires false, and the trailing
   // send-keys Enter never spawns. Without the re-gate, the new session
   // installed under the same taskId would inherit a stray Enter.
-  const GAP = 120;
+  const GAP = 250;
   await withRecordingTmuxBin(async (logPath) => {
     const prevGap = __forTest.setBracketedEnterGapMs(GAP);
     const prevSettle = __forTest.setSlashCommandSettleMs(0);
@@ -1044,10 +1044,11 @@ test("queuePaste(bracketed): trailing Enter is skipped when the session is dispo
         state,
         { bracketed: true },
       );
-      // Land squarely inside the gap — late enough that the paste body's
-      // three sync tmux calls have written, early enough that the Enter
-      // is still pending.
-      await Bun.sleep(GAP / 3);
+      // Observe the real paste boundary instead of racing subprocess startup
+      // against a wall-clock sleep. Teardown still occurs before trailing Enter.
+      const deadline = Date.now() + 3000;
+      while (!readTmuxLog(logPath).some(e => e.argv[0] === "delete-buffer") && Date.now() < deadline) await Bun.sleep(5);
+      expect(readTmuxLog(logPath).some(e => e.argv[0] === "delete-buffer")).toBe(true);
       __forTest.uninstallSession(taskId);
       __forTest.installSession(taskId, jsonlPath);
       await paste;

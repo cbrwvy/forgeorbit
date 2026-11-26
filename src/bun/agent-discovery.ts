@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import type { Subprocess } from "bun";
+import { openCodexStdio } from "./codex-stdio.ts";
 import pkg from "../../package.json" with { type: "json" };
 import type { AgentKind } from "../shared/types.ts";
 
@@ -176,90 +176,15 @@ const DEFAULT_CODEX_PROBE_TIMEOUT_MS = 5_000;
 let codexProbeTimeoutMs = DEFAULT_CODEX_PROBE_TIMEOUT_MS;
 
 /**
- * Discover codex's model catalog by speaking to `codex app-server` directly
- * over JSON-RPC 2.0 (newline-delimited, one object per line each direction)
- * on its stdio pipes — NOT via a model-listing subcommand like
- * `parseCursorModels`/`parseFxModels`'s CLIs offer. `codex prompt --models`
- * was assumed to exist by a previous version of this function but never
- * did: binary-verified against codex-cli 0.147.0 and 0.153.0 (2026-09-03),
- * it fails with `error: unexpected argument '--models'` on both, so
- * `discoverCodex` had always silently returned `[]`.
+ * Catalog discovery over the shared local JSONL transport. Initialize, notify
+ * initialized, then read at most five model/list pages. The wire owns child,
+ * stdout reader, timeout and teardown; this layer retains best-effort discovery
+ * semantics (including discarding partial pages on timeout).
  *
- * Protocol (spike-verified, both versions, 2026-09-03):
- *   1. `{jsonrpc:"2.0", id, method:"initialize", params:{clientInfo}}` →
- *      response in ~160ms. Unsolicited notifications with no `id` (e.g.
- *      `remoteControl/status/changed`) may arrive interleaved — ignored.
- *   2. `{jsonrpc:"2.0", method:"initialized", params:{}}` — a notification,
- *      no `id`, no response expected.
- *   3. `{jsonrpc:"2.0", id, method:"model/list", params:{}}` → response in
- *      0.8–1.8s: `{id, result:{data:[...], nextCursor}}`. An unknown method
- *      would answer `{id, error:{code:-32600, message}}`.
- *
- * The catalog is account-scoped and server-fetched (codex caches it at
- * `~/.codex/models_cache.json`), which is exactly why this can't be a
- * one-shot `runProbe` subcommand call the way cursor/fx's discoverers are —
- * it's a stateful handshake over a long-lived pipe, not a single argv probe.
- *
- * `env`, when given, is merged over `process.env` for this one spawn — same
- * convention (and same reason) as `runProbe`/`discoverFx`'s `env` parameter:
- * codex's catalog is account-scoped, so a second codex harness (its own
- * `home` → `HOME`+`CODEX_HOME` override via `harnessEnv`, see
- * `src/bun/agents.ts`) must be probed under *its own* env to see *its own*
- * account's catalog rather than the built-in harness's. `bin`, when given,
- * is used verbatim in place of the `AGETOR_CODEX_BIN ?? "codex"` /
- * `Bun.which` resolution below — mirrors `discoverFx`'s `bin` parameter and
- * `resolveBin`'s harness.bin-first resolution in `agents.ts`. Both are
- * optional and additive: every pre-existing no-args caller keeps probing the
- * built-in harness under agetor's own process env, exactly as before these
- * parameters existed.
- *
- * Contract, matching every other discoverer in this module: never throws,
- * never hangs. Resolves `[]` when: the child exits before the `model/list`
- * result arrives (the `/bin/echo app-server` unit-test stub case — this
- * resolves promptly on exit, it does not wait out the timeout budget below);
- * a response carries a JSON-RPC `error`; the timeout budget elapses; or
- * anything throws (including a `stdin.write`/`flush` against an
- * already-closed pipe, guarded individually since that stub case closes its
- * pipe immediately). The child is always killed and the timer always
- * cleared in a `finally`. Pagination follows a non-empty string
- * `nextCursor` with a fresh `model/list` call (`{cursor}`), bounded to 5
- * pages total, concatenating each page's `data` before handing the whole
- * batch to `parseCodexModelList` — UNLESS the timeout fired at any point
- * during that pagination (`timedOut`, set only by the timer callback): in
- * that case this resolves `[]` outright, discarding whatever pages had
- * already landed, rather than returning (and letting the caller cache +
- * publish) a partial catalog that would just flip back to the full one on
- * the next sweep. This is distinct from a genuine JSON-RPC `error` on
- * `model/list`, which is unaffected by the timeout flag: an error on the
- * FIRST page still resolves `[]` (nothing was collected yet to keep), but an
- * error on a LATER page keeps whatever earlier pages already landed — both
- * halves of that behavior are unchanged from before this fix, just spelled
- * out precisely here.
- *
- * Leak-safety: the background stdout reader is hoisted to this function's
- * scope (`reader`, assigned inside the read loop's own try) so the outer
- * `finally` can `reader.cancel()` it after `kill()`ing the direct child —
- * without this, a grandchild that inherited the same stdout pipe (a real
- * `codex app-server` may spawn MCP/helper children) keeps that pipe's write
- * end open from its side, the reader's `read()` never resolves `done`, and
- * this process never releases its own reference to the pipe — which is
- * exactly what keeps a `Bun.spawn`'d child's stdout stream, and therefore
- * agetor's own event loop, from ever going idle. Cancelling the reader (not
- * just killing the direct child) releases *this process's* end of the pipe
- * regardless of what a grandchild still holds open on its side. The read
- * loop's `getReader()` call itself is inside its own try (previously it sat
- * outside — a throw there was an unhandled rejection); every `await` in that
- * loop is covered by the same try/catch, which degrades to a silent no-op
- * on any stream error rather than rejecting into the void (the `exited`
- * handler already settles any pending calls independently). On a clean
- * `done` (the child closed stdout normally), a non-empty residual `buf` —
- * the tail of a reply that never got its own trailing newline — is run
- * through the same dispatch path before the loop exits, instead of being
- * silently discarded.
- *
- * Stays a leaf like every other discoverer here: no import of db.ts,
- * agents.ts, or any other process-spawning helper module — see the
- * module-level "stay a leaf" note on `discoverFx` below.
+ * This leaf accepts resolved binary/env from the Harness layer. FO-009F's
+ * scheduler withholds Codex probes unless its caller supplies explicit process
+ * consent. Account inspection uses this same wire without Harness HOME or
+ * CODEX_HOME overrides and never treats a catalog as verified entitlement.
  */
 async function discoverCodex(env?: Record<string, string>, bin?: string): Promise<DiscoveredModel[]> {
   const timeoutMs = codexProbeTimeoutMs;
@@ -277,130 +202,10 @@ async function discoverCodex(env?: Record<string, string>, bin?: string): Promis
     resolvedBin = Bun.which(fallback, { PATH: process.env.PATH }) ?? fallback;
   }
 
-  let proc: Subprocess<"pipe", "pipe", "ignore">;
-  try {
-    proc = Bun.spawn([resolvedBin, "app-server"], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "ignore",
-      ...(env ? { env: { ...process.env, ...env } } : {}),
-    });
-  } catch {
-    return [];
-  }
-
-  // `settled` flips true the moment we know no further response is coming
-  // (child exited, or our own timeout fired) — every pending/future `call()`
-  // resolves to `undefined` from that point on instead of hanging.
-  let settled = false;
-  let killed = false;
-  let timedOut = false;
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-  const kill = (): void => {
-    if (killed) return;
-    killed = true;
-    try { proc.kill(); } catch { /* already exited */ }
-  };
-
-  let nextId = 1;
-  const pending = new Map<number, (msg: unknown) => void>();
-  const settleAllPending = (): void => {
-    settled = true;
-    for (const resolve of pending.values()) resolve(undefined);
-    pending.clear();
-  };
-
-  // The child dying before it answered a pending request must unblock that
-  // request's promise rather than hang until the timeout fires — this is
-  // what makes a stub like `/bin/echo app-server` (which prints "app-server"
-  // and exits at once) resolve `[]` promptly.
-  proc.exited.then(settleAllPending).catch(settleAllPending);
-
-  const timer = setTimeout(() => {
-    timedOut = true;
-    settleAllPending();
-    kill();
-  }, timeoutMs);
-
-  // Parse one already-newline-stripped line as a JSON-RPC message and
-  // resolve whichever pending call's numeric `id` it matches. A message with
-  // no numeric `id` — an unsolicited notification — or one whose `id`
-  // doesn't match any pending call is silently ignored. An unparsable line
-  // is skipped, not fatal. Shared by the read loop's newline-split path and
-  // its end-of-stream residual-buffer flush (finding: a reply lacking a
-  // trailing newline used to be discarded outright).
-  const dispatchLine = (line: string): void => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    let msg: unknown;
-    try {
-      msg = JSON.parse(trimmed);
-    } catch {
-      return;
-    }
-    if (!msg || typeof msg !== "object") return;
-    const id = (msg as { id?: unknown }).id;
-    if (typeof id !== "number") return;
-    const resolve = pending.get(id);
-    if (resolve) {
-      pending.delete(id);
-      resolve(msg);
-    }
-  };
-
-  // Background read loop: buffer stdout, split on newlines, dispatch each
-  // complete line via `dispatchLine`. `reader` is assigned here (not
-  // declared here) — see the enclosing function's leak-safety doc above for
-  // why it's hoisted to that outer scope.
-  void (async () => {
-    try {
-      reader = proc.stdout.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) {
-          if (buf.trim().length > 0) dispatchLine(buf);
-          break;
-        }
-        buf += decoder.decode(value, { stream: true });
-        let nl: number;
-        while ((nl = buf.indexOf("\n")) >= 0) {
-          dispatchLine(buf.slice(0, nl));
-          buf = buf.slice(nl + 1);
-        }
-      }
-    } catch {
-      /* stream error — the `exited` handler above still settles any pending calls */
-    }
-  })();
-
-  const send = (obj: unknown): void => {
-    try {
-      proc.stdin.write(`${JSON.stringify(obj)}\n`);
-      proc.stdin.flush();
-    } catch {
-      // Child's stdin already closed (e.g. the `/bin/echo app-server` stub,
-      // which exits immediately) — the caller learns "no response coming"
-      // via the `exited`/timeout settlement above, not via this throwing.
-    }
-  };
-
-  const call = (method: string, params: unknown): Promise<unknown> => {
-    const id = nextId++;
-    return new Promise((resolve) => {
-      if (settled) {
-        resolve(undefined);
-        return;
-      }
-      pending.set(id, resolve);
-      send({ jsonrpc: "2.0", id, method, params });
-    });
-  };
-
-  const notify = (method: string, params: unknown): void => {
-    send({ jsonrpc: "2.0", method, params });
-  };
+  let connection;
+  try { connection = openCodexStdio({ bin: resolvedBin, env, timeoutMs }); }
+  catch { return []; }
+  const { call, notify } = connection;
 
   try {
     const initMsg = (await call("initialize", {
@@ -428,14 +233,12 @@ async function discoverCodex(env?: Record<string, string>, bin?: string): Promis
       }
     }
     // Timeout trumps partial data — see the doc comment above.
-    if (timedOut) return [];
+    if (connection.timedOut) return [];
     return parseCodexModelList({ data: allData });
   } catch {
     return [];
   } finally {
-    clearTimeout(timer);
-    kill();
-    try { void reader?.cancel(); } catch { /* already released/cancelled */ }
+    connection.close();
   }
 }
 
@@ -875,7 +678,7 @@ export function isDiscoveryReady(): boolean {
  */
 export type FxHarnessTargetsOption = HarnessTarget[] | (() => HarnessTarget[]);
 
-async function runRefresh(opts?: { fxHarnesses?: FxHarnessTargetsOption }): Promise<void> {
+async function runRefresh(opts?: { fxHarnesses?: FxHarnessTargetsOption; skipCodex?: boolean }): Promise<void> {
   try {
     // Promise.allSettled, not Promise.all: every discoverer above is already
     // internally best-effort (probe failures resolve to []), but this is the
@@ -888,7 +691,7 @@ async function runRefresh(opts?: { fxHarnesses?: FxHarnessTargetsOption }): Prom
     // get set, staying whatever they were before — empty on first boot)
     // even though only one kind actually failed.
     const results = await Promise.allSettled([
-      discoverCodex(),
+      opts?.skipCodex ? Promise.resolve([]) : discoverCodex(),
       discoverClaude(),
       discoverCursor(),
       discoverGemini(),
@@ -922,6 +725,7 @@ async function runRefresh(opts?: { fxHarnesses?: FxHarnessTargetsOption }): Prom
       const targetResults = await Promise.allSettled(
         targets.map((target) => {
           const kind = target.kind ?? "fx";
+          if (kind === "codex" && opts?.skipCodex) return Promise.resolve([]);
           if (isBuiltinLikeTarget(target)) {
             return Promise.resolve(kind === "codex" ? builtInCodex : builtInFx);
           }
@@ -961,7 +765,7 @@ async function runRefresh(opts?: { fxHarnesses?: FxHarnessTargetsOption }): Prom
  * *run* time, not at the moment this function was called and possibly left
  * waiting behind another in-flight refresh.
  */
-export function refreshDiscoveredModels(opts?: { fxHarnesses?: FxHarnessTargetsOption }): Promise<void> {
+export function refreshDiscoveredModels(opts?: { fxHarnesses?: FxHarnessTargetsOption; skipCodex?: boolean }): Promise<void> {
   return enqueue(() => runRefresh(opts));
 }
 

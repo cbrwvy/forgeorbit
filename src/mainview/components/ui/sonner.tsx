@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { RUN_PANEL_DEFAULT_WIDTH } from "@/lib/panel-width";
 import { useTheme } from "../theme-provider.tsx";
@@ -18,6 +19,7 @@ interface Props extends ToasterProps {
 }
 
 export function Toaster({ panelOpen = false, ...props }: Props) {
+  useUILocale();
   const { resolved } = useTheme();
   return (
     <Sonner
@@ -33,7 +35,7 @@ export function Toaster({ panelOpen = false, ...props }: Props) {
         classNames: {
           toast: "group toast bg-card text-foreground border-border/60 shadow-2xl",
           description: "text-muted-foreground",
-          actionButton: "bg-primary text-primary-foreground",
+          actionButton: "bg-brand-solid text-brand-solid-foreground",
           cancelButton: "bg-muted text-muted-foreground",
         },
       }}

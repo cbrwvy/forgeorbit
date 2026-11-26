@@ -31,6 +31,7 @@
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { clangDeploymentArgs, MACOS_DEPLOYMENT_TARGET } from "./macos-deployment.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SRC = path.join(REPO_ROOT, "native", "disclaim", "disclaim.c");
@@ -85,7 +86,8 @@ async function main() {
   if (existsSync(EXE) && existsSync(STAMP)) {
     const exeMtime = statSync(EXE).mtimeMs;
     const selfPath = new URL(import.meta.url).pathname;
-    const newestSource = Math.max(statSync(SRC).mtimeMs, statSync(selfPath).mtimeMs);
+    const deploymentPath = new URL("./macos-deployment.ts", import.meta.url).pathname;
+    const newestSource = Math.max(statSync(SRC).mtimeMs, statSync(selfPath).mtimeMs, statSync(deploymentPath).mtimeMs);
     const stamp = (await readFile(STAMP, "utf8")).trim();
     if (exeMtime >= newestSource && stamp === desiredIdentity) {
       console.log(`[build-disclaim] cached at ${path.relative(REPO_ROOT, EXE)} — skipping`);
@@ -93,8 +95,11 @@ async function main() {
     }
   }
 
-  console.log(`[build-disclaim] compiling ${path.relative(REPO_ROOT, SRC)} → arm64`);
-  await run(["clang", "-arch", "arm64", "-O2", "-Wall", "-o", EXE, SRC]);
+  // Host clang defaults minos to the build OS (27 on this machine). Pin the
+  // same floor as Electrobun's libNativeWrapper. posix_spawn is older than
+  // that; the private disclaim symbol stays a weak import.
+  console.log(`[build-disclaim] compiling ${path.relative(REPO_ROOT, SRC)} → arm64 minos ${MACOS_DEPLOYMENT_TARGET}`);
+  await run(["clang", ...clangDeploymentArgs(), "-O2", "-Wall", "-Werror=unguarded-availability", "-o", EXE, SRC]);
 
   // Sign inside-out: hardened runtime + secure timestamp under the release
   // Developer ID (required by notarytool — see the header note), ad-hoc for

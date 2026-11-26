@@ -2,6 +2,7 @@ import { test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 // The bind address comes from `startApiServer`'s `hostname` dep — only the
 // headless core passes one (from a validated AGETOR_API_HOST); everything else
@@ -70,4 +71,23 @@ test("binds the hostname dep, stays reachable over 127.0.0.1, and warns once", a
   } finally {
     warn.mockRestore();
   }
+});
+
+test("a second production-mode API process cannot share the owner's listener", async () => {
+  const owner = start(0);
+  const port = owner.port;
+  if (port === undefined) throw new Error("API did not bind a TCP port");
+  const childData = mkdtempSync(path.join(tmpdir(), "agetor-second-bind-"));
+  const result = spawnSync(process.execPath, ["-e", `
+    const {startApiServer}=await import(${JSON.stringify(path.join(import.meta.dir, "server.ts"))});
+    try { const server=startApiServer(); server.stop(true); process.exit(2); }
+    catch(error) { if(error.code!=="EADDRINUSE") throw error; }
+  `], {
+    env: { ...process.env, FORGEORBIT_DATA_DIR: childData, AGETOR_DATA_DIR: childData,
+      FORGEORBIT_API_PORT: String(port), AGETOR_API_PORT: String(port) },
+    encoding: "utf8", timeout: 15_000,
+  });
+  expect(result.error, result.stderr).toBeUndefined();
+  expect(result.status, result.stderr).toBe(0);
+  expect(await healthOverLoopback(port)).toBe(200);
 });

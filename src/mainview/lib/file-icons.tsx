@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 import {
   File,
   FileArchive,
@@ -39,7 +40,7 @@ const CODE_BY_NAME = new Set([
   "Procfile", "Brewfile", "Vagrantfile", "Jenkinsfile", "Justfile",
 ]);
 const DOC_BY_NAME = new Set([
-  "README", "LICENSE", "LICENCE", "CHANGELOG", "AUTHORS", "CONTRIBUTORS",
+  tr("projects.readme"), "LICENSE", "LICENCE", "CHANGELOG", "AUTHORS", "CONTRIBUTORS",
   "NOTICE", "COPYING",
 ]);
 

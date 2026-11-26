@@ -1,3 +1,8 @@
+import { Textarea } from "@/components/ui/textarea";
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+import { staticLabel } from "@/i18n/presentation";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -5,14 +10,18 @@ import {
   ClipboardList,
   Code2,
   RefreshCw,
+  Repeat,
   Workflow,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { api, type AgentModelMap } from "@/lib/api";
-import { discoveredEffortsFor, mergeModelOptions } from "../../../shared/model-options.ts";
+import { discoveredEffortsFor, mergeModelOptions } from "@/i18n/model-options";
 import { promptByteOverage } from "../../../shared/prompt-limits.ts";
 import { composeLaunchPrompt } from "../../../shared/agent-profile.ts";
 import { resolveStartStep } from "../../../shared/pipeline.ts";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { SearchSelect } from "@/components/ui/search-select";
@@ -40,7 +49,7 @@ import {
   type Pipeline,
   type TaskReference,
   type TaskType,
-} from "../../../shared/types.ts";
+} from "@/i18n/options";
 import { AgentIcon } from "./AgentIcon";
 import { AgentProfileCard } from "./AgentProfileCard";
 import { AgentProfilePicker } from "./AgentProfilePicker";
@@ -48,9 +57,17 @@ import { HarnessAuthHint } from "./HarnessAuthHint";
 import { PipelinePicker } from "@/components/pipelines";
 import { ProjectPicker } from "./ProjectPicker";
 import { TaskTypePicker } from "./TaskTypePicker";
+import { UrgencySelect } from "./UrgencyBadge";
+import { ScheduledAvailabilityControl } from "./ScheduledAvailability";
+import { RecurringScheduleFields, type RecurringDraftState } from "../recurring/RecurringScheduleFields";
+import { DEFAULT_URGENCY, type Urgency } from "../../../shared/board-order.ts";
+import { defaultRecurringDraft, validateScheduleConfig } from "../../../shared/recurring-tasks.ts";
+import { formatUtcTimestamp, isTaskScheduledWaiting } from "../../../shared/task-availability.ts";
 import { captureDroppedOrPastedItems } from "./ReferencesPicker";
 import { PromptComposer, usePromptCapture } from "./PromptComposer";
 import { useWorktreeOptions, WorktreeOptions } from "./WorktreeOptions";
+import { AccessModeDisclosure, AccessModeSelector } from "./AccessModeDisclosure";
+import { assessAccessDiagnostics, type AccessDiagnostics, type AccessMode } from "../../../shared/execution/access-mode.ts";
 import {
   NEW_TASK_PANEL_COLLAPSED_KEY,
   readCollapsed,
@@ -60,6 +77,15 @@ import {
 const initialMode = (kind: AgentKind) => defaultModeFor(kind);
 
 interface Props {
+  /** `panel` (default) is the pinned side panel; `sheet` renders the same form inside a
+   *  modal dialog (FO-UX02-D stage 1) that App opens with ⌘N / the New task buttons. The
+   *  component stays mounted either way, so a half-written draft survives closing the sheet. */
+  presentation?: "panel" | "sheet";
+  sheetOpen?: boolean;
+  onSheetClose?: () => void;
+  compact?: boolean;
+  compactOpen?: boolean;
+  onCompactOpenChange?: (open: boolean) => void;
   onSubmit: (
     input: {
       title: string;
@@ -68,6 +94,7 @@ interface Props {
       agent: string;
       workdir: string;
       isolation: Isolation;
+      accessMode?: AccessMode;
       baseRef?: string;
       /** Branch name for worktree isolation — the value shown in the sidebar's
        *  editable preview field. Omitted when isolation is off. */
@@ -79,6 +106,10 @@ interface Props {
       maxMode: boolean;
       references: TaskReference[];
       taskType: TaskType;
+      /** Kanban urgency 1..5 (default 3). Orders the board only. */
+      urgency?: Urgency;
+      /** Earliest UTC ISO-8601 instant at which automatic execution may start this task, or null for immediate. */
+      availableFromUtc?: string | null;
       /** Id of the {@link AgentProfile} this task launches from, or null —
        *  see `AgentProfilePicker` above the harness grid. The server
        *  resolves it and overrides `agent`/`model`/`effort`/`mode`/`fast`/
@@ -146,19 +177,36 @@ interface Props {
    *  collapsed, the Title field gets focus, and the panel root flashes a
    *  brief highlight ring. */
   focusNonce?: number;
+  /** When the shell is inside a project workspace, the new task should
+   *  start in that project's directory. `null` (the global overview / all
+   *  tasks) leaves the picker alone, including its most-recent default. */
+  preferredWorkdir?: string | null;
+  /** Registered projects, so the form can name the project a task will land in. */
+  projects?: readonly { path: string; name: string }[];
+  /** Invoked after a recurring task template is saved so board/views refresh. */
+  onRecurringCreated?: () => void;
 }
 
-export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSettingsAgents, pipelines, pipelinesLoaded, onOpenPipelines, agentModels, harnessModels, onRefreshModels, focusNonce }: Props) {
+export function NewTaskForm({ presentation = "panel", sheetOpen = false, onSheetClose, compact = false, compactOpen = false, onCompactOpenChange, onSubmit, agents, harnesses, profiles, onOpenSettingsAgents, pipelines, pipelinesLoaded, onOpenPipelines, agentModels, harnessModels, onRefreshModels, focusNonce, preferredWorkdir = null, projects = [], onRecurringCreated }: Props) {
+  const { locale: uiLocale } = useUILocale();
   // Collapsed = thin icon rail; the board's `flex-1` <main> takes the freed
   // width on its own. Seeded synchronously from localStorage (lazy initial
   // state) so a restart repaints in the state the user left it in — an async
   // read would flash the full-width sidebar first.
-  const [collapsed, setCollapsed] = useState(() =>
+  const [storedCollapsed, setStoredCollapsed] = useState(() =>
     readCollapsed(NEW_TASK_PANEL_COLLAPSED_KEY),
   );
+  const sheet = presentation === "sheet";
+  const collapsed = sheet ? false : compact ? !compactOpen : storedCollapsed;
+  const setCollapsed = (action: boolean | ((current: boolean) => boolean)) => {
+    const next = typeof action === "function" ? action(collapsed) : action;
+    if (sheet) return;
+    if (compact) onCompactOpenChange?.(!next);
+    else setStoredCollapsed(next);
+  };
   useEffect(() => {
-    writeCollapsed(NEW_TASK_PANEL_COLLAPSED_KEY, collapsed);
-  }, [collapsed]);
+    writeCollapsed(NEW_TASK_PANEL_COLLAPSED_KEY, storedCollapsed);
+  }, [storedCollapsed]);
   const titleRef = useRef<HTMLInputElement>(null);
   // Transient "look here" ring around the panel root, driven by `focusNonce`.
   const [spotlight, setSpotlight] = useState(false);
@@ -174,7 +222,7 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
     // Expand exactly like the collapse toggle button does, so the persisted
     // preference and the in-memory state agree — the effect above persists
     // on `[collapsed]` change, so no separate write is needed here.
-    setCollapsed(false);
+    if (!sheet) setCollapsed(false);
     // Expansion may need a paint before the Title input exists/lays out —
     // defer the focus by a frame (same idiom as RunPanel's post-open focus).
     requestAnimationFrame(() => {
@@ -190,9 +238,19 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
       if (spotlightTimeoutRef.current) clearTimeout(spotlightTimeoutRef.current);
     };
   }, []);
+  const [advanced, setAdvanced] = useState(false);
+  const [choosingProject, setChoosingProject] = useState(false);
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [taskType, setTaskType] = useState<TaskType>(DEFAULT_TASK_TYPE);
+  // Kanban urgency of the new task (1..5). Always offered, Normal by default, reset after each submit.
+  const [urgency, setUrgency] = useState<Urgency>(DEFAULT_URGENCY);
+  // Scheduled execution availability (null = immediate, default). Reset after each submit.
+  const [availableFromUtc, setAvailableFromUtc] = useState<string | null>(null);
+  // Recurring task section (FO-KANBAN-RECURRING01): disabled by default so ordinary task creation stays unchanged.
+  const [recurringEnabled, setRecurringEnabled] = useState(false);
+  const [recurringDraft, setRecurringDraft] = useState<RecurringDraftState>(() => defaultRecurringDraft());
+  const [recurringSaving, setRecurringSaving] = useState(false);
   // Selected agent profile ("one selection" — see `AgentProfilePicker`):
   // null means "No agent — pick harness manually", the form's default (no
   // last-used-profile preference — plan D12). Reset to null after a
@@ -210,14 +268,14 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
   // currently-selected-but-disabled harness (edge case during a refresh).
   const availableHarnesses = useMemo(
     () => harnesses.filter((h) => h.enabled),
-    [harnesses],
+    [harnesses, uiLocale],
   );
   // Selected harness id (free-form string). Defaults to the built-in
   // claude-code; replaced on first preferences load by `defaultHarness`.
   const [agent, setAgent] = useState<string>("claude-code");
   const selectedHarness = useMemo(
     () => harnesses.find((h) => h.id === agent) ?? null,
-    [harnesses, agent],
+    [harnesses, agent, uiLocale],
   );
   // Resolve kind for the form's mode/model/effort logic. Falls back to
   // claude-code (back-compat) when the harness list hasn't loaded yet or
@@ -230,11 +288,24 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
   // ProjectPicker will auto-select the most-recently-used project from the
   // persisted list.
   const [workdir, setWorkdir] = useState("");
+  const [accessMode, setAccessMode] = useState<AccessMode>("workspace");
   // Owns the isolate toggle, base-ref, and branch-name field state/derivations
   // — see `WorktreeOptions.tsx`. Declared here (before the mode/model state)
   // since `wt.isolate`/`wt.baseRef` are read further down by the `fileScope`
   // memo passed to `<PromptComposer fileScope={…}>`.
   const wt = useWorktreeOptions({ workdir, title, taskType });
+  // `resetBaseRef` is a fresh closure every render; reading it through a ref
+  // keeps the effect below from re-firing (and wiping a base ref the user
+  // just picked) on every keystroke.
+  const resetBaseRefRef = useRef(wt.resetBaseRef);
+  resetBaseRefRef.current = wt.resetBaseRef;
+  const workdirRef = useRef(workdir);
+  workdirRef.current = workdir;
+  useEffect(() => {
+    if (!preferredWorkdir || workdirRef.current === preferredWorkdir) return;
+    setWorkdir(preferredWorkdir);
+    resetBaseRefRef.current();
+  }, [preferredWorkdir]);
   const [mode, setMode] = useState<string>(initialMode("claude-code"));
   const [model, setModel] = useState<string>(DEFAULT_MODEL["claude-code"]);
   // `null` is reserved for the Haiku-style "model doesn't accept effort" case.
@@ -255,8 +326,8 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
   const seededDefaultRef = useRef(false);
   useEffect(() => {
     if (availableHarnesses.length === 0) return;
-    if (availableHarnesses.some((h) => h.id === agent)) return;
     if (seededDefaultRef.current) {
+      if (availableHarnesses.some((h) => h.id === agent)) return;
       // We've already seeded once; the selected alias was just deleted or
       // disabled. Fall back to the first available harness without
       // re-fetching prefs.
@@ -285,8 +356,8 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
   // effect (keyed on `scope.dir`/`scope.ref`) doesn't see a new object
   // identity — and therefore doesn't refire — on every unrelated re-render.
   const fileScope = useMemo(
-    () => (workdir.trim() ? { dir: workdir.trim(), ref: wt.isolate ? (wt.baseRef.trim() || "HEAD") : null } : null),
-    [workdir, wt.isolate, wt.baseRef],
+    () => (workdir.trim() ? { dir: workdir.trim(), ref: accessMode === "workspace" && wt.isolate ? (wt.baseRef.trim() || tr("tasks.head")) : null } : null),
+    [workdir, accessMode, wt.isolate, wt.baseRef, uiLocale],
   );
   // Drag/paste-to-attach wiring for the prompt textarea, shared with the
   // aside-wide drop zone below (`onAsideDrop`) — see `PromptComposer.tsx`'s
@@ -569,7 +640,7 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
     ? (pipelineStartStepHarness?.kind ?? null)
     : effectiveKind;
   const overageLabel = selectedPipeline
-    ? (pipelineStartStepHarness?.label ?? pipelineStartStepProfile?.harness ?? "the start step's harness")
+    ? (pipelineStartStepHarness?.label ?? pipelineStartStepProfile?.harness ?? tr("common.the_start_step_s_harness"))
     : effectiveHarnessLabel;
   const promptOverage = overageKind === null
     ? null
@@ -577,12 +648,124 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
       ? promptByteOverage(overageKind, prompt)
       : promptByteOverage(overageKind, composeLaunchPrompt(selectedProfile, prompt));
 
+  const effectiveMode = (selectedProfile ? selectedProfile.mode : mode) ?? defaultModeFor(effectiveKind);
+  const effectiveIsolation: Isolation = accessMode === "workspace" ? wt.payload().isolation : "none";
+  const predictedLayout = useMemo(() => {
+    if (!workdir.trim()) return "unknown" as const;
+    if (accessMode === "isolated") return "non-git" as const;
+    if (effectiveIsolation === "worktree") {
+      return wt.worktreeGit === "non-git" ? ("non-git" as const) : ("linked-worktree" as const);
+    }
+    return wt.worktreeGit === "git" ? ("repo-root" as const) : wt.worktreeGit === "non-git" ? ("non-git" as const) : ("unknown" as const);
+  }, [workdir, accessMode, effectiveIsolation, wt.worktreeGit]);
+  const fallbackDiagnostics = useMemo<AccessDiagnostics>(
+    () => assessAccessDiagnostics({
+      requestedAccessMode: accessMode,
+      kind: effectiveKind,
+      harnessId: effectiveAgent,
+      mode: effectiveMode,
+      isolation: effectiveIsolation,
+      workdir: workdir.trim(),
+      branch: effectiveIsolation === "worktree" ? wt.branchField.resolved.trim() || null : null,
+      layout: predictedLayout,
+      predicted: effectiveIsolation === "worktree",
+      isPipeline: Boolean(selectedPipeline),
+    }),
+    [accessMode, effectiveKind, effectiveAgent, effectiveMode, effectiveIsolation, workdir, wt.branchField.resolved, predictedLayout, selectedPipeline],
+  );
+  const [serverDiagnostics, setServerDiagnostics] = useState<AccessDiagnostics | null>(null);
+  const diagSeqRef = useRef(0);
+  useEffect(() => {
+    const seq = ++diagSeqRef.current;
+    if (typeof api.previewLaunchDiagnostics !== "function") {
+      setServerDiagnostics(null);
+      return;
+    }
+    void api.previewLaunchDiagnostics({
+      accessMode,
+      harnessId: effectiveAgent,
+      mode: effectiveMode,
+      isolation: effectiveIsolation,
+      workdir: workdir.trim(),
+      branch: effectiveIsolation === "worktree" ? wt.branchField.resolved.trim() || null : null,
+      isPipeline: Boolean(selectedPipeline),
+    }).then(
+      (res) => { if (seq === diagSeqRef.current) setServerDiagnostics(res); },
+      () => { if (seq === diagSeqRef.current) setServerDiagnostics(null); },
+    );
+  }, [accessMode, effectiveAgent, effectiveMode, effectiveIsolation, workdir, wt.branchField.resolved, selectedPipeline, agents]);
+  const launchDiagnostics = serverDiagnostics ?? fallbackDiagnostics;
+
+  const scheduledInFuture = isTaskScheduledWaiting(availableFromUtc);
+  const recurringScheduleValid = useMemo(() => validateScheduleConfig(recurringDraft).ok, [recurringDraft]);
   const canSubmit =
-    title.trim() && prompt.trim() && workdir.trim() && wt.valid
+    title.trim() && prompt.trim() && workdir.trim() && (accessMode !== "workspace" || wt.valid)
     && promptOverage == null;
+  const canSaveRecurring = Boolean(
+    recurringEnabled &&
+    !recurringSaving &&
+    title.trim() &&
+    prompt.trim() &&
+    workdir.trim() &&
+    promptOverage == null &&
+    recurringScheduleValid,
+  );
+  const canStart = Boolean(canSubmit && launchDiagnostics.launchAllowed && !scheduledInFuture);
+  const executionConfigured = !!effectiveAgent && !!(selectedProfile ? selectedProfile.model : model) && !!effectiveStatus?.available && effectiveStatus.loggedIn !== false;
+  const simpleReady = Boolean(canSubmit && executionConfigured);
+
+  const submitRecurring = async () => {
+    if (!canSaveRecurring) return;
+    setRecurringSaving(true);
+    try {
+      const res = await api.createRecurringTemplate({
+        projectPath: workdir.trim(),
+        title: title.trim(),
+        prompt: prompt.trim(),
+        urgency,
+        taskType,
+        templateConfig: {
+          agent: effectiveAgent,
+          mode: (selectedProfile ? selectedProfile.mode : mode) ?? undefined,
+          model: selectedProfile ? selectedProfile.model : model,
+          effort: selectedProfile ? selectedProfile.effort : effort,
+          fast: selectedProfile ? selectedProfile.fast : (kind === "cursor" ? fast : false),
+          maxMode: selectedProfile ? selectedProfile.maxMode : (kind === "cursor" ? maxMode : false),
+          accessMode,
+          ...(accessMode === "workspace" ? { isolation: wt.payload().isolation, baseRef: wt.payload().baseRef } : { isolation: "none" as const }),
+          ...(agentProfileId ? { agentProfileId } : {}),
+        },
+        ...recurringDraft,
+      });
+      const localeTag: "en" | "ru" = uiLocale === "ru" ? "ru" : "en";
+      toast.success(
+        res.template.nextDueUtc
+          ? tr("kanban.recurring.template_created", { time: formatUtcTimestamp(res.template.nextDueUtc, localeTag) })
+          : tr("kanban.recurring.template_created_no_next"),
+      );
+      setTitle("");
+      setPrompt("");
+      setUrgency(DEFAULT_URGENCY);
+      setAvailableFromUtc(null);
+      setRecurringEnabled(false);
+      setRecurringDraft(defaultRecurringDraft());
+      setReferences([]);
+      capture.clearDropHint();
+      wt.resetAfterSubmit();
+      setAgentProfileId(null);
+      setPipelineId(null);
+      onRecurringCreated?.();
+      if (sheet) onSheetClose?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRecurringSaving(false);
+    }
+  };
 
   const submit = ({ start }: { start: boolean }) => {
     if (!canSubmit) return;
+    if (start && !launchDiagnostics.launchAllowed) return;
     onSubmit(
       {
         title: title.trim(),
@@ -594,10 +777,11 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
         // keeps the request body self-consistent for any other consumer.
         agent: effectiveAgent,
         workdir: workdir.trim(),
+        accessMode,
         // The branch is only meaningful under worktree isolation — see
         // `worktreePayload` for the isolation/baseRef/branch mapping this
         // spreads in.
-        ...wt.payload(),
+        ...(accessMode === "workspace" ? wt.payload() : { isolation: "none" as const }),
         // model is always an explicit option id. effort is too, except for
         // the Haiku-style "model doesn't accept effort" case which sends null.
         mode: selectedProfile ? selectedProfile.mode : mode,
@@ -607,6 +791,8 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
         maxMode: selectedProfile ? selectedProfile.maxMode : (kind === "cursor" ? maxMode : false),
         references,
         taskType,
+        urgency,
+        ...(availableFromUtc ? { availableFromUtc } : {}),
         // Omit entirely when no profile/pipeline is selected — an explicit
         // `null` still round-trips through the server's own accept-null
         // handling, but a body that never mentions the key at all is the
@@ -636,11 +822,14 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
     }
     setTitle("");
     setPrompt("");
+    setUrgency(DEFAULT_URGENCY);
+    setAvailableFromUtc(null);
     setReferences([]);
     capture.clearDropHint();
     wt.resetAfterSubmit();
     setAgentProfileId(null);
     setPipelineId(null);
+    if (sheet) onSheetClose?.();
     // Keep `workdir`, `model`, `effort`, `mode` set on purpose — the next
     // task should default to the same project + picks the user just used.
   };
@@ -671,99 +860,49 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
     capture.handleResult(result);
   };
 
-  return (
-    <aside
-      onDragOver={onAsideDragOver}
-      onDragLeave={onAsideDragLeave}
-      onDrop={onAsideDrop}
-      className={cn(
-        // Width is the only animated property — <main> next door is flex-1,
-        // so the board reclaims the space in the same frame with no resize
-        // logic on that side.
-        "relative flex h-full shrink-0 flex-col border-r border-border/60 bg-card text-card-foreground",
-        "transition-[width] duration-200 ease-out motion-reduce:transition-none",
-        collapsed ? "w-11" : "w-80",
-        // `!collapsed` is belt-and-braces: onAsideDragOver already refuses to
-        // arm `dragging` on the rail, this also drops a stale ring if the
-        // panel is collapsed while one is showing.
-        dragging && !collapsed && "ring-2 ring-inset ring-primary",
-        // Onboarding "look here" highlight — independent of the drag ring
-        // above; the two conditions aren't expected to overlap in practice
-        // (drag requires the panel already focused/visible by the user).
-        spotlight && "ring-2 ring-info",
-      )}
-    >
-      {/* VS Code-style collapse control: straddles the border between the
-          sidebar and the board (half of it overhangs into the board's p-4
-          gutter, so it never covers a card). z-20 keeps it above the board
-          and below dialogs/overlays (z-50). top-3 centers it on the 44px
-          header row ("New task" title) so it's found where users look. */}
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? "Expand new task panel" : "Collapse new task panel"}
-        title={collapsed ? "Expand new task panel" : "Collapse new task panel"}
-        className="absolute -right-2.5 top-3 z-20 flex size-5 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-      >
-        {collapsed
-          ? <ChevronRight className="size-3.5" />
-          : <ChevronLeft className="size-3.5" />}
-      </button>
-
-      {/* Clip layer: the contents keep their natural width (w-11 rail / w-80
-          form) and get cut off by this box while the aside's width animates,
-          instead of reflowing every field through 200ms of intermediate
-          widths. It can't live on the <aside> itself — that would clip the
-          toggle button's overhang. */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {collapsed ? (
-          /* Icon rail. Deliberately a plain vertical stack: future quick-action
-             icon buttons get appended below the label without touching any of
-             the collapse plumbing. The form itself is unmounted rather than
-             squeezed — every field's state lives in this component (not its
-             children), so nothing the user typed is lost while collapsed. */
-          <div className="flex h-full w-11 flex-col items-center gap-2 py-3">
-            <button
-              type="button"
-              onClick={() => setCollapsed(false)}
-              title="Expand new task panel"
-              className="rounded-md px-1 py-2 text-[11px] font-semibold tracking-wide text-muted-foreground transition-colors [writing-mode:vertical-rl] hover:text-foreground"
-            >
-              New task
-            </button>
-          </div>
-        ) : (
-          <div className="flex h-full w-80 flex-col">
+  const formBody = (
+          <div className={cn("flex w-full flex-col", sheet ? "h-[min(36rem,calc(100dvh-2rem))]" : "h-full")}>
             <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold">New task</span>
-                <InfoTip
-                  label="How these fields fit together"
-                  text="A task is a unit of agent work. Type, Title and Prompt say what to do. Project, Branch and Isolate say where — with Isolate on, work happens on a fresh branch in a separate worktree, so your checkout stays clean. Harness, Mode, Model and Effort pick which agent runs it and how much autonomy it gets. Defaults are sensible — a title, a prompt and a project are enough to start."
-                />
+                <span id="new-task-heading" className="text-sm font-semibold"><I18nText id="common.new_task" /></span>
+                {advanced && <InfoTip
+                  label={tr("tasks.how_these_fields_fit_together")}
+                  text={tr("common.a_task_is_a_unit_of_agent_work")}
+                />}
               </div>
-              {selectedStatus?.available && selectedStatus.version && (
-                <span className="text-[11px] text-muted-foreground">
-                  {selectedStatus.version}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {advanced && selectedStatus?.available && selectedStatus.version && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {selectedStatus.version}
+                  </span>
+                )}
+                {sheet && (
+                  <Button type="button" variant="ghost" size="icon" className="size-8" onClick={() => onSheetClose?.()} aria-label={tr("common.close")} data-testid="new-task-sheet-close">
+                    <X className="size-4" aria-hidden />
+                  </Button>
+                )}
+              </div>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-xs">
-              <TaskTypePicker value={taskType} onChange={setTaskType} />
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 text-sm">
+              {advanced && <TaskTypePicker value={taskType} onChange={setTaskType} />}
 
               <div className="space-y-1">
-                <label className="text-muted-foreground">Title</label>
+                <label htmlFor="new-task-title" className="text-muted-foreground"><I18nText id="common.title" /></label>
                 <Input
                   ref={titleRef}
-                  placeholder="Short description"
+                  id="new-task-title"
+                  placeholder={tr("tasks.short_description")}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </div>
 
-              <PromptComposer
+              {!advanced && <div className="space-y-1">
+                <label htmlFor="manager-assignment" className="text-muted-foreground">{tr("manager.assignment")}</label>
+                <Textarea id="manager-assignment" ref={promptRef} value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={7} />
+              </div>}
+              {advanced && <PromptComposer
                 value={prompt}
                 onChange={setPrompt}
                 agent={effectiveAgent}
@@ -774,33 +913,100 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                 capture={capture}
                 startingFolder={workdir || undefined}
                 footer={promptOverage && (
-                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning">
-                    This prompt is {Math.ceil(promptOverage.bytes / 1024)} KB — {overageLabel}'s
-                    one-shot launch caps prompts at {Math.floor(promptOverage.limit / 1024)} KB. Pick
-                    another harness or trim the prompt.
-                  </div>
+                  <div className="rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px] text-warning"><I18nText id="tasks.this_prompt_is" />{" "}{Math.ceil(promptOverage.bytes / 1024)}{" "}<I18nText id="tasks.kb" />{" "}{overageLabel}<I18nText id="tasks.s_one_shot_launch_caps_prompts_at" />{" "}{Math.floor(promptOverage.limit / 1024)}{" "}<I18nText id="tasks.kb_pick_another_harness_or_trim_the_prompt" />{" "}</div>
                 )}
               />
 
+              }
+              <div className="space-y-1" data-testid="new-task-urgency-field">
+                <label htmlFor="new-task-urgency" className="text-muted-foreground">{tr("kanban.urgency.field")}</label>
+                <UrgencySelect id="new-task-urgency" testId="new-task-urgency" value={urgency} onChange={setUrgency} />
+                <p className="text-[11px] text-muted-foreground">{tr("kanban.urgency.hint")}</p>
+              </div>
+              {!recurringEnabled && (
+                <div className="space-y-1" data-testid="new-task-schedule-field">
+                  <span className="block text-muted-foreground">{tr("kanban.schedule.field")}</span>
+                  <ScheduledAvailabilityControl
+                    value={availableFromUtc}
+                    onChange={setAvailableFromUtc}
+                    testIdPrefix="new-task-schedule"
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5" data-testid="new-task-recurring-section">
+                <label className="flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/15 px-2.5 py-2 text-xs font-medium text-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Repeat className="size-3.5 text-primary" aria-hidden="true" />
+                    <span>{tr("kanban.recurring.section_title")}</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    data-testid="new-task-recurring-toggle"
+                    aria-label={tr("kanban.recurring.enable_label")}
+                    checked={recurringEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setRecurringEnabled(next);
+                      if (next) setRecurringDraft(defaultRecurringDraft());
+                    }}
+                    className="size-4 rounded border-input accent-primary"
+                  />
+                </label>
+                {recurringEnabled && (
+                  <>
+                    <RecurringScheduleFields
+                      value={recurringDraft}
+                      onChange={setRecurringDraft}
+                      disabled={recurringSaving}
+                      compact
+                      testIdPrefix="new-task-recurring"
+                    />
+                    <p className="text-[11px] text-muted-foreground" data-testid="new-task-recurring-note">
+                      {tr("kanban.recurring.template_distinct_note")}
+                    </p>
+                  </>
+                )}
+              </div>
+              {!advanced && workdir && <div className="flex min-w-0 flex-wrap items-center justify-between gap-2" data-testid="manager-creation-project">
+                <p className="min-w-0 text-muted-foreground [overflow-wrap:anywhere]">{tr("task.target", { project: projects.find((project) => project.path === workdir)?.name || workdir.split("/").pop() || workdir })}</p>
+                <Button size="sm" variant="ghost" onClick={() => setChoosingProject((value) => !value)}>{tr("manager.setup.choose-project")}</Button>
+              </div>}
+              {!advanced && !workdir && <p className="text-muted-foreground">{tr("manager.setup.project")}</p>}
               {/* Project + Branch each get their own full-width row. Side-by-side in
                   the ~140px-per-column grid clipped all but the shortest names; full
                   width lets the picker triggers render the full project/branch name. */}
-              <div className="min-w-0 space-y-1">
-                <label className="text-muted-foreground">Project</label>
+              <div className="min-w-0 space-y-1" data-testid="new-task-project" hidden={!advanced && !!workdir && !choosingProject}>
+                <label className="text-muted-foreground"><I18nText id="common.project_985959" /></label>
                 <ProjectPicker
                   value={workdir}
                   onChange={(p) => {
                     setWorkdir(p);
+                    setChoosingProject(false);
                     // The previously-picked branch likely doesn't exist on the new
                     // project — drop back to HEAD so the picker shows a valid default.
                     wt.resetBaseRef();
                   }}
                   autoSelectFirst
                   placement="bottom"
-                  title="Pick the working directory the agent runs in. Add new ones with the folder picker at the bottom of the list."
+                  title={tr("tasks.pick_the_working_directory_the_agent_runs_in")}
                 />
+                {workdir && (
+                  <p className="text-xs text-muted-foreground" data-testid="new-task-target">
+                    {projects.some((project) => project.path === workdir)
+                      ? tr("task.target", { project: projects.find((project) => project.path === workdir)?.name || workdir })
+                      : tr("task.target.unregistered")}
+                  </p>
+                )}
               </div>
-              <WorktreeOptions state={wt} />
+              {!advanced && (!executionConfigured || (!!workdir && !canSubmit && !!title.trim() && !!prompt.trim())) && <div className="space-y-2 rounded-md border border-border p-3" data-testid="manager-creation-setup">
+                <p>{tr("manager.setup.execution")}</p>
+                <Button size="sm" variant="outline" onClick={() => onOpenSettingsAgents()}>{tr("manager.setup.action")}</Button>
+              </div>}
+              <details open={advanced} onToggle={(event) => setAdvanced(event.currentTarget.open)} data-testid="new-task-advanced">
+                <summary className="cursor-pointer text-muted-foreground">{tr("manager.advanced")}</summary>
+                <div className="mt-3 space-y-3">
+              <AccessModeSelector value={accessMode} onChange={setAccessMode} />
+              {accessMode === "workspace" && <WorktreeOptions state={wt} />}
 
               {/* "One selection" (plan D1/D5): a picked pipeline replaces
                   the Agent picker AND the entire manual harness/mode/model/
@@ -809,7 +1015,7 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                   (see `submit`). Selecting a pipeline clears any selected
                   agent profile (`onChange` below), and vice versa. */}
               <div className="space-y-1" data-testid="new-task-pipeline-picker">
-                <label className="text-muted-foreground">Pipeline</label>
+                <label className="text-muted-foreground"><I18nText id="common.pipeline" /></label>
                 <PipelinePicker
                   value={pipelineId}
                   onChange={(id) => {
@@ -836,19 +1042,17 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                       data-testid="new-task-pipeline-clear"
                       onClick={() => setPipelineId(null)}
                       className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
-                    >
-                      Change
-                    </button>
+                    ><I18nText id="tasks.change" />{" "}</button>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {selectedPipeline.graph.steps.length} step{selectedPipeline.graph.steps.length === 1 ? "" : "s"}
-                    {pipelineStartStepProfile && <> · starts with {pipelineStartStepProfile.name}</>}
+                    {selectedPipeline.graph.steps.length}{" "}<I18nText id="common.step" />{selectedPipeline.graph.steps.length === 1 ? "" : englishPluralSuffix()}
+                    {pipelineStartStepProfile && <>{" "}<I18nText id="tasks.starts_with" />{" "}{pipelineStartStepProfile.name}</>}
                   </p>
                 </div>
               ) : (
               <>
               <div className="space-y-1">
-                <label className="text-muted-foreground">Agent</label>
+                <label className="text-muted-foreground"><I18nText id="common.agent" /></label>
                 <AgentProfilePicker
                   value={agentProfileId}
                   onChange={(id) => {
@@ -883,7 +1087,7 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                   {effectiveStatus && !effectiveStatus.available && (
                     <div
                       data-testid="agent-profile-harness-unavailable"
-                      className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground"
+                      className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger"
                     >
                       <div className="font-medium">{effectiveStatus.reason}</div>
                       {effectiveStatus.installHint && (
@@ -898,7 +1102,7 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
               ) : (
               <>
               <div className="space-y-1">
-                <label className="text-muted-foreground">Harness</label>
+                <label className="text-muted-foreground"><I18nText id="common.harness" /></label>
                 <div className="grid grid-cols-2 gap-1">
                   {availableHarnesses.map((h) => {
                     const status = agents.find((s) => s.harnessId === h.id);
@@ -916,9 +1120,9 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                           [
                             status?.account?.email,
                             status?.usage &&
-                              `today ${formatTokens(status.usage.today.inputTokens + status.usage.today.outputTokens)} tok`,
+                              tr("common.today_tok", { p0: String(formatTokens(status.usage.today.inputTokens + status.usage.today.outputTokens)) }),
                             status?.reason,
-                            status?.loggedIn === false ? (status.authHelp ?? "Not logged in") : null,
+                            status?.loggedIn === false ? (status.authHelp ?? tr("common.not_logged_in")) : null,
                             status?.path,
                             status?.version,
                           ]
@@ -942,38 +1146,34 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
               </div>
 
               <div className="space-y-1">
-                <label className="text-muted-foreground">Mode</label>
+                <label className="text-muted-foreground"><I18nText id="common.mode" /></label>
                 <div className="grid grid-cols-2 gap-1">
                   <Button
                     size="sm"
                     variant={primary === "code" ? "default" : "outline"}
                     onClick={onClickCode}
-                    title="Execute changes (auto / accept edits / ask all live under Code — pick the exact variant below)."
+                    title={tr("tasks.execute_changes_auto_accept_edits_ask_all_live")}
                   >
-                    <Code2 className="mr-1 size-3.5" />
-                    Code
-                  </Button>
+                    <Code2 className="mr-1 size-3.5" /><I18nText id="tasks.code" />{" "}</Button>
                   <Button
                     size="sm"
                     variant={primary === "plan" ? "default" : "outline"}
                     onClick={onClickPlan}
                     title={
                       kind === "codex"
-                        ? "Codex has no native plan mode — routed to 'ask' so nothing auto-executes."
+                        ? tr("common.codex_has_no_native_plan_mode_routed_to")
                         : kind === "cursor"
-                        ? "Cursor has no native plan mode — routed to propose-only 'ask' so nothing auto-executes."
+                        ? tr("common.cursor_has_no_native_plan_mode_routed_to")
                         : kind === "gemini"
-                        ? "Routed to gemini's --approval-mode plan — a real read-only mode, no changes made."
+                        ? tr("common.routed_to_gemini_s_approval_mode_plan_a")
                         : kind === "antigravity"
-                        ? "Routed to agy's --mode plan — a real read-only planning mode."
+                        ? tr("common.routed_to_agy_s_mode_plan_a_real")
                         : kind === "fx"
-                        ? "fx has no native plan mode — routed to 'ask': only pre-approved rules run; anything else surfaces as an approval card in the run panel."
-                        : "Plan only — agent describes what it would do without making changes."
+                        ? tr("common.fx_has_no_native_plan_mode_routed_to")
+                        : tr("common.plan_only_agent_describes_what_it_would_do")
                     }
                   >
-                    <ClipboardList className="mr-1 size-3.5" />
-                    Plan
-                  </Button>
+                    <ClipboardList className="mr-1 size-3.5" /><I18nText id="tasks.plan" />{" "}</Button>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <SearchSelect
@@ -986,18 +1186,18 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                     className="min-w-0 flex-1"
                     triggerClassName="h-8 text-xs"
                   />
-                  {selectedModeHint && <InfoTip text={selectedModeHint} label="About this mode" />}
+                  {selectedModeHint && <InfoTip text={selectedModeHint} label={tr("tasks.about_this_mode")} />}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0 space-y-1">
                   <div className="flex items-center gap-1">
-                    <label className="text-muted-foreground">Model</label>
+                    <label className="text-muted-foreground"><I18nText id="common.model" /></label>
                     <button
                       type="button"
-                      title="Refresh model list"
-                      aria-label="Refresh model list"
+                      title={tr("tasks.refresh_model_list")}
+                      aria-label={tr("tasks.refresh_model_list")}
                       data-testid="refresh-models"
                       disabled={refreshingModels}
                       className={cn(
@@ -1025,30 +1225,30 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                     className="h-8"
                   >
                     {models.map((m) => (
-                      <option key={m.id} value={m.id} title={m.unlisted ? m.hint : undefined}>{m.label}</option>
+                      <option key={m.id} value={m.id} title={m.unlisted ? m.hint : undefined}>{staticLabel(m.label)}</option>
                     ))}
                   </Select>
                 </div>
                 <div className="min-w-0 space-y-1">
-                  <label className="text-muted-foreground">Effort</label>
+                  <label className="text-muted-foreground"><I18nText id="common.effort" /></label>
                   <Select
                     value={effort ?? ""}
                     onChange={(e) => setEffort(e.target.value)}
                     title={
                       efforts.length === 0
-                        ? "This model doesn't accept a reasoning-effort flag."
+                        ? tr("common.this_model_doesn_t_accept_a_reasoning_effort")
                         : kind === "claude-code"
-                          ? "Appends a thinking keyword (think / think hard / ultrathink) to the prompt."
-                          : "Reasoning effort — higher = slower but more thorough."
+                          ? tr("common.appends_a_thinking_keyword_think_think_hard_ultrathink")
+                          : tr("common.reasoning_effort_higher_slower_but_more_thorough")
                     }
                     className="h-8"
                     disabled={efforts.length === 0}
                   >
                     {efforts.length === 0 ? (
-                      <option value="">n/a</option>
+                      <option value=""><I18nText id="common.n_a" /></option>
                     ) : (
                       efforts.map((m) => (
-                        <option key={m.id} value={m.id}>{m.label}</option>
+                        <option key={m.id} value={m.id}>{staticLabel(m.label)}</option>
                       ))
                     )}
                   </Select>
@@ -1059,23 +1259,23 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                 <div className="grid grid-cols-2 gap-2">
                   {(maxModeAvailable || maxMode) && (
                     <label className="flex h-8 items-center justify-between rounded-md border border-border px-2 text-xs">
-                      <span>Max Mode</span>
+                      <span><I18nText id="tasks.max_mode" /></span>
                       <Switch
                         checked={maxMode}
                         onCheckedChange={setMaxMode}
                         disabled={!maxModeAvailable}
-                        aria-label="Use Cursor Max Mode context"
+                        aria-label={tr("tasks.use_cursor_max_mode_context")}
                       />
                     </label>
                   )}
                   {(fastAvailable || fast) && (
                     <label className="flex h-8 items-center justify-between rounded-md border border-border px-2 text-xs">
-                      <span>Fast</span>
+                      <span><I18nText id="tasks.fast" /></span>
                       <Switch
                         checked={fast}
                         onCheckedChange={setFast}
                         disabled={!fastAvailable}
-                        aria-label="Use Cursor fast variant"
+                        aria-label={tr("tasks.use_cursor_fast_variant")}
                       />
                     </label>
                   )}
@@ -1088,22 +1288,20 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                   point release picks this up with no code change. */}
               {kind === "claude-code" && model?.startsWith("fable-") && (
                 <div className="text-[11px] text-muted-foreground">
-                  {models.find((m) => m.id === model)?.label ?? model} uses 2x the usage of Opus.
-                </div>
+                  {models.find((m) => m.id === model)?.label ?? model}{" "}<I18nText id="tasks.uses_2x_the_usage_of_opus" />{" "}</div>
               )}
 
               {/* Mythos models are Fable's access-gated twin — same 2x usage, plus
                   the Project Glasswing requirement, so both need calling out here. */}
               {kind === "claude-code" && model?.startsWith("mythos-") && (
                 <div className="text-[11px] text-muted-foreground">
-                  {models.find((m) => m.id === model)?.label ?? model} uses 2x the usage of Opus and requires approved-org (Project Glasswing) access.
-                </div>
+                  {models.find((m) => m.id === model)?.label ?? model}{" "}<I18nText id="tasks.uses_2x_the_usage_of_opus_and_requires" />{" "}</div>
               )}
 
               {/* Surfacing a missing-agent error inline so the user sees install
                   guidance before they hit Create and get a delayed failure. */}
               {selectedStatus && !selectedStatus.available && (
-                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive-foreground">
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-danger">
                   <div className="font-medium">{selectedStatus.reason}</div>
                   {selectedStatus.installHint && (
                     <div className="mt-1 font-mono opacity-80">
@@ -1121,9 +1319,24 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
               )}
               </>
               )}
+              <AccessModeDisclosure diagnostics={launchDiagnostics} testId="new-task-launch-diagnostics" />
+                </div>
+              </details>
             </div>
 
             <div className="flex shrink-0 gap-2 border-t border-border/60 px-4 py-3">
+              {recurringEnabled ? (
+                <Button
+                  type="button"
+                  className="flex-1 gap-1.5"
+                  disabled={!canSaveRecurring}
+                  onClick={() => void submitRecurring()}
+                  data-testid="new-task-save-recurring"
+                >
+                  <Repeat className="size-3.5" aria-hidden="true" />
+                  {tr("kanban.recurring.save_template")}
+                </Button>
+              ) : !advanced ? <Button className="flex-1" disabled={!simpleReady} onClick={() => submit({ start: false })} data-testid="manager-create-assignment">{tr("manager.create")}</Button> : <>
               <Button
                 variant="outline"
                 onClick={() => submit({ start: false })}
@@ -1131,28 +1344,112 @@ export function NewTaskForm({ onSubmit, agents, harnesses, profiles, onOpenSetti
                 disabled={!canSubmit}
                 title={
                   workdir.trim()
-                    ? "Create the task but don't start it — it sits in Backlog until you start it manually."
-                    : "Pick a project first."
+                    ? tr("common.create_the_task_but_don_t_start_it")
+                    : tr("common.pick_a_project_first")
                 }
-              >
-                To backlog
-              </Button>
+              ><I18nText id="tasks.to_backlog" />{" "}</Button>
               <Button
                 onClick={() => submit({ start: true })}
                 className="flex-1"
-                disabled={!canSubmit}
+                disabled={!canStart}
                 title={
-                  workdir.trim()
-                    ? "Create the task in Ready and hand it to the agent — it'll flip to Running once the harness starts executing."
-                    : "Pick a project first."
+                  !workdir.trim()
+                    ? tr("common.pick_a_project_first")
+                    : !launchDiagnostics.launchAllowed
+                      ? (launchDiagnostics.blockReason ?? tr("access.disclosure.blocked"))
+                      : tr("common.create_the_task_in_ready_and_hand_it")
                 }
-              >
-                Run task
-              </Button>
+              ><I18nText id="tasks.run_task" />{" "}</Button>
+              </>}
             </div>
           </div>
+  );
+
+  if (sheet) {
+    return (
+      <Dialog open={sheetOpen} onClose={() => onSheetClose?.()} labelledBy="new-task-heading" className="max-w-xl overflow-hidden p-0">
+        <div
+          data-testid="new-task-panel"
+          data-presentation="sheet"
+          onDragOver={onAsideDragOver}
+          onDragLeave={onAsideDragLeave}
+          onDrop={onAsideDrop}
+          className={cn("relative text-card-foreground", dragging && "ring-2 ring-inset ring-primary", spotlight && "ring-2 ring-info")}
+        >
+          {formBody}
+        </div>
+      </Dialog>
+    );
+  }
+
+  return (
+    <div className={cn("relative h-full shrink-0", compact && "w-11")}>
+    <aside
+      data-testid="new-task-panel"
+      onDragOver={onAsideDragOver}
+      onDragLeave={onAsideDragLeave}
+      onDrop={onAsideDrop}
+      className={cn(
+        // Width is the only animated property — <main> next door is flex-1,
+        // so the board reclaims the space in the same frame with no resize
+        // logic on that side.
+        "relative flex h-full shrink-0 flex-col border-r border-border/60 bg-card text-card-foreground",
+        "transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        collapsed ? "w-11" : "w-80",
+        compact && !collapsed && "absolute inset-y-0 left-0 z-40 max-w-[calc(100vw-3.5rem)]",
+        // `!collapsed` is belt-and-braces: onAsideDragOver already refuses to
+        // arm `dragging` on the rail, this also drops a stale ring if the
+        // panel is collapsed while one is showing.
+        dragging && !collapsed && "ring-2 ring-inset ring-primary",
+        // Onboarding "look here" highlight — independent of the drag ring
+        // above; the two conditions aren't expected to overlap in practice
+        // (drag requires the panel already focused/visible by the user).
+        spotlight && "ring-2 ring-info",
+      )}
+    >
+      {/* VS Code-style collapse control: straddles the border between the
+          sidebar and the board (half of it overhangs into the board's p-4
+          gutter, so it never covers a card). z-20 keeps it above the board
+          and below dialogs/overlays (z-50). top-3 centers it on the 44px
+          header row ("New task" title) so it's found where users look. */}
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? tr("tasks.expand_new_task_panel") : tr("common.collapse_new_task_panel")}
+        title={collapsed ? tr("tasks.expand_new_task_panel") : tr("common.collapse_new_task_panel")}
+        className="absolute -right-2.5 top-3 z-20 flex size-5 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+      >
+        {collapsed
+          ? <ChevronRight className="size-3.5" />
+          : <ChevronLeft className="size-3.5" />}
+      </button>
+
+      {/* Clip layer: the contents keep their natural width (w-11 rail / w-80
+          form) and get cut off by this box while the aside's width animates,
+          instead of reflowing every field through 200ms of intermediate
+          widths. It can't live on the <aside> itself — that would clip the
+          toggle button's overhang. */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {collapsed ? (
+          /* Icon rail. Deliberately a plain vertical stack: future quick-action
+             icon buttons get appended below the label without touching any of
+             the collapse plumbing. The form itself is unmounted rather than
+             squeezed — every field's state lives in this component (not its
+             children), so nothing the user typed is lost while collapsed. */
+          <div className="flex h-full w-11 flex-col items-center gap-2 py-3">
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              title={tr("tasks.expand_new_task_panel")}
+              className="rounded-md px-1 py-2 text-[11px] font-semibold tracking-wide text-muted-foreground transition-colors [writing-mode:vertical-rl] hover:text-foreground"
+            ><I18nText id="common.new_task" />{" "}</button>
+          </div>
+        ) : (
+          formBody
         )}
       </div>
     </aside>
+    </div>
   );
 }

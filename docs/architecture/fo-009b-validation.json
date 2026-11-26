@@ -1,0 +1,231 @@
+{
+  "task": "FO-009B",
+  "baseHead": "e923fd12b6afc2b75b76e738194b4c221d5f721b",
+  "branch": "main",
+  "validatedAt": "2026-10-24T21:07:55.182749+05:00",
+  "unitIntegration": {
+    "passed": 327,
+    "failed": 0,
+    "suiteCount": 15,
+    "command": "bun scripts/test-account-dashboard.ts",
+    "suites": [
+      {
+        "suite": "src/mainview/lib/accounts.test.ts",
+        "passed": 18,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_accounts.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/account-api.test.ts",
+        "passed": 7,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_account-api.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/settings-dialog-view.test.ts",
+        "passed": 59,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_settings-dialog-view.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/portfolio.test.ts",
+        "passed": 6,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_portfolio.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-core.test.ts",
+        "passed": 32,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_account-core.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-migration.test.ts",
+        "passed": 2,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_account-migration.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-endpoint.test.ts",
+        "passed": 6,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_account-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/bun/portfolio-adapter.test.ts",
+        "passed": 28,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_portfolio-adapter.test.ts.log"
+      },
+      {
+        "suite": "src/shared/portfolio/portfolio.test.ts",
+        "passed": 40,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_shared_portfolio_portfolio.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-usage.test.ts",
+        "passed": 13,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_account-usage.test.ts.log"
+      },
+      {
+        "suite": "src/bun/usage/poller.test.ts",
+        "passed": 11,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_usage_poller.test.ts.log"
+      },
+      {
+        "suite": "src/bun/agent-profiles.test.ts",
+        "passed": 33,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_agent-profiles.test.ts.log"
+      },
+      {
+        "suite": "src/bun/agent-profiles-endpoint.test.ts",
+        "passed": 54,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_bun_agent-profiles-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/agent-profile-form.test.ts",
+        "passed": 16,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_agent-profile-form.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/glass-tokens.test.ts",
+        "passed": 2,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009b-validation-3ol5lW/src_mainview_lib_glass-tokens.test.ts.log"
+      }
+    ]
+  },
+  "playwright": {
+    "acceptedUniqueScenarios": 57,
+    "newAccounts": 11,
+    "existingRegressions": 46,
+    "ci": true,
+    "workers": 1,
+    "fakeDrivers": true,
+    "temporarySqliteAndHomes": true,
+    "ownVite": true,
+    "specs": [
+      {
+        "path": "e2e/accounts-dashboard.spec.ts",
+        "passed": 11
+      },
+      {
+        "path": "e2e/agent-profiles-settings.spec.ts",
+        "passed": 26
+      },
+      {
+        "path": "e2e/portfolio-dashboard.spec.ts",
+        "passed": 4
+      },
+      {
+        "path": "e2e/settings-subpage-guard.spec.ts",
+        "passed": 9
+      },
+      {
+        "path": "e2e/theme.spec.ts",
+        "passed": 7
+      }
+    ],
+    "accountsFinalLog": "/tmp/fo009b-playwright-accepted.log",
+    "accountsFinalArtifacts": "/tmp/fo009b-playwright-accepted",
+    "regressionArtifacts": "/tmp/fo009b-playwright-final",
+    "runNote": "Combined run: 56 passed, 1 account scenario failed due to a missing when import after component extraction. Import fixed; final accounts-only run: 11 passed, 0 failed. All 46 existing regressions passed in the combined run.",
+    "screenshots": [
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-dark-1024.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-dark-1440.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-dark-390.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-dark-768.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-light-1024.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-light-1440.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-light-390.png",
+      "/tmp/fo009b-playwright-accepted/accounts-dashboard-large-r-858d1-ferences-and-keyboard-focus-chromium/accounts-light-768.png"
+    ],
+    "viewports": [
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "reducedMotion": true,
+    "reducedTransparency": true,
+    "localExpiryWithoutNetwork": true
+  },
+  "typecheck": {
+    "command": "bun run typecheck",
+    "exitCode": 0,
+    "log": "/tmp/fo009b-typecheck.log"
+  },
+  "frontendBuild": {
+    "command": "bunx vite build --outDir /tmp/fo009b-vite-build",
+    "exitCode": 0,
+    "output": "/tmp/fo009b-vite-build",
+    "note": "Existing Vite config-loader and chunk-size advisories; build succeeded."
+  },
+  "diffCheck": {
+    "command": "git diff --check",
+    "exitCode": 0
+  },
+  "fullSuiteRun": false,
+  "outOfScope": [
+    "FO-009C",
+    "FO-009D",
+    "live provider verification",
+    "actual CLI authentication or switching",
+    "Docker",
+    "paid provider calls",
+    "packaged-app acceptance"
+  ],
+  "sourceSha256": {
+    "docs/architecture/fo-009b-account-management-dashboard.md": "6a90f3219ce7cc52b66f95a1e0b2d34200dca8af5f910a683b3f38a1fd0b627a",
+    "e2e/accounts-dashboard.spec.ts": "71e53d6649087dcc28e7d6d610681088b462b2a56382d6b384b5bfff892ed688",
+    "e2e/fixtures.ts": "0a2ef5c0e623a4e56376d0266e4f50bfe0e1ac21f8df03da17f45f14f29a45b5",
+    "e2e/isolated-env.ts": "236eef821f1417fbb6f804e523b2c24795f7b05668767ac6583f3da00aa1b320",
+    "scripts/test-account-dashboard.ts": "9598e400c14f6132e7832fbbb4553b11a902fe9fef36d1624ef89c79a52d9139",
+    "src/bun/account-core.ts": "24b2ab35250225cb042a7e07900231285b5dd528f24493cba1a0a47d234e13b7",
+    "src/bun/account-http.ts": "a7ffe1083c4fdc90b87762a6e9163907727ada9cfc7e022ad4d9f1d234da6b67",
+    "src/bun/account-portfolio.ts": "e5844ae24369bf5734f2608d5867230e765e31d718097ab3f31346f6723f1edc",
+    "src/bun/account-usage-bridge.ts": "27da0fc293aa32d6a2d91e0d53677e0f8a4e6ea55d54720ecc149ab43c2c660b",
+    "src/mainview/App.tsx": "5de02583c35603aeb782c7e3fa3d016a25fe5b0f13b2993dec044d2185384c2c",
+    "src/mainview/components/accounts/AccountDetails.tsx": "cec3b5e1ead6b752833872b55cf7e4b4019a30e4278bc1eb9282af947feab974",
+    "src/mainview/components/accounts/AccountEvidence.tsx": "116d3aaeb99f2bbc42f82664c616f31093631f445562aee60fc18983a4962b06",
+    "src/mainview/components/accounts/AccountForms.tsx": "f065d98f64918c59825d9d9203fba881fe976f3e76552070dc3aaba0c0d56fae",
+    "src/mainview/components/accounts/AccountSubscriptions.tsx": "ca27eeb4912c6ade6e3eb148dfb14e7b67ec475c2064214b122d430353b97ef0",
+    "src/mainview/components/accounts/AccountsDashboard.tsx": "d0a489c413695885772b52c70472be0a87ad3767afc1136b921da41b0181904d",
+    "src/mainview/components/settings/SettingsDialog.tsx": "2e487c100e950bb1a27c423ddfff2b9b18b0ffea879e6024944446e58a8dd0de",
+    "src/mainview/components/workspace/portfolio/PortfolioDashboard.tsx": "6fcd409324494a673c7c54f55d1069728d0b57c37c7cca40b3640ab35cf72e7f",
+    "src/mainview/lib/account-api.test.ts": "72e98e410efc4109de3797f00c8f275bb59322e9868cbe7b709321ebbe8e067d",
+    "src/mainview/lib/account-api.ts": "1f6ef15d07f1dd43ca1cfc1d4d14a56e2a4ebacc77898f90d0b0523346a367e8",
+    "src/mainview/lib/accounts.test.ts": "9beb1b7bf75cdd45fd64fcdd53d3b33e99ea404e695305c790779ccab201165f",
+    "src/mainview/lib/accounts.ts": "3885cf758fc891aee959778838ef9400f95db989fe24bbd277e07a0f4ca5df48",
+    "src/mainview/lib/api.ts": "dc2e0335a38d27ded73903fb8c6faab3280c9c64beef3f386203d0fcb2ba18cb",
+    "src/mainview/lib/settings-dialog-view.test.ts": "2810d2740629503544e03ade980b807db04223f008fbe432001dd1fb780d6716",
+    "src/mainview/lib/settings-dialog-view.ts": "ed0c6b9b08d2c01ff94e0d2c6e8bcfdec8650a963299ee54837702161146b534",
+    "src/shared/accounts/resolve.ts": "f05be4ef4b7b4bf1f8f0f7d940b1a548d83e7f486486c221685c3ed0dff8f408",
+    "src/shared/accounts/types.ts": "5a6f695677285940c4ab6a068a67e3c1d96e047eddfe696760d0ef95836ad904"
+  }
+}

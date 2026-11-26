@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { memo } from "react";
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ function SubagentEdgeImpl({
   style,
   data,
 }: EdgeProps<SubagentFlowEdge>) {
+  useUILocale();
   const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,

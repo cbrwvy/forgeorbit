@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { test, expect, type Locator } from "./fixtures";
-import { gotoApp, openSettingsGeneral } from "./helpers";
+import { gotoApp, gotoBoard, openSettingsGeneral } from "./helpers";
 
 /**
  * E2E coverage for `IDENTIFIER_INPUT_PROPS` (docs/plans/remove-autocorrect-
@@ -146,7 +146,7 @@ test.describe("identifier inputs opt out of autocorrect", () => {
   });
 
   test("Kanban filter bar: harness filter search box carries the opt-out set", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     // "All harnesses" is the MultiSearchSelect trigger's empty-state label
     // (KanbanFilters.tsx) — a plain <button>, not inside the New Task panel,
@@ -234,7 +234,7 @@ test.describe("identifier inputs opt out of autocorrect", () => {
     // in-progress edit survives switching tabs) but is hidden until "Git
     // Integration" is the active section — see SETTINGS_SECTIONS in
     // src/mainview/lib/settings-dialog-view.ts.
-    await dialog.getByRole("button", { name: "Git Integration", exact: true }).click();
+    await dialog.getByRole("button", { name: "Tools and access", exact: true }).click();
     const hostInput = dialog.getByPlaceholder("github.com / gitlab.com / bitbucket.org");
     await expect(hostInput).toBeVisible({ timeout: CONVERGE_TIMEOUT });
     await expectIdentifierInputNoAutocomplete(hostInput);
@@ -247,7 +247,7 @@ test.describe("identifier inputs opt out of autocorrect", () => {
     await gotoApp(page, backend.bootBase);
     const dialog = await openSettingsGeneral(page);
 
-    await dialog.getByRole("button", { name: "Harnesses", exact: true }).click();
+    await dialog.getByRole("button", { name: "AI providers and accounts", exact: true }).click();
     const addButton = dialog.getByRole("button", { name: "Add harness", exact: true });
     await expect(addButton).toBeEnabled({ timeout: CONVERGE_TIMEOUT });
     await addButton.click();
@@ -278,7 +278,7 @@ test.describe("identifier inputs opt out of autocorrect", () => {
 // so no popover to open.
 test.describe("search/filter boxes opt out of autocorrect", () => {
   test("Kanban free-text filter box carries the opt-out set", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
-    await expectIdentifierInput(page.getByPlaceholder("Search title, prompt, workdir, branch…"));
+    await gotoBoard(page, backend.bootBase);
+    await expectIdentifierInput(page.getByPlaceholder("Search tasks…"));
   });
 });

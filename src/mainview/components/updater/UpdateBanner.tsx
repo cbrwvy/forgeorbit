@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { Download, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ interface Props {
  * background polls.
  */
 export function UpdateBanner({ snapshot, onChange }: Props) {
+  useUILocale();
   // Dismiss state is keyed to the specific version so that a later release
   // re-arms the banner. A boolean flag would bury every subsequent update
   // for the rest of the session after one click.
@@ -32,15 +35,15 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
   if (!shouldShow) return null;
 
   const apply = async () => {
-    const ok = await confirm({
+    const ok = await confirm(() => ({
       title: snapshot.version
-        ? `Restart and update to v${snapshot.version}?`
-        : "Restart and update ForgeOrbit?",
+        ? tr("common.restart_and_update_to_v", { p0: String(snapshot.version) })
+        : tr("common.restart_and_update_forgeorbit"),
       description:
-        "Any running agents will be interrupted. Their work is preserved in the task history — you can pick up from where they stopped after the restart.",
-      confirmLabel: "Restart now",
+        tr("common.any_running_agents_will_be_interrupted_their_work"),
+      confirmLabel: tr("projects.restart_now"),
       variant: "default",
-    });
+    }));
     if (!ok) return;
     setBusy(true);
     // Safety net: if applyUpdate resolves but the process never actually
@@ -69,10 +72,10 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
       <span className="min-w-0 flex-1">
         <span className="font-medium text-foreground">
           {snapshot.version
-            ? `ForgeOrbit v${snapshot.version} is ready to install.`
-            : "An update is ready to install."}
+            ? tr("common.forgeorbit_v_is_ready_to_install", { p0: String(snapshot.version) })
+            : tr("common.an_update_is_ready_to_install")}
         </span>{" "}
-        <span className="text-muted-foreground">Restart ForgeOrbit to apply.</span>
+        <span className="text-muted-foreground"><I18nText id="projects.restart_forgeorbit_to_apply" /></span>
       </span>
       <Button
         variant="outline"
@@ -83,13 +86,11 @@ export function UpdateBanner({ snapshot, onChange }: Props) {
       >
         {busy ? (
           <RefreshCw className="mr-1 size-3 animate-spin" />
-        ) : null}
-        Restart now
-      </Button>
+        ) : null}<I18nText id="projects.restart_now" />{" "}</Button>
       <button
         type="button"
         onClick={() => setDismissedVersion(snapshot.version ?? "")}
-        aria-label="Dismiss"
+        aria-label={tr("common.dismiss")}
         className="rounded p-0.5 text-muted-foreground hover:bg-success/10 hover:text-success"
       >
         <X className="size-3.5" />

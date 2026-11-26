@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Bot, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,11 +42,13 @@ export function AgentProfilePicker({
   disabled,
   className,
 }: AgentProfilePickerProps) {
+  const { locale: uiLocale } = useUILocale();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   // 0 = the "No agent" row; 1..n = `filtered[i - 1]`.
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
 
@@ -54,11 +58,12 @@ export function AgentProfilePicker({
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented || !rootRef.current?.contains(e.target as Node)) return;
       // Consume Escape before an enclosing Dialog's own handler — see the
       // `data-popover-open` contract (CLAUDE.md UI conventions / arch item 11).
       e.preventDefault();
       setOpen(false);
+      triggerRef.current?.focus();
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -73,7 +78,7 @@ export function AgentProfilePicker({
     if (!open) setQuery("");
   }, [open]);
 
-  const filtered = useMemo(() => filterAgentProfiles(profiles, query), [profiles, query]);
+  const filtered = useMemo(() => filterAgentProfiles(profiles, query), [profiles, query, uiLocale]);
   const rowCount = filtered.length + 1;
 
   // Reset the highlight whenever the candidate rows change identity — see
@@ -89,6 +94,7 @@ export function AgentProfilePicker({
   const pick = (id: string | null) => {
     onChange(id);
     setOpen(false);
+    triggerRef.current?.focus();
   };
 
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -110,13 +116,19 @@ export function AgentProfilePicker({
   };
 
   return (
-    <div ref={rootRef} data-testid="agent-profile-picker" className={cn("relative", className)}>
+    <div ref={rootRef} data-testid="agent-profile-picker" className={cn("relative", className)} onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+    }}>
       <div className="flex items-center gap-1">
         <Button
+          ref={triggerRef}
           type="button"
           variant="outline"
           disabled={disabled}
           data-testid="agent-profile-picker-trigger"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
           onClick={() => setOpen((o) => !o)}
           className="h-auto min-h-9 w-full min-w-0 flex-1 justify-between px-3 py-1.5 text-left font-normal"
         >
@@ -130,12 +142,12 @@ export function AgentProfilePicker({
           ) : value ? (
             <span className="flex min-w-0 items-center gap-1.5 text-warning">
               <Bot className="size-4 shrink-0" aria-hidden />
-              <span className="truncate">Selected agent is no longer available</span>
+              <span className="truncate"><I18nText id="tasks.selected_agent_is_no_longer_available" /></span>
             </span>
           ) : (
             <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
               <Bot className="size-4 shrink-0" aria-hidden />
-              <span className="truncate">No agent — pick harness manually</span>
+              <span className="truncate"><I18nText id="tasks.no_agent_pick_harness_manually" /></span>
             </span>
           )}
           <ChevronDown
@@ -149,7 +161,7 @@ export function AgentProfilePicker({
             data-testid="agent-profile-picker-clear"
             onClick={() => onChange(null)}
             disabled={disabled}
-            title="Clear agent"
+            title={tr("tasks.clear_agent")}
             className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
           >
             <X className="size-4" aria-hidden />
@@ -177,7 +189,7 @@ export function AgentProfilePicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onSearchKeyDown}
-              placeholder="Search agents…"
+              placeholder={tr("common.search_agents")}
               className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
             />
           </div>
@@ -198,14 +210,12 @@ export function AgentProfilePicker({
                 active === 0 ? "bg-accent text-accent-foreground" : "hover:bg-accent/40",
               )}
             >
-              <Bot className="size-4 shrink-0" aria-hidden />
-              No agent — pick harness manually
-            </button>
+              <Bot className="size-4 shrink-0" aria-hidden /><I18nText id="tasks.no_agent_pick_harness_manually" />{" "}</button>
 
             {profiles.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No agents yet.</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="tasks.no_agents_yet" /></p>
             ) : filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No matches.</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="common.no_matches" /></p>
             ) : (
               filtered.map((p, i) => {
                 const idx = i + 1;
@@ -244,9 +254,7 @@ export function AgentProfilePicker({
                   onManage();
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-              >
-                Manage agents…
-              </button>
+              ><I18nText id="tasks.manage_agents" />{" "}</button>
             </div>
           )}
         </div>

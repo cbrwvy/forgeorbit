@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import {
   cloneElement,
   useEffect,
@@ -79,6 +80,7 @@ let closeActive: (() => void) | null = null;
  * disappear on mouseleave/blur, not block Escape-to-close-panel.
  */
 export function Tooltip({ label, align = "center", side = "bottom", className, children }: Props) {
+  useUILocale();
   const descId = useId();
   // Hover and keyboard focus are independent show reasons: a mouse passing
   // over (and off) a keyboard-focused trigger must not kill its bubble, and

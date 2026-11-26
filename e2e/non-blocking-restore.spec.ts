@@ -138,7 +138,7 @@ function subagentEventCount(backend: E2EBackend, taskId: string): number {
 }
 
 function boardCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 test.describe("non-blocking session restore", () => {

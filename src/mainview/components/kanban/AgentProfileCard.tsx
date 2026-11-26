@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { agentProfileSummary } from "../../../shared/agent-profile.ts";
@@ -55,6 +57,7 @@ interface AgentProfileCardProps {
  * CLAUDE.md's UI conventions.
  */
 export function AgentProfileCard({ profile, harnesses, variant, deleted, className }: AgentProfileCardProps) {
+  useUILocale();
   const { kind, label, disabled: harnessDisabled } = resolveHarnessDisplay(profile, harnesses);
   const summary = agentProfileSummary({
     harnessLabel: label,
@@ -64,15 +67,13 @@ export function AgentProfileCard({ profile, harnesses, variant, deleted, classNa
   });
 
   const deletedMarker = deleted && (
-    <span className="text-warning" data-testid="agent-profile-card-deleted">
-      (deleted)
-    </span>
+    <span className="text-warning" data-testid="agent-profile-card-deleted"><I18nText id="common.deleted" />{" "}</span>
   );
 
   if (variant === "chip") {
     // Chip is compact — a disabled harness only shows up in the tooltip, not
     // as its own visible span.
-    const title = harnessDisabled ? `${summary} (harness disabled)` : summary;
+    const title = harnessDisabled ? tr("common.harness_disabled", { p0: String(summary) }) : summary;
     return (
       <Badge
         variant="secondary"
@@ -92,9 +93,7 @@ export function AgentProfileCard({ profile, harnesses, variant, deleted, classNa
   const shownSkills = profile.skills.slice(0, 4);
   const overflow = profile.skills.length - shownSkills.length;
   const harnessDisabledMarker = harnessDisabled && (
-    <span className="text-warning" data-testid="agent-profile-card-harness-disabled">
-      (harness disabled)
-    </span>
+    <span className="text-warning" data-testid="agent-profile-card-harness-disabled"><I18nText id="tasks.harness_disabled" />{" "}</span>
   );
 
   const body = (

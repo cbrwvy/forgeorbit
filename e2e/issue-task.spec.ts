@@ -278,7 +278,7 @@ function runPanel(page: Page): Locator {
 }
 
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 function menu(page: Page): Locator {
@@ -759,12 +759,12 @@ test.describe("task from a Git issue", () => {
 
     // Seeded from the fixture issue's "bug" label (inferTaskTypeFromLabels,
     // src/shared/issue-task.ts) once the thread loads — Bug renders with the
-    // `default` Button variant (`bg-primary` in its class list, per
+    // `default` Button variant (`bg-brand-solid` in its class list, per
     // TaskTypePicker.tsx), Task/Spike stay on the `outline` variant, which
-    // never emits `bg-primary`.
-    await expect(bugButton).toHaveClass(/bg-primary/, { timeout: CONVERGE_TIMEOUT });
-    await expect(taskButton).not.toHaveClass(/bg-primary/);
-    await expect(spikeButton).not.toHaveClass(/bg-primary/);
+    // never emits `bg-brand-solid`.
+    await expect(bugButton).toHaveClass(/bg-brand-solid/, { timeout: CONVERGE_TIMEOUT });
+    await expect(taskButton).not.toHaveClass(/bg-brand-solid/);
+    await expect(spikeButton).not.toHaveClass(/bg-brand-solid/);
 
     const worktreeOptions = issueTaskDialog.getByTestId("worktree-options");
     const branchNameInput = worktreeOptions.getByTestId("branch-name-input");
@@ -776,16 +776,16 @@ test.describe("task from a Git issue", () => {
     // Picking Spike swaps both the selected button and the derived prefix
     // (DEFAULT_BRANCH_CONFIG.rules.spike.prefix === "spike/").
     await spikeButton.click();
-    await expect(spikeButton).toHaveClass(/bg-primary/);
-    await expect(bugButton).not.toHaveClass(/bg-primary/);
+    await expect(spikeButton).toHaveClass(/bg-brand-solid/);
+    await expect(bugButton).not.toHaveClass(/bg-brand-solid/);
     await expect(async () => {
       expect(await branchNameInput.inputValue()).toMatch(/^spike\//);
     }).toPass({ timeout: CONVERGE_TIMEOUT });
 
     // Picking Bug back swaps them again (fix/ per DEFAULT_BRANCH_CONFIG).
     await bugButton.click();
-    await expect(bugButton).toHaveClass(/bg-primary/);
-    await expect(spikeButton).not.toHaveClass(/bg-primary/);
+    await expect(bugButton).toHaveClass(/bg-brand-solid/);
+    await expect(spikeButton).not.toHaveClass(/bg-brand-solid/);
     await expect(async () => {
       expect(await branchNameInput.inputValue()).toMatch(/^fix\//);
     }).toPass({ timeout: CONVERGE_TIMEOUT });

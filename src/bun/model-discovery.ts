@@ -60,7 +60,10 @@ function discoveryTargets(): HarnessTarget[] {
   return harnesses
     .list()
     .filter((h) => h.enabled !== false && (h.kind === "fx" || h.kind === "codex"))
-    .map((h) => ({ harnessId: h.id, kind: h.kind as "fx" | "codex", env: harnessEnv(h), bin: resolveBin(h) }));
+    .flatMap((h) => {
+      try { return [{ harnessId: h.id, kind: h.kind as "fx" | "codex", env: harnessEnv(h), bin: resolveBin(h) }]; }
+      catch { return []; } // An unavailable profile must not suppress discovery for other resources.
+    });
 }
 
 /**
@@ -134,9 +137,12 @@ function publishIfChanged(): void {
  * meantime, rather than pruning it from a stale snapshot taken at enqueue
  * time.
  */
-export async function refreshAllModels(): Promise<void> {
+// FO-009F: boot, timers, status changes and legacy model-refresh routes carry no
+// process consent. Codex discovery is withheld. The new account inspector has
+// its own per-action consent and never calls model/list.
+export async function refreshAllModels(consent?: { codexProcessConsent: true }): Promise<void> {
   try {
-    await refreshDiscoveredModels({ fxHarnesses: discoveryTargets });
+    await refreshDiscoveredModels({ fxHarnesses: discoveryTargets, skipCodex: consent?.codexProcessConsent !== true });
     publishIfChanged();
   } catch (err) {
     console.error("[agetor] model discovery failed:", err);
@@ -157,9 +163,9 @@ export async function refreshAllModels(): Promise<void> {
  * unawaited (`void refreshHarnessModels(...)`), so a failure must degrade to
  * a logged no-op.
  */
-export async function refreshHarnessModels(harnessId: string): Promise<void> {
+export async function refreshHarnessModels(harnessId: string, consent?: { codexProcessConsent: true }): Promise<void> {
   const harness = harnesses.get(harnessId);
-  if (!harness) return;
+  if (!harness || harness.kind === "codex" && consent?.codexProcessConsent !== true) return;
   try {
     if (harness.kind === "fx" || harness.kind === "codex") {
       await refreshHarnessTarget({

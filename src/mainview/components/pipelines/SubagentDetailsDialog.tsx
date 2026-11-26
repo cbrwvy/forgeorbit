@@ -1,3 +1,6 @@
+import { englishPluralSuffix, intlLocale, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { createPortal } from "react-dom";
 import { Bot, Check, ExternalLink, Loader2, Settings2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +12,7 @@ import type { AgentProfile, AgentProfileSnapshot, Subagent } from "../../../shar
 const TITLE_ID = "subagent-details-title";
 
 function formatClock(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(ts).toLocaleTimeString(intlLocale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 /**
@@ -49,12 +52,13 @@ export function SubagentDetailsDialog({
   /** When set, offers "Edit in Settings" for a persona that still exists. */
   onOpenSettingsAgents?: (profileId?: string) => void;
 }) {
+  useUILocale();
   if (!open || !satellite) return null;
 
   const isLive = satellite.kind === "live";
   const name = isLive
-    ? (satellite.label ?? "Subagent")
-    : (profile?.name ?? (profileDeleted ? "Deleted agent" : "Unknown agent"));
+    ? (satellite.label ?? tr("common.subagent_d6cb41"))
+    : (profile?.name ?? (profileDeleted ? tr("pipelines.deleted_agent") : tr("common.unknown_agent")));
   const harnessLabel = profile ? ("harnessLabel" in profile ? profile.harnessLabel : profile.harness) : null;
   const instructions = (profile?.instructions ?? "").trim();
   const skills = profile?.skills ?? [];
@@ -62,12 +66,12 @@ export function SubagentDetailsDialog({
   const running = instances.filter((s) => s.status === "running").length;
   const statusText =
     satellite.visual === "working"
-      ? `Working now — ${running} helper${running === 1 ? "" : "s"} running for this persona.`
+      ? tr("common.working_now_helper_running_for_this_persona", { p0: String(running), p1: String(running === 1 ? "" : "s") })
       : satellite.visual === "done"
-        ? `Finished — ${instances.length} helper${instances.length === 1 ? "" : "s"} ran for this persona in this execution.`
+        ? tr("common.finished_helper_ran_for_this_persona_in_this", { p0: String(instances.length), p1: String(instances.length === 1 ? "" : "s") })
         : isLive
-          ? "A running helper the step's agent spawned that matches none of the step's personas."
-          : "Available — the step's agent may delegate to this persona; nothing has been spawned for it in this execution.";
+          ? tr("common.a_running_helper_the_step_s_agent_spawned")
+          : tr("common.available_the_step_s_agent_may_delegate_to");
 
   return createPortal(
     <Dialog open={open} onClose={onClose} labelledBy={TITLE_ID} className="flex max-h-[85vh] w-full max-w-lg flex-col p-0">
@@ -84,46 +88,46 @@ export function SubagentDetailsDialog({
               )}
               <span className="truncate" data-testid="subagent-details-name">{name}</span>
               {profileDeleted && !isLive && (
-                <span className="text-xs font-normal text-warning" data-testid="subagent-details-deleted">(deleted)</span>
+                <span className="text-xs font-normal text-warning" data-testid="subagent-details-deleted"><I18nText id="common.deleted" /></span>
               )}
             </div>
-            <p className="mt-1 text-[10px] text-muted-foreground" data-testid="subagent-details-status">
+            <p className="mt-1 text-[length:var(--text-caption)] text-muted-foreground" data-testid="subagent-details-status">
               {statusText}
             </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
             <X className="size-4" />
           </Button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <dl className="grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-1.5 text-xs">
-            <dt className="text-muted-foreground">Delegated by</dt>
+            <dt className="text-muted-foreground"><I18nText id="pipelines.delegated_by" /></dt>
             <dd className="min-w-0">
               <span className="font-medium">{stepName}</span>
-              <span className="text-muted-foreground"> · {cap == null ? "no limit on subagents" : `at most ${cap} subagent${cap === 1 ? "" : "s"}`}</span>
+              <span className="text-muted-foreground"> · {cap == null ? tr("common.no_limit_on_subagents") : tr("common.at_most_subagent", { p0: String(cap), p1: String(cap === 1 ? "" : englishPluralSuffix()) })}</span>
             </dd>
             {!isLive && (
               <>
-                <dt className="text-muted-foreground">Harness</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.harness" /></dt>
                 <dd className="min-w-0">{harnessLabel ?? "—"}</dd>
-                <dt className="text-muted-foreground">Model</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.model" /></dt>
                 <dd className="min-w-0">{profile?.model ?? "—"}</dd>
-                <dt className="text-muted-foreground">Effort</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.effort" /></dt>
                 <dd className="min-w-0">{profile?.effort ?? "default"}</dd>
-                <dt className="text-muted-foreground">Mode</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.mode" /></dt>
                 <dd className="min-w-0">{profile?.mode ?? "default"}</dd>
-                <dt className="text-muted-foreground">Instructions</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.instructions" /></dt>
                 <dd className="min-w-0 whitespace-pre-wrap" data-testid="subagent-details-instructions">
                   {instructions || <span className="text-muted-foreground">—</span>}
                 </dd>
-                <dt className="text-muted-foreground">Skills</dt>
+                <dt className="text-muted-foreground"><I18nText id="common.skills" /></dt>
                 <dd className="flex min-w-0 flex-wrap gap-1">
                   {skills.length === 0 ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     skills.map((skill) => (
-                      <Badge key={skill} variant="outline" className="rounded-md px-1.5 py-0 font-mono text-[10px]">
+                      <Badge key={skill} variant="outline" className="rounded-md px-1.5 py-0 font-mono text-[length:var(--text-caption)]">
                         /{skill}
                       </Badge>
                     ))
@@ -135,13 +139,9 @@ export function SubagentDetailsDialog({
 
           {onOpenTranscript && (
             <div className="mt-3">
-              <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Helpers in this execution
-              </div>
+              <div className="mb-1.5 text-[length:var(--text-caption)] font-medium uppercase tracking-wide text-muted-foreground"><I18nText id="pipelines.helpers_in_this_execution" />{" "}</div>
               {instances.length === 0 ? (
-                <p className="text-xs text-muted-foreground" data-testid="subagent-details-none">
-                  None spawned yet.
-                </p>
+                <p className="text-xs text-muted-foreground" data-testid="subagent-details-none"><I18nText id="pipelines.none_spawned_yet" />{" "}</p>
               ) : (
                 <ul className="flex flex-col gap-1.5" data-testid="subagent-details-instances">
                   {instances.map((s) => (
@@ -153,28 +153,26 @@ export function SubagentDetailsDialog({
                       className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5 text-xs"
                     >
                       {s.status === "running" ? (
-                        <Loader2 className="size-3.5 shrink-0 animate-spin text-info" aria-label="Running" />
+                        <Loader2 className="size-3.5 shrink-0 animate-spin text-info" aria-label={tr("common.running")} />
                       ) : (
-                        <Check className="size-3.5 shrink-0 text-success" aria-label="Finished" />
+                        <Check className="size-3.5 shrink-0 text-success" aria-label={tr("common.finished")} />
                       )}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate">{s.description ?? s.agentType ?? "Subagent"}</span>
-                        <span className="block text-[10px] text-muted-foreground">
-                          {s.agentType ?? "agent"} · started {formatClock(s.startedAt)}
-                          {s.endedAt != null && ` · ended ${formatClock(s.endedAt)}`}
+                        <span className="block truncate">{s.description ?? s.agentType ?? tr("common.subagent_d6cb41")}</span>
+                        <span className="block text-[length:var(--text-caption)] text-muted-foreground">
+                          {s.agentType ?? tr("common.agent_d4f0bc")}{" "}<I18nText id="pipelines.started" />{" "}{formatClock(s.startedAt)}
+                          {s.endedAt != null && tr("common.ended", { p0: String(formatClock(s.endedAt)) })}
                         </span>
                       </span>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 gap-1 px-2 text-[11px]"
+                        className="h-7 gap-1 px-2 text-[length:var(--text-caption)]"
                         data-testid="subagent-details-open-transcript"
                         data-subagent-id={s.id}
                         onClick={() => onOpenTranscript(s.id)}
                       >
-                        <ExternalLink className="size-3" aria-hidden />
-                        Open transcript
-                      </Button>
+                        <ExternalLink className="size-3" aria-hidden /><I18nText id="pipelines.open_transcript" />{" "}</Button>
                     </li>
                   ))}
                 </ul>
@@ -185,9 +183,7 @@ export function SubagentDetailsDialog({
 
         <footer className="flex items-center justify-end gap-2 border-t border-border/60 p-3">
           {onOpenStep && (
-            <Button size="sm" variant="outline" data-testid="subagent-details-open-step" onClick={onOpenStep}>
-              Open step
-            </Button>
+            <Button size="sm" variant="outline" data-testid="subagent-details-open-step" onClick={onOpenStep}><I18nText id="pipelines.open_step" />{" "}</Button>
           )}
           {onOpenSettingsAgents && !isLive && profile && !profileDeleted && (
             <Button
@@ -200,13 +196,9 @@ export function SubagentDetailsDialog({
                 onOpenSettingsAgents(profile.id);
               }}
             >
-              <Settings2 className="size-3.5" aria-hidden />
-              Edit in Settings
-            </Button>
+              <Settings2 className="size-3.5" aria-hidden /><I18nText id="common.edit_in_settings" />{" "}</Button>
           )}
-          <Button size="sm" data-testid="subagent-details-close" onClick={onClose}>
-            Close
-          </Button>
+          <Button size="sm" data-testid="subagent-details-close" onClick={onClose}><I18nText id="common.close" />{" "}</Button>
         </footer>
       </div>
     </Dialog>,

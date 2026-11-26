@@ -1,6 +1,10 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAnchoredPosition } from "@/components/ui/floating";
 import { cn } from "@/lib/utils";
 import { clampPercent, formatResetsIn, formatUpdatedAgo, tierColorVar, warnTier } from "@/lib/usage";
 import type { HarnessQuota } from "../../../shared/types.ts";
@@ -37,17 +41,27 @@ const FILL_CLASS: Record<"success" | "warning" | "danger", string> = {
  * uses `bg-card`/`text-card-foreground` instead, which are.
  */
 export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeholder }: Props) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const position = useAnchoredPosition(rootRef, layerRef, open, 256);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      // The layer is portaled to <body>, so it is outside rootRef.
+      if (!rootRef.current?.contains(target) && !layerRef.current?.contains(target)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        // The layer lives on <body>; hand focus back to the chip that opened it.
+        if (layerRef.current?.contains(document.activeElement) || document.activeElement === document.body) triggerRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -56,6 +70,24 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // The layer is portaled, so Tab from the chip would not reach it: move focus in on
+  // open, and close (returning to the chip) when Tab would leave it.
+  useEffect(() => {
+    if (open) layerRef.current?.focus();
+  }, [open]);
+  const onLayerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const items = Array.from(layerRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled)") ?? []);
+    const active = document.activeElement;
+    const leavingForward = !e.shiftKey && (items.length === 0 || active === items[items.length - 1]);
+    const leavingBackward = e.shiftKey && (active === layerRef.current || active === items[0]);
+    if (leavingForward || leavingBackward) {
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -73,7 +105,9 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
   return (
     <div ref={rootRef} className="electrobun-webkit-app-region-no-drag relative inline-flex">
       <button
+        ref={triggerRef}
         type="button"
+        title={tr("common.usage", { p0: String(harnessLabel) })}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={(e) => {
@@ -87,13 +121,17 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
         {children}
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
+          ref={layerRef}
           role="dialog"
-          aria-label={`${harnessLabel} usage`}
+          aria-label={tr("common.usage", { p0: String(harnessLabel) })}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
-          className="electrobun-webkit-app-region-no-drag absolute left-0 top-full z-50 mt-1 w-64 rounded-md border border-border bg-card p-3 text-xs text-card-foreground shadow-md"
+          tabIndex={-1}
+          onKeyDown={onLayerKeyDown}
+          style={position}
+          className="electrobun-webkit-app-region-no-drag glass-floating z-popover rounded-xl border p-3 text-xs text-card-foreground shadow-xl outline-none"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium">{harnessLabel}</span>
@@ -102,10 +140,10 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
 
           {quota === null ? (
             <div className="mt-2 text-muted-foreground">
-              {placeholder?.message ?? "No usage data"}
+              {placeholder?.message ?? tr("common.no_usage_data")}
             </div>
           ) : quota.meters.length === 0 ? (
-            <div className="mt-2 text-muted-foreground">{quota.reason ?? "No usage data"}</div>
+            <div className="mt-2 text-muted-foreground">{quota.reason ?? tr("common.no_usage_data")}</div>
           ) : (
             <div className="mt-2 space-y-2.5">
               {quota.meters.map((m) => {
@@ -146,7 +184,7 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
                   size="icon"
                   className="size-6"
                   disabled={refreshing}
-                  aria-label="Refresh usage"
+                  aria-label={tr("projects.refresh_usage")}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -158,7 +196,8 @@ export function UsagePopover({ quota, harnessLabel, children, onRefresh, placeho
               )}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

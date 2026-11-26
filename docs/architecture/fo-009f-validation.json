@@ -1,0 +1,178 @@
+{
+  "task": "FO-009F",
+  "date": "2026-10-25",
+  "branch": "main",
+  "base": "aba4128fa1c2dcc78330781c38934c17d99f6640",
+  "result": "Safe preparation and explicit auth inspection implemented. Production verified quota source BLOCKED.",
+  "blocker": "No documented stable provider subject in account/read. No production adapter, verified binding, live quota acquisition or Codex observation persistence.",
+  "officialSources": [
+    "https://learn.chatgpt.com/docs/app-server",
+    "https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server"
+  ],
+  "unit": {
+    "command": "bun scripts/test-codex-source.ts",
+    "passed": 334,
+    "failed": 0,
+    "suites": [
+      {
+        "suite": "src/bun/codex-source.test.ts",
+        "passed": 29,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_codex-source.test.ts.log"
+      },
+      {
+        "suite": "src/bun/agent-discovery.test.ts",
+        "passed": 53,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_agent-discovery.test.ts.log"
+      },
+      {
+        "suite": "src/bun/model-discovery.test.ts",
+        "passed": 31,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_model-discovery.test.ts.log"
+      },
+      {
+        "suite": "src/bun/agent-status.test.ts",
+        "passed": 53,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_agent-status.test.ts.log"
+      },
+      {
+        "suite": "src/bun/trusted-quota.test.ts",
+        "passed": 17,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_trusted-quota.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-core.test.ts",
+        "passed": 32,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_account-core.test.ts.log"
+      },
+      {
+        "suite": "src/bun/account-endpoint.test.ts",
+        "passed": 7,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_account-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/accounts.test.ts",
+        "passed": 18,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_mainview_lib_accounts.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/account-api.test.ts",
+        "passed": 8,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_mainview_lib_account-api.test.ts.log"
+      },
+      {
+        "suite": "src/shared/model-router/route.test.ts",
+        "passed": 33,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_shared_model-router_route.test.ts.log"
+      },
+      {
+        "suite": "src/bun/model-router.test.ts",
+        "passed": 4,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_model-router.test.ts.log"
+      },
+      {
+        "suite": "src/bun/model-router-endpoint.test.ts",
+        "passed": 8,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_bun_model-router-endpoint.test.ts.log"
+      },
+      {
+        "suite": "src/mainview/lib/model-router-preview.test.ts",
+        "passed": 41,
+        "failed": 0,
+        "exitCode": 0,
+        "log": "/var/folders/03/3755f_yx3d16mscc1qf9jj040000gn/T/fo009f-validation-JiMn8y/src_mainview_lib_model-router-preview.test.ts.log"
+      }
+    ]
+  },
+  "playwright": {
+    "command": "CI=1 bun --bun node_modules/@playwright/test/cli.js test e2e/codex-source.spec.ts e2e/accounts-dashboard.spec.ts e2e/model-router-preview.spec.ts e2e/portfolio-dashboard.spec.ts --workers=4",
+    "passed": 24,
+    "failed": 0,
+    "log": "/tmp/fo009f-playwright-final.log",
+    "runtime": "Bun; Chromium outside macOS sandbox after MachPortRendezvous denial",
+    "knownDebt320": "PASS with four workers on both completed browser runs; no delay or test logic change",
+    "priorAttempts": [
+      "Node runner cannot load bun:sqlite; no tests executed",
+      "Sandbox denies Chromium MachPortRendezvous before execution",
+      "23 passed, one obsolete FO-009C source limitation text assertion updated"
+    ]
+  },
+  "checks": {
+    "typecheck": {
+      "command": "bun run typecheck",
+      "result": "PASS",
+      "log": "/tmp/fo009f-typecheck-accepted.log"
+    },
+    "vite": {
+      "command": "bun node_modules/vite/bin/vite.js build",
+      "result": "PASS",
+      "log": "/tmp/fo009f-vite-final.log",
+      "warnings": [
+        "existing native-config __dirname",
+        "large chunks"
+      ]
+    },
+    "diffCheck": "PASS"
+  },
+  "isolation": {
+    "temporaryHomeAndSqlite": true,
+    "fakeDrivers": true,
+    "offlineUsage": true,
+    "realCodexCliRuns": 0,
+    "realProviderAcquisitions": 0,
+    "realAiTasks": 0,
+    "fullSuiteRun": false
+  },
+  "limitations": [
+    "No native Electrobun acceptance or distribution build",
+    "No installed Codex schema/version compatibility verification",
+    "No commercial/hosted auth authorization or production app-server support established",
+    "Legacy Usage Poller unchanged; its existing behavior is outside connector acceptance"
+  ],
+  "sha256": {
+    "docs/architecture/fo-009f-codex-verification.md": "567df04ffc5467cdede481338c8a073470f686b21a9eea88e63264cb4dd5df15",
+    "e2e/accounts-dashboard.spec.ts": "9b1bd5dbdea73665ea187be3263ca3f838ca8a27ee2f8a27354c89c9a5d81b15",
+    "e2e/codex-source.spec.ts": "76b7aa0b5e9ec567856aa55fe1c0163419d7beff376399b4bcc25c06503b625f",
+    "scripts/test-codex-source.ts": "9bc10093c80cd90d3168c17d7a8847c4ce69722daa3618209fabf7db7877e206",
+    "src/bun/account-http.ts": "5d7a61278536cc9bbc02835da9f2ea85e4fb67f723ff6c5b5c3d114ef454b843",
+    "src/bun/agent-discovery.ts": "8ff5e15141617f24fe7a9f2048d6a2790abda811fbc17d8ab554596064347f2c",
+    "src/bun/agent-status.test.ts": "cc5e8ab9e12710d03716708bf1a3b370755033ff0fdb7c3035975fde012f829c",
+    "src/bun/agent-status.ts": "97e586a272d48da2b63145288069172befab22abd7f0ed629af3fc9ccc4e9df7",
+    "src/bun/codex-quota.ts": "a799f215e1d6bce2ae54daa76fd1becff8d171a5e1aa639d71bd8c02ed937737",
+    "src/bun/codex-source.test.ts": "eb37da5e116f985b8baa52df63df4307c526749a35f0fb5126976fc897d2e515",
+    "src/bun/codex-source.ts": "48e3e311b7ba15c524a2d7c9583ca4c3829b635ec2f7312b4fc676db7478716f",
+    "src/bun/codex-stdio.ts": "46db205a20748ac67832cd1e5145129e136de8b479de125e1b73bc49a05454a4",
+    "src/bun/model-discovery.test.ts": "85fc0401177793bfc912f6feab21279acdc00aabc7085e2557834e52e3500bc2",
+    "src/bun/model-discovery.ts": "eccf47adfc195d5edd8f9c9ead8bcc61e4eea7e3583d40a07f917161fb86aef2",
+    "src/bun/server.ts": "5270d89b11cf77c5d1ed501e7f69d67b98f7fffd8c5a94ea35ac92fd72a73a40",
+    "src/mainview/components/accounts/CodexSource.tsx": "6983238561788bcbd6174c8eeaa8510a38d7d3a26d636cf9256ba401ca412d47",
+    "src/mainview/components/accounts/QuotaSources.tsx": "ec238a559942741d0e2e2c3929f9bd85cc078db77d7d755b8a59a911cc02c071",
+    "src/mainview/lib/account-api.ts": "de10692fda3414aa261fa4245419efba482ec5abf3581f51aff4a460478d3ab8",
+    "src/shared/accounts/codex-source.ts": "71e82162e5e57ba90a074c90264c00106bf06e37c01ee106f7fba1a68c21245a",
+    "src/shared/accounts/quota-sources.ts": "4692b1c5eb50e679c1f4367680f9243e2ba6c6ed182601b7309cb187abee7a3a"
+  },
+  "manifestNote": "Changed source/test/report files at verification; this validation JSON excludes itself."
+}

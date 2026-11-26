@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import * as React from "react";
 import { toast } from "sonner";
 import { FONT_SIZE_DEFAULT, FONT_SIZE_MAX, FONT_SIZE_MIN } from "../../shared/types.ts";
@@ -72,6 +74,7 @@ const FontSizeContext = React.createContext<FontSizeContextValue | null>(null);
  * literal binding, so swallowing them would break shell editing.
  */
 export function FontSizeProvider({ children }: { children: React.ReactNode }) {
+  const { locale: uiLocale } = useUILocale();
   const [percent, setPercentState] = React.useState<number>(() => {
     if (typeof window === "undefined") return FONT_SIZE_DEFAULT;
     return readFontSizeFromBoot((window as unknown as { __AGETOR?: unknown }).__AGETOR, window.location.hash);
@@ -125,8 +128,8 @@ export function FontSizeProvider({ children }: { children: React.ReactNode }) {
         if (generationRef.current !== gen) return;
         if (percentRef.current !== pct) return;
         setPercentState(persistedRef.current);
-        toast.error("Couldn't save font size preference", {
-          description: "Reverted to the previous setting — try again.",
+        toast.error(tr("common.couldn_t_save_font_size_preference"), {
+          description: tr("common.reverted_to_the_previous_setting_try_again"),
         });
       });
   }, []);
@@ -221,7 +224,7 @@ export function FontSizeProvider({ children }: { children: React.ReactNode }) {
 
   const value = React.useMemo<FontSizeContextValue>(
     () => ({ percent, setPercent, increase, decrease, reset, percentRef, hasUserAdjustedRef }),
-    [percent, setPercent, increase, decrease, reset],
+    [percent, setPercent, increase, decrease, reset, uiLocale],
   );
 
   return <FontSizeContext.Provider value={value}>{children}</FontSizeContext.Provider>;

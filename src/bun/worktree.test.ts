@@ -107,6 +107,32 @@ beforeAll(async () => {
   await import("./db.ts");
 });
 
+describe("approval Git capability (read-only, no development worktrees)", () => {
+  test("distinguishes non-Git, existing Git and unknown without a cached downgrade", async () => {
+    const { gitWorkingTreeCapability } = await import("./worktree.ts");
+    const dir = mkdtempSync(path.join(tmpdir(), "fo012c-capability-"));
+    expect(await gitWorkingTreeCapability(dir)).toEqual({ kind: "non-git" });
+    const repo = path.resolve(import.meta.dir, "../..");
+    expect(await gitWorkingTreeCapability(path.join(repo, "src"))).toEqual({ kind: "git", root: repo });
+    const corrupt = mkdtempSync(path.join(tmpdir(), "fo012c-empty-git-"));
+    mkdirSync(path.join(corrupt, ".git"));
+    mkdirSync(path.join(corrupt, "nested"));
+    expect(await gitWorkingTreeCapability(path.join(corrupt, "nested"))).toEqual({ kind: "unknown" });
+    writeFileSync(path.join(dir, ".git"), "gitdir: /nonexistent/fo012c-git\n");
+    expect(await gitWorkingTreeCapability(dir)).toEqual({ kind: "unknown" });
+    expect(await gitWorkingTreeCapability(path.join(dir, "missing"))).toEqual({ kind: "unknown" });
+  });
+
+  test("unavailable Git is unknown, never permission for none", async () => {
+    const { gitWorkingTreeCapability } = await import("./worktree.ts");
+    const previous = process.env.PATH;
+    try {
+      process.env.PATH = "/nonexistent/fo012c-no-git";
+      expect(await gitWorkingTreeCapability(tmpdir())).toEqual({ kind: "unknown" });
+    } finally { process.env.PATH = previous; }
+  });
+});
+
 test("prepareWorkdir returns workdir unchanged when isolation is off", async () => {
   const { prepareWorkdir } = await import("./worktree.ts");
   const dir = mkdtempSync(path.join(tmpdir(), "agetor-wt-plain-"));
@@ -346,14 +372,15 @@ const codexHarness = {
 };
 const codexOpts = { mode: "auto", model: "gpt-5-codex", effort: "high" } as const;
 
-test("buildCodexCommand escalates to danger-full-access in a linked worktree", async () => {
+test("buildCodexCommand refuses implicit full access in a linked worktree", async () => {
   const { prepareWorkdir } = await import("./worktree.ts");
   const { buildCodexCommand } = await import("./agents.ts");
   const repo = await makeRepo();
   const r = await prepareWorkdir(fakeTask({ workdir: repo }));
   if ("error" in r) throw new Error(r.error);
 
-  const { cmd } = await buildCodexCommand(codexHarness, "hi", { ...codexOpts }, r.cwd);
+  await expect(buildCodexCommand(codexHarness, "hi", { ...codexOpts }, r.cwd)).rejects.toThrow("Owner");
+  const { cmd } = await buildCodexCommand(codexHarness, "hi", { ...codexOpts, mode: "full-access" }, r.cwd);
   expect(cmd).toContain("danger-full-access");
   expect(cmd).not.toContain("workspace-write");
   expect(cmd).toContain("approval_policy=never");

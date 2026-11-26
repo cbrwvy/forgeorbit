@@ -1,3 +1,4 @@
+import { countLabel, t } from "@/i18n/core";
 /**
  * Pure decision logic for the `files-sent` `GlobalEvent` (see
  * `src/shared/types.ts`) — no DOM, no React, no sonner. `App.tsx` calls
@@ -27,7 +28,7 @@ function truncate(s: string, n: number): string {
 export function filesSentCopy(
   input: { count: number; caption: string | null },
 ): { title: string; body: string | null } {
-  const title = input.count === 1 ? "1 file sent to you" : `${input.count} files sent to you`;
+  const title = t("notifications.filesSent", { files: countLabel(input.count, "file") });
   if (input.caption === null) return { title, body: null };
   const firstLine = input.caption.split("\n")[0]?.trim() ?? "";
   const body = firstLine.length > 0 ? truncate(firstLine, CAPTION_BODY_MAX_CHARS) : null;

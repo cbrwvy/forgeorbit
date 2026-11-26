@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { AlertTriangle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ interface Props {
  * so the user can't permanently hide a real problem.
  */
 export function TmuxMissingBanner({ show, onResolve }: Props) {
+  useUILocale();
   const [dismissed, setDismissed] = useState(false);
   // Re-arm the banner on each false → true transition. Without this,
   // dismissing once would hide it for the rest of the session even if tmux
@@ -39,23 +42,19 @@ export function TmuxMissingBanner({ show, onResolve }: Props) {
     >
       <AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden />
       <span className="min-w-0 flex-1">
-        <span className="font-medium text-foreground">tmux not installed.</span>{" "}
-        <span className="text-muted-foreground">
-          Claude Code tasks need tmux to run.
-        </span>
+        <span className="font-medium text-foreground"><I18nText id="projects.tmux_not_installed" /></span>{" "}
+        <span className="text-muted-foreground"><I18nText id="projects.claude_code_tasks_need_tmux_to_run" />{" "}</span>
       </span>
       <Button
         variant="outline"
         size="sm"
         onClick={onResolve}
         className="h-7 border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
-      >
-        Resolve
-      </Button>
+      ><I18nText id="common.resolve" />{" "}</Button>
       <button
         type="button"
         onClick={() => setDismissed(true)}
-        aria-label="Dismiss"
+        aria-label={tr("common.dismiss")}
         className="rounded p-0.5 text-muted-foreground hover:bg-warning/10 hover:text-warning"
       >
         <X className="size-3.5" />

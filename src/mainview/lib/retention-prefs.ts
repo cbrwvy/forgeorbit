@@ -1,3 +1,5 @@
+import { countLabel, formatNumber, intlLocale, t as tr } from "@/i18n/core";
+
 import {
   ARCHIVED_HISTORY_RETENTION_DEFAULT_DAYS,
   ARCHIVED_HISTORY_RETENTION_OFF,
@@ -32,8 +34,8 @@ export function formatRetentionValue(days: number | null): string {
 
 /** The picker's visible label for an age. */
 export function retentionOptionLabel(days: number | null): string {
-  if (days === null) return "Off";
-  return days === 1 ? "1 day" : `${days} days`;
+  if (days === null) return tr("common.off");
+  return countLabel(days, "day");
 }
 
 /** The ages the picker lists: `null` (off) first, then the curated days, plus
@@ -53,7 +55,7 @@ export function retentionSelectOptions(current: number | null): (number | null)[
  *  retention copy). */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024) return `${formatNumber(Math.round(bytes))} B`;
   const units = ["KB", "MB", "GB"] as const;
   let value = bytes / 1024;
   let unit = 0;
@@ -61,18 +63,18 @@ export function formatBytes(bytes: number): string {
     value /= 1024;
     unit++;
   }
-  return `${value.toFixed(unit === units.length - 1 ? 2 : 1)} ${units[unit]}`;
+  return `${formatNumber(value, { minimumFractionDigits: unit === units.length - 1 ? 2 : 1, maximumFractionDigits: unit === units.length - 1 ? 2 : 1 })} ${units[unit]}`;
 }
 
 /** The "Database … on disk · … reclaimable · …" line under the retention
  *  picker. `locale` is injectable for tests. */
-export function formatDbStatsLine(stats: DbStats, locale?: string): string {
+export function formatDbStatsLine(stats: DbStats, locale: string = intlLocale()): string {
   const onDisk = formatBytes(stats.fileBytes + stats.walBytes);
-  const base = `Database ${onDisk} on disk · ${formatBytes(stats.reclaimableBytes)} reclaimable`;
+  const base = tr("common.databaseSize", { onDisk, reclaimable: formatBytes(stats.reclaimableBytes) });
   const { running, lastRunAt, lastFreedBytes } = stats.retention;
-  if (running) return `${base} · trimming now…`;
-  if (lastRunAt === null) return `${base} · not trimmed yet`;
+  if (running) return tr("common.trimming_now", { p0: String(base) });
+  if (lastRunAt === null) return tr("common.not_trimmed_yet", { p0: String(base) });
   const when = new Date(lastRunAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
-  const freed = lastFreedBytes === null ? "" : `, freed ${formatBytes(lastFreedBytes)}`;
-  return `${base} · last trimmed ${when}${freed}`;
+  const freed = lastFreedBytes === null ? "" : tr("common.freed", { p0: String(formatBytes(lastFreedBytes)) });
+  return tr("common.last_trimmed", { p0: String(base), p1: String(when), p2: String(freed) });
 }

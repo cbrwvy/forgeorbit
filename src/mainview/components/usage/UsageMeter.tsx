@@ -1,3 +1,4 @@
+import { useLocale as useUILocale } from "@/i18n/react";
 import { clampPercent, tierColorVar, worstMeter, worstTier } from "@/lib/usage";
 import type { HarnessQuota } from "../../../shared/types.ts";
 
@@ -22,6 +23,7 @@ const FILL_CLASS: Record<"success" | "warning" | "danger", string> = {
  * the chip falls back to just its existing availability dot.
  */
 export function UsageMeter({ quota }: Props) {
+  useUILocale();
   if (quota.status !== "ok") return null;
   const m = worstMeter(quota.meters);
   if (!m) return null;

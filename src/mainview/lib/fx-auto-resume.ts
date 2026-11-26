@@ -1,3 +1,4 @@
+import { t as tr } from "@/i18n/core";
 // React hook + pure text helpers for the fx "paused, resumable" badge and
 // notice countdown (`docs/plans/fx-recovery-follow-ups.md` §3.5/3.6) — the
 // bridge between `TaskFxRecovery`'s raw `autoResume.at` timestamp and the
@@ -60,15 +61,15 @@ export function fxPausedBadgeText(rec: TaskFxRecovery, countdown: string | null)
  */
 export function fxPausedBadgeTitle(rec: TaskFxRecovery): string {
   const suffix = rec.autoResume
-    ? `auto-resume ${rec.autoResume.attempt}/${rec.autoResume.max} pending`
+    ? tr("common.auto_resume_pending", { p0: String(rec.autoResume.attempt), p1: String(rec.autoResume.max) })
     : rec.autoResumeStopped === "exhausted"
-      ? `auto-resume gave up (${FX_AUTO_RESUME_MAX} attempts)`
+      ? tr("common.auto_resume_gave_up_attempts", { p0: String(FX_AUTO_RESUME_MAX) })
       : rec.autoResumeStopped === "cancelled"
-        ? "auto-resume cancelled"
+        ? tr("common.auto_resume_cancelled_8753b2")
         : rec.autoResumeStopped === "disabled"
-          ? "auto-resume disabled in Settings"
+          ? tr("common.auto_resume_disabled_in_settings_5551d5")
           : rec.autoResumeStopped === "failed"
-            ? "auto-resume could not start"
-            : "resume from the task panel";
+            ? tr("common.auto_resume_could_not_start")
+            : tr("common.resume_from_the_task_panel");
   return rec.message ? `${rec.message} — ${suffix}` : suffix;
 }

@@ -31,32 +31,104 @@
 @tailwind utilities;
 
 @layer base {
+  :where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
   :root {
+    /* FO-UX-VISUAL01 neutrals: a cool, slightly blue-grey scale (JetBrains
+       New UI is the reference, not the source). --background is the content
+       island; --chrome is the window frame around it (title bar + sidebar). */
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 225 15% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
+    --card-foreground: 225 15% 11%;
+    /* Primary carries the ForgeOrbit purple (was neutral near-black): links,
+       text-primary and the bg-primary/10 selection tints read as accent. */
+    --primary: 252 42% 46%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 225 14% 95.5%;
+    --secondary-foreground: 225 15% 15%;
+    --muted: 225 14% 95.5%;
+    --muted-foreground: 225 8% 39%;
+    --accent: 225 14% 94%;
+    --accent-foreground: 225 15% 11%;
+    --destructive: 0 73.7% 41.8%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
+    --border: 225 12% 89%;
+    --input: 225 11% 84%;
+    /* Window frame behind the content island (title bar, sidebar). */
+    --chrome: 225 16% 95.5%;
+    /* Filled primary action (Button default). Separate from --brand so the
+       light-on-dark lavender text accent and the white-on-purple fill can
+       each keep their own contrast. */
+    --brand-solid: 252 45% 50%;
+    --brand-solid-foreground: 0 0% 100%;
+    /* Elevation: one shadow colour, scaled per theme (dark needs more). */
+    --shadow: 225 25% 12%;
+    --shadow-strength: 1;
+    /* Motion (FO-UX-VISUAL01): short and calm, never blocking. */
+    --duration-fast: 120ms;
+    --duration-base: 160ms;
+    --duration-slow: 200ms;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    /* Type roles above body: page title 18, section title 15. */
+    --text-title: 1.125rem;
+    --leading-title: 1.5rem;
+    --text-section: 0.9375rem;
+    --leading-section: 1.375rem;
+    /* Muted indigo-violet accent (FO-UX02-B). Drives the focus ring and the
+       selected state; --primary/--accent keep their neutral shadcn meaning so
+       no existing component changes colour. 7.5:1 on white, 4.9:1 as a fill
+       under --brand-foreground. */
+    --brand: 252 42% 46%;
+    --brand-foreground: 0 0% 100%;
+    --ring: 252 42% 46%;
+    /* Radii: 8 (controls) / 12 (surfaces) / 16 (panels, dialogs). `--radius`
+       is the 8px control radius; Tailwind maps rounded-md/-lg to it. */
     --radius: 0.5rem;
+    --radius-surface: 0.75rem;
+    --radius-panel: 1rem;
+    /* Type: 14px body, 13px secondary, 12px caption. rem, so the user's
+       Cmd+=/Cmd+- root font scaling still applies. */
+    --text-base: 0.875rem;
+    --leading-base: 1.25rem;
+    --text-secondary: 0.8125rem;
+    --leading-secondary: 1.125rem;
+    --text-caption: 0.75rem;
+    --leading-caption: 1rem;
+    /* Interactive control height — Default 36px. Compact (32) and
+       Comfortable (40) override it through html[data-density]. The -sm/-lg
+       steps derive from it, so a density change moves all three together;
+       -sm never drops below 32px. */
+    --control-h: 2.25rem;
+    --control-h-sm: max(2rem, calc(var(--control-h) - 0.25rem));
+    --control-h-lg: calc(var(--control-h) + 0.25rem);
+    /* Density-driven rhythm (multiples of 4px): page gutter, gap between page
+       sections, vertical padding of list rows. Compact and Comfortable
+       override them below together with --control-h. */
+    --space-page: 1.5rem;
+    --space-stack: 1.5rem;
+    --space-row: 0.75rem;
+    /* Room the shell keeps free at the bottom-right of scrolling pages for the
+       floating dock (Head of PM, PM01). 0 until something is docked; the dock
+       owner sets it (see ShellDock). */
+    --shell-dock-clearance: 0px;
+    /* Layer scale (documented in docs/qa/fo-ux02c-results.md): the dock sits
+       above page content and the compact sidebar scrim, below dialogs,
+       popovers and toasts. Anchored left of an open RunPanel, never over it. */
+    --z-dock: 35;
+    /* Floating UI portaled to <body> (usage popovers, anchored mini-windows): above
+       dialogs and context menus (50), below toasts. See ui/floating.tsx. */
+    --z-popover: 60;
     /* Semantic status tokens (theme feature). Used primarily as text/icon
        color (text-success) and low-alpha backgrounds (bg-success/10), so
        these must independently clear ~4.5:1 contrast on --background above.
        Tailwind's *-600 shades were the plan's starting point, but emerald-600
        (3.76:1), amber-600 (3.19:1), and sky-600 (4.10:1) on white all fall
        short of AA for normal text — bumped those three to *-700 (5.0-5.9:1).
-       rose-600 already clears (4.70:1) so danger stays at *-600. See the
+       Danger is deeper rose so text also clears tinted alert surfaces. See the
        .dark block below for the *-400 shades these replace as literals. */
     --success: 162.9 93.5% 24.3%; /* emerald-700 */
     --success-foreground: 0 0% 98%;
@@ -69,7 +141,7 @@
     --warning-foreground: 0 0% 98%;
     --info: 201.3 96.3% 32.2%; /* sky-700 */
     --info-foreground: 0 0% 98%;
-    --danger: 346.8 77.2% 49.8%; /* rose-600 */
+    --danger: 346.8 77.2% 39.8%;
     --danger-foreground: 0 0% 98%;
     /* GitHub's own convention for a merged PR — purple, deliberately distinct
        from success/info so "merged" never reads as "open" or "passing". */
@@ -91,31 +163,71 @@
        *same* value in :root and .dark: Tailwind's own emerald-500 / red-500 /
        amber-500, reproducing today's dark-mode dot exactly instead of
        drifting onto the *-400 status-token shades (which would turn the red
-       dot salmon-pink). --warning-solid is the third state (harness
+       dot salmon-pink).     --warning-solid is the third state (harness
        available but logged out) alongside success/danger. */
     --success-solid: 160.1 84.1% 39.4%; /* emerald-500 */
     --danger-solid: 0 84.2% 60.2%; /* red-500 */
     --warning-solid: 37.7 92.1% 50.2%; /* amber-500 */
+    /* Liquid-glass foundation (FO-001). Classes at the bottom of this file
+       are the only consumers — don't sprinkle blur or alpha literals. */
+    /* Subtle glass (FO-UX02-B): 6-10% see-through, 16-20px blur, chrome only.
+       Text contrast is verified against the composite in
+       src/mainview/lib/design-tokens.test.ts. */
+    --glass-surface: 0 0% 100%;
+    --glass-surface-alpha: 0.9;
+    --glass-elevated: 0 0% 100%;
+    --glass-elevated-alpha: 0.94;
+    --glass-border: 225 20% 12%;
+    --glass-border-alpha: 0.1;
+    --glass-blur: 16px;
+    --glass-blur-elevated: 20px;
+    /* Floating glass (FO-PM01-UXFIX01): popovers, dropdowns, tips, context menus and
+       the Head of PM. More see-through than chrome, with a top sheen. Never used for
+       work content (boards, tables, code, forms in dialogs). */
+    --glass-floating: 0 0% 100%;
+    --glass-floating-alpha: 0.76;
+    --glass-floating-blur: 24px;
+    --glass-sheen: 0 0% 100%;
+    --glass-sheen-alpha: 0.55;
+    --surface-solid: 0 0% 100%;
+    --hover: 225 15% 11%;
+    --hover-alpha: 0.05;
+    --selected: 252 42% 46%;
+    --selected-alpha: 0.11;
+    /* Background light for the app canvas: muted violet + blue, <= 12%. */
+    --glow-violet: 258 55% 55%;
+    --glow-blue: 218 65% 52%;
+    /* Barely there: the frame stays a calm neutral (no decorative gradients). */
+    --glow-alpha: 0.04;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 6% 10%;
-    --card-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    /* Charcoal, not black: #1e1f22-ish island on a #151619-ish frame, cards a
+       step lighter. Reads premium and keeps borders/surfaces distinguishable. */
+    --background: 225 6% 12.5%;
+    --foreground: 220 13% 89%;
+    --card: 222 5% 16%;
+    --card-foreground: 220 13% 89%;
+    --primary: 252 70% 78%;
+    --primary-foreground: 228 10% 10%;
+    --secondary: 222 5% 19.5%;
+    --secondary-foreground: 220 13% 89%;
+    --muted: 222 5% 19.5%;
+    --muted-foreground: 220 6% 64%;
+    --accent: 222 5% 21%;
+    --accent-foreground: 220 13% 92%;
+    --destructive: 0 62.8% 36%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    --border: 222 5% 22.5%;
+    --input: 222 5% 28%;
+    --chrome: 228 7% 9%;
+    --brand-solid: 252 50% 58%;
+    --brand-solid-foreground: 0 0% 100%;
+    --shadow: 0 0% 0%;
+    --shadow-strength: 2.6;
+    --brand: 252 70% 78%;
+    --brand-foreground: 240 5.9% 10%;
+    --ring: 252 70% 78%;
     /* Mirror the literal Tailwind *-400 colors these tokens are replacing
        throughout the app (text-rose-400, text-emerald-400, text-amber-400,
        text-sky-400) so the conversion is visually a no-op in dark mode. */
@@ -139,23 +251,47 @@
     --success-solid: 160.1 84.1% 39.4%; /* emerald-500 */
     --danger-solid: 0 84.2% 60.2%; /* red-500 */
     --warning-solid: 37.7 92.1% 50.2%; /* amber-500 */
+    --glass-surface: 225 6% 12%;
+    --glass-surface-alpha: 0.9;
+    --glass-elevated: 222 5% 16%;
+    --glass-elevated-alpha: 0.94;
+    --glass-border: 0 0% 100%;
+    --glass-border-alpha: 0.1;
+    --glass-blur: 16px;
+    --glass-floating: 222 6% 18%;
+    --glass-floating-alpha: 0.72;
+    --glass-sheen-alpha: 0.07;
+    --surface-solid: 222 5% 16%;
+    --hover: 0 0% 100%;
+    --hover-alpha: 0.055;
+    --selected: 252 70% 78%;
+    --selected-alpha: 0.16;
+    --glow-alpha: 0.05;
   }
 
+  /* Density (FO-UX02-B). Default is the :root value (36px); html[data-density]
+     is written by the boot script in index.html and Settings → General. */
+  [data-density="compact"] { --control-h: 2rem; --space-page: 1rem; --space-stack: 1rem; --space-row: 0.5rem; }
+  [data-density="comfortable"] { --control-h: 2.5rem; --space-stack: 2rem; --space-row: 1rem; }
+
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  body { @apply bg-background text-foreground; font-size: var(--text-base); line-height: var(--leading-base); }
 }
 
 /* WKWebView hides overlay scrollbars when idle. Force a persistent horizontal
    scrollbar on the kanban so users always have a hit target to drag. */
 .kanban-scroll::-webkit-scrollbar {
-  height: 10px;
+  height: 12px;
+  width: 10px;
   -webkit-appearance: none;
 }
 .kanban-scroll::-webkit-scrollbar-track {
   background: hsl(var(--background));
 }
 .kanban-scroll::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted));
+  /* Visible against the board in light and dark: the old --muted thumb nearly vanished, so the columns to the right
+     looked unreachable in a narrow window. */
+  background: hsl(var(--muted-foreground) / 0.35);
   border-radius: 9999px;
   border: 2px solid hsl(var(--background));
 }
@@ -267,4 +403,247 @@
    https://github.com/xyflow/xyflow. */
 .react-flow__attribution {
   display: none;
+}
+
+/* --- Liquid glass (FO-001) ----------------------------------------------
+   One backdrop-filter per chrome surface (sidebar, top bar). Kanban columns
+   are translucent fills WITHOUT blur — a filter per card would repaint the
+   whole board on an M1. Terminals and transcript text are not glass.
+   Reduced transparency and missing backdrop-filter both fall back to an
+   opaque surface so text contrast stays the solid-token case. */
+
+.app-canvas {
+  background-color: hsl(var(--chrome));
+  background-image:
+    radial-gradient(1100px 520px at 0% -10%, hsl(var(--glow-violet) / var(--glow-alpha)), transparent 58%),
+    radial-gradient(860px 460px at 100% 110%, hsl(var(--glow-blue) / calc(var(--glow-alpha) * 0.8)), transparent 55%);
+}
+
+.glass-surface,
+.glass-bar {
+  background-color: hsl(var(--glass-surface) / var(--glass-surface-alpha));
+  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
+}
+
+/* Blur stays on the sidebar only. The top bar is a translucent fill without
+   a filter so header popovers (usage) are not trapped in a new containing
+   block, and the board does not pay for a second live blur. */
+.glass-surface {
+  box-shadow: 8px 0 28px hsl(var(--foreground) / 0.04);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.glass-elevated {
+  background-color: hsl(var(--glass-elevated) / var(--glass-elevated-alpha));
+  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur-elevated));
+  backdrop-filter: blur(var(--glass-blur-elevated));
+}
+
+.glass-floating {
+  background-color: hsl(var(--glass-floating) / var(--glass-floating-alpha));
+  background-image: linear-gradient(180deg, hsl(var(--glass-sheen) / var(--glass-sheen-alpha)), transparent 55%);
+  border-color: hsl(var(--glass-border) / calc(var(--glass-border-alpha) * 1.6));
+  -webkit-backdrop-filter: blur(var(--glass-floating-blur)) saturate(1.6);
+  backdrop-filter: blur(var(--glass-floating-blur)) saturate(1.6);
+}
+
+.surface-solid {
+  background-color: hsl(var(--surface-solid));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
+}
+
+.glass-column {
+  background-color: hsl(var(--muted) / 0.55);
+  border-color: hsl(var(--glass-border) / var(--glass-border-alpha));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+}
+
+.glass-nav-item {
+  color: hsl(var(--foreground));
+  transition: background-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+
+.glass-nav-item:hover {
+  background-color: hsl(var(--hover) / var(--hover-alpha));
+}
+
+.glass-nav-item[aria-current="page"],
+.glass-selected {
+  background-color: hsl(var(--selected) / var(--selected-alpha));
+}
+
+.glass-nav-item:focus-visible,
+.glass-selected:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.glass-nav-item:disabled,
+.glass-nav-item[aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* --- Application shell (FO-UX-VISUAL01) --------------------------------
+   "Islands": the title bar and the sidebar sit directly on the window frame
+   (--chrome, opaque, no blur), and the page content is one rounded island
+   (--background) with a hairline border. One surface change instead of
+   borders between every region, and no backdrop-filter on the shell at all. */
+.shell-titlebar {
+  background-color: hsl(var(--chrome));
+}
+.shell-sidebar {
+  background-color: hsl(var(--chrome));
+}
+/* The compact layout floats the expanded sidebar over the island. */
+.shell-sidebar[data-overlay="true"] {
+  box-shadow: 0 16px 40px hsl(var(--shadow) / calc(0.16 * var(--shadow-strength)));
+  border-right: 1px solid hsl(var(--border));
+}
+.shell-island {
+  background-color: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-surface);
+  box-shadow: 0 1px 2px hsl(var(--shadow) / calc(0.04 * var(--shadow-strength)));
+}
+/* Primary rail rows: a 3px accent bar marks the current destination in
+   addition to the tint, so "where am I" never depends on colour alone. */
+.shell-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -0.5rem;
+  top: 0.375rem;
+  bottom: 0.375rem;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background-color: hsl(var(--brand));
+}
+.shell-nav-item[aria-current="page"] { font-weight: 500; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  .glass-nav-item {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-canvas {
+    background-image: none;
+  }
+  .glass-surface,
+  .glass-bar,
+  .glass-elevated,
+  .glass-floating {
+    background-color: hsl(var(--surface-solid));
+    background-image: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  .glass-column {
+    background-color: hsl(var(--muted));
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-surface,
+  .glass-bar,
+  .glass-elevated,
+  .glass-floating {
+    background-color: hsl(var(--surface-solid));
+    background-image: none;
+    box-shadow: none;
+  }
+}
+
+@layer utilities {
+  /* Destructive fills and foreground copy have different contrast needs.
+     Reuse the status-text token for legacy error labels in both themes. */
+  .text-destructive {
+    color: hsl(var(--danger));
+  }
+}
+
+/* The workspace may be much narrower than the window with both rails open. */
+@container knowledge (min-width: 48rem) {
+  .knowledge-columns { flex-direction: row; }
+  .knowledge-list-column { width: 18rem; flex-shrink: 0; }
+  .knowledge-document-list { max-height: 32rem; }
+}
+
+.manager-page { overflow-wrap: anywhere; }
+@container workspace (min-width: 56rem) {
+  .manager-page { overflow: hidden; }
+  .manager-columns { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
+  .manager-chat { min-height: 0; }
+  .manager-context { min-height: 0; overflow-y: auto; }
+}
+
+/* --- Shared shell components (FO-UX02-C) ---------------------------------
+   One segmented tab group for project pages, Company, Portfolio and Manager.
+   Geometry comes from the density tokens; hover/selected/focus come from
+   .glass-nav-item / .glass-selected. Outer radius 12 = inner 8 + 4px padding. */
+@layer components {
+  .ds-tabs {
+    display: inline-flex;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    background-color: hsl(var(--muted) / 0.7);
+    border: 1px solid hsl(var(--border) / 0.7);
+    border-radius: var(--radius-surface);
+  }
+  /* Segmented selection: a raised chip (card + hairline + soft shadow), the
+     macOS segmented-control idiom, instead of a tint on a tint. */
+  .ds-tabs > .glass-selected,
+  .ds-tabs > [aria-current="page"],
+  .ds-tabs > [aria-selected="true"] {
+    background-color: hsl(var(--card));
+    box-shadow: 0 0 0 1px hsl(var(--border)), 0 1px 2px hsl(var(--shadow) / calc(0.06 * var(--shadow-strength)));
+  }
+  .ds-tabs::-webkit-scrollbar { display: none; }
+  .ds-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: var(--control-h-sm);
+    padding: 0 0.75rem;
+    border-radius: var(--radius);
+    font-size: var(--text-base);
+    line-height: var(--leading-base);
+    font-weight: 500;
+    white-space: nowrap;
+    color: hsl(var(--muted-foreground));
+  }
+  .ds-tab:hover,
+  .ds-tab.glass-selected,
+  .ds-tab[aria-current="page"],
+  .ds-tab[aria-selected="true"] { color: hsl(var(--foreground)); }
+
+  /* Typography roles (FO-UX-VISUAL01). Page title 18/600, section title
+     15/600, body 14, secondary 13, meta 12 — rem, so ⌘= / ⌘− still scale. */
+  .ds-page-title { font-size: var(--text-title); line-height: var(--leading-title); font-weight: 600; letter-spacing: -0.01em; }
+  .ds-section-title { font-size: var(--text-section); line-height: var(--leading-section); font-weight: 600; }
+  .ds-meta { font-size: var(--text-caption); line-height: var(--leading-caption); color: hsl(var(--muted-foreground)); }
+
+  /* One panel style for in-page groups: card surface, hairline, 12px radius. */
+  .ds-panel {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-surface);
+  }
 }

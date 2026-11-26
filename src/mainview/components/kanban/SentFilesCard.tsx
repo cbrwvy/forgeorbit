@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 // "Files sent to you" card — replaces the generic `ToolUseBlock` for a
 // `SendUserFile` tool_use, the way `PlanCard`/`TodoProgressCard` substitute
 // for their own tool families. Self-contained: derivation is the pure
@@ -60,6 +62,7 @@ export interface SentFilesCardProps {
 }
 
 function Pill({ children }: { children: React.ReactNode }) {
+  useUILocale();
   return (
     <span className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
       {children}
@@ -96,6 +99,7 @@ function Tile({
   onClick: () => void;
   onOpenMenu: (path: string, x: number, y: number) => void;
 }) {
+  useUILocale();
   let preview: React.ReactNode;
   if (isNotFound) {
     const Icon = tile.kind === "image" ? ImageOff : FileWarning;
@@ -133,7 +137,7 @@ function Tile({
         data-path={tile.path}
         data-kind={tile.kind}
         title={tile.path}
-        aria-label={`Open ${tile.name}`}
+        aria-label={tr("common.open_8f12e5", { p0: String(tile.name) })}
         onClick={onClick}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -154,7 +158,7 @@ function Tile({
       <button
         type="button"
         data-testid="sent-file-tile-menu"
-        aria-label="File actions"
+        aria-label={tr("tasks.file_actions")}
         onClick={(e) => {
           e.stopPropagation();
           const rect = e.currentTarget.getBoundingClientRect();
@@ -169,9 +173,10 @@ function Tile({
 }
 
 export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
+  const { locale: uiLocale } = useUILocale();
   const req = useMemo(
     () => parseSentFilesToolUse(call.name, call.input),
-    [call.id, call.name, call.input],
+    [call.id, call.name, call.input, uiLocale],
   );
 
   const res = useMemo(
@@ -179,7 +184,7 @@ export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
       result
         ? parseSentFilesToolResult(result.content, result.isError, result.attachments)
         : null,
-    [result?.toolUseId, result?.content, result?.isError, result?.attachments],
+    [result?.toolUseId, result?.content, result?.isError, result?.attachments, uiLocale],
   );
 
   // Stable primitive derived from `req` for the stat-fetch effect below.
@@ -287,8 +292,8 @@ export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
           path,
           message:
             action === "open"
-              ? "The OS declined to open this file."
-              : "The OS declined to reveal this file.",
+              ? tr("common.the_os_declined_to_open_this_file")
+              : tr("common.the_os_declined_to_reveal_this_file"),
         });
       }
     } catch (e) {
@@ -319,21 +324,21 @@ export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
     ? [
         {
           id: "open",
-          label: "Open",
+          label: tr("common.open"),
           onSelect: () => {
             void handleOpenOrReveal(menu.path, "open");
           },
         },
         {
           id: "reveal",
-          label: "Reveal in Finder",
+          label: tr("common.reveal_in_finder"),
           onSelect: () => {
             void handleOpenOrReveal(menu.path, "reveal");
           },
         },
         {
           id: "copy",
-          label: "Copy path",
+          label: tr("common.copy_path"),
           onSelect: () => {
             // `writeText` returns a promise that rejects on a denied
             // clipboard permission — a bare try/catch around the call
@@ -358,12 +363,12 @@ export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
     >
       <div className="flex flex-wrap items-center gap-2">
         <Paperclip className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="text-sm font-medium">Files sent to you</span>
+        <span className="text-sm font-medium"><I18nText id="tasks.files_sent_to_you" /></span>
         <span className="text-xs text-muted-foreground">
           {tiles.length} {tiles.length === 1 ? "file" : "files"}
         </span>
-        {req.display === "attach" && <Pill>attachment</Pill>}
-        {req.status === "proactive" && <Pill>proactive</Pill>}
+        {req.display === "attach" && <Pill><I18nText id="common.attachment" /></Pill>}
+        {req.status === "proactive" && <Pill><I18nText id="tasks.proactive" /></Pill>}
       </div>
 
       {req.caption && <p className="mt-1 whitespace-pre-wrap break-words text-sm">{req.caption}</p>}
@@ -401,7 +406,7 @@ export function SentFilesCard({ call, result, taskId }: SentFilesCardProps) {
         y={menu?.y ?? 0}
         items={menuItems}
         onClose={() => setMenu(null)}
-        label="File actions"
+        label={tr("tasks.file_actions")}
         testId="sent-file-menu"
       />
 

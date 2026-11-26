@@ -1,6 +1,7 @@
-import { homedir } from "node:os";
 import path from "node:path";
 import { readFileSync, writeFileSync, renameSync, chmodSync } from "node:fs";
+import { resolveActiveDataDir } from "./profile-activation-state.ts";
+export { resolveDataDir } from "./data-dir.ts";
 
 /**
  * Per-host GitHub personal-access-token store. This exists because a single
@@ -27,17 +28,7 @@ interface GitHubTokensFile {
 
 export const GITHUB_TOKENS_FILENAME = "github-tokens.json";
 
-/**
- * Resolve the data dir the same way `db.ts` / `core-creds.ts` do, but lazily
- * (at call time) rather than once at module load. Reading `AGETOR_DATA_DIR`
- * at call time keeps this in agreement with `db.ts` even under the test
- * auto-allocate path (which sets the env var before any store call runs).
- */
-export function resolveDataDir(): string {
-  return process.env.FORGEORBIT_DATA_DIR ?? process.env.AGETOR_DATA_DIR ?? path.join(homedir(), ".agetor");
-}
-
-export function githubTokensPath(dataDir: string = resolveDataDir()): string {
+export function githubTokensPath(dataDir: string = resolveActiveDataDir()): string {
   return path.join(dataDir, GITHUB_TOKENS_FILENAME);
 }
 

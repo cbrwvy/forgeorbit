@@ -1,12 +1,14 @@
 // Bun-side helpers for the `@`-mention file picker: listing a project's files
 // the way an agent will actually see them (tracked + untracked, or the files
-// at a specific ref for a not-yet-created worktree), and resolving a picked
+// at a specific ref for a not-yet-created worktree), with a bounded fallback
+// for an explicitly authorized registered non-Git root, and resolving a picked
 // repo-relative path back to an absolute path under a task's cwd.
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { isSafeRelPath } from "./worktree.ts";
 import { expandAtTokens, MAX_PROJECT_FILES } from "../shared/at-refs.ts";
 import { buildFileEntries, filterFileEntries, type FileEntry } from "../shared/at-file-filter.ts";
+import { listNonGitProjectFiles } from "./non-git-project-files.ts";
 
 // The cap lives in the shared module so the webview's truncation footer and
 // this listing can never disagree about the number; re-exported here for the
@@ -40,6 +42,10 @@ export { MAX_PROJECT_FILES };
 export const MAX_SCANNED_FILES = 250_000;
 
 export interface FileScope {
+  /** Server-only authority: exact registered root, never accepted from HTTP.
+   * Ignored for Git scopes and Git worktree/ref previews. */
+  nonGitRoot?: string;
+  excludedProjectRoots?: string[];
   /** Absolute path to an existing directory — either a task's live cwd (a
    *  worktree root, or an isolation=none workdir/subdirectory), or the
    *  source repo root when previewing files at a ref for a worktree that
@@ -80,12 +86,13 @@ const GIT_TIMEOUT_MS = 30_000;
  * local to each file (see worktree.ts's own comment on the same helper)
  * instead of growing a shared "git utils" module every file depends on.
  */
-async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS): Promise<GitResult> {
+async function git(args: string[], cwd: string, timeoutMs = GIT_TIMEOUT_MS, env?: NodeJS.ProcessEnv): Promise<GitResult> {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+    env,
   });
   const timer = setTimeout(() => proc.kill(), timeoutMs);
   try {
@@ -132,6 +139,8 @@ interface RawListing {
    *  `MAX_SCANNED_FILES`. That cap is applied separately (via `capScan`)
    *  only on the q-mode path; see the comment on `MAX_SCANNED_FILES`. */
   files: string[];
+  truncated?: boolean;
+  nonGit?: boolean;
 }
 
 /** Cap (already-deduped) `files` at `MAX_SCANNED_FILES` — q-mode's own
@@ -190,7 +199,7 @@ async function rawListing(dir: string, ref: string | null | undefined): Promise<
  *  an absolute path to an existing directory inside a git repo. Returns
  *  `{ error }` on any failure, `null` when everything checks out. Never
  *  throws. */
-async function validateScope(dir: string): Promise<{ error: string } | null> {
+async function validateScope(dir: string): Promise<{ error: string; confirmedNonGit?: boolean } | null> {
   if (!path.isAbsolute(dir)) return { error: "dir must be an absolute path" };
   let st;
   try {
@@ -200,9 +209,29 @@ async function validateScope(dir: string): Promise<{ error: string } | null> {
   }
   if (!st.isDirectory()) return { error: "directory does not exist" };
 
-  const inside = await git(["rev-parse", "--is-inside-work-tree"], dir);
-  if (!inside.ok || inside.stdout.trim() !== "true") return { error: "not a git repository" };
+  let inside: GitResult;
+  // Only the capability probe needs a stable diagnostic for classification;
+  // live/ref listings retain their existing environment and ignore policy.
+  try { inside = await git(["rev-parse", "--is-inside-work-tree"], dir, GIT_TIMEOUT_MS, { ...process.env, LC_ALL: "C", LANGUAGE: "C" }); }
+  catch { return { error: "could not inspect project repository" }; }
+  if (!inside.ok || inside.stdout.trim() !== "true") return {
+    error: "not a git repository",
+    // Fail closed for broken Git metadata, unsafe ownership, missing Git,
+    // timeout and bare repos. Only Git's explicit absence admits fallback.
+    confirmedNonGit: inside.exitCode === 128 && /^fatal: not a git repository \(or any of the parent directories\): \.git(?:\n|$)/.test(inside.stderr),
+  };
   return null;
+}
+
+async function scopeListing(scope: FileScope): Promise<RawListing | { error: string }> {
+  const validation = await validateScope(scope.dir);
+  if (validation) {
+    if (!validation.confirmedNonGit || !scope.nonGitRoot) return { error: validation.error };
+    if (scope.ref) return { error: "Git ref previews require a Git project" };
+    const result = await listNonGitProjectFiles(scope.dir, scope.nonGitRoot, scope.excludedProjectRoots ?? []);
+    return "error" in result ? result : { ...result, nonGit: true };
+  }
+  return rawListing(scope.dir, scope.ref);
 }
 
 /** Cheap existence check — used on a q-mode cache hit (see the TTL-cache hit
@@ -228,6 +257,7 @@ interface QModeCacheEntry {
   entries: FileEntry[];
   at: number;
   scanCapped: boolean;
+  nonGit?: boolean;
 }
 
 /** Default q-mode cache TTL. Overridable only via
@@ -283,8 +313,8 @@ export function __getQModeListingRunsForTest(): number {
   return qModeListingRuns;
 }
 
-function qModeCacheKey(dir: string, ref: string | null | undefined): string {
-  return `${dir}\0${ref ?? ""}`;
+function qModeCacheKey(scope: FileScope): string {
+  return JSON.stringify([scope.dir, scope.ref ?? "", scope.nonGitRoot ?? "", scope.excludedProjectRoots ?? []]);
 }
 
 /** Test-only: drop every cached q-mode listing so a test can force the next
@@ -323,20 +353,16 @@ function pruneQModeCache(): void {
  *  matter how many concurrent `listProjectFiles` callers end up sharing its
  *  result via `qModeInflight`. Never throws. */
 async function loadQModeEntry(
-  dir: string,
-  ref: string | null | undefined,
+  scope: FileScope,
 ): Promise<QModeCacheEntry | { error: string }> {
   qModeListingRuns++;
 
-  const validationError = await validateScope(dir);
-  if (validationError) return validationError;
-
-  const raw = await rawListing(dir, ref);
+  const raw = await scopeListing(scope);
   if ("error" in raw) return raw;
 
   const capped = capScan(raw.files);
   const entries = buildFileEntries(capped.files);
-  return { entries, at: Date.now(), scanCapped: capped.scanCapped };
+  return { entries, at: Date.now(), scanCapped: capped.scanCapped || !!raw.truncated, nonGit: raw.nonGit };
 }
 
 function clampLimit(limit: number | undefined): number {
@@ -351,8 +377,10 @@ function clampLimit(limit: number | undefined): number {
  * hasn't been materialized yet — agetor worktrees are always rooted at the
  * repo root, so a ref listing is repo-root-relative, matching that shape).
  *
- * `dir` must be an absolute path to an existing directory inside a git repo,
- * else `{ error }`. Never throws.
+ * `dir` must be absolute and existing. Non-Git listing additionally requires
+ * server-supplied `nonGitRoot` authority and never supports ref previews.
+ * Its bounded scan returns `truncated` on any omitted subtree/budget and
+ * shares only in-flight loads; the Git index and TTL behavior are unchanged.
  *
  * When `scope.q` is present (including `""`), switches to search mode: ranks
  * the full listing — files plus every derived directory prefix — via the
@@ -365,11 +393,11 @@ function clampLimit(limit: number | undefined): number {
  * instead of each spawning `git` — see `qModeCache`/`qModeInflight` above.
  */
 export async function listProjectFiles(scope: FileScope): Promise<ProjectFilesResult> {
-  const { dir, ref } = scope;
+  const { dir } = scope;
   const qPresent = typeof scope.q === "string";
 
   if (qPresent) {
-    const key = qModeCacheKey(dir, ref);
+    const key = qModeCacheKey(scope);
     const cached = qModeCache.get(key);
     if (cached && Date.now() - cached.at < qModeCacheTtlMs) {
       // Finding 5: a cache hit must not paper over a `dir` that vanished
@@ -385,24 +413,26 @@ export async function listProjectFiles(scope: FileScope): Promise<ProjectFilesRe
 
     let pending = qModeInflight.get(key);
     if (!pending) {
-      pending = loadQModeEntry(dir, ref).finally(() => qModeInflight.delete(key));
+      pending = loadQModeEntry(scope).finally(() => qModeInflight.delete(key));
       qModeInflight.set(key, pending);
     }
     const loaded = await pending;
     if ("error" in loaded) return loaded;
 
-    pruneQModeCache();
-    qModeCache.set(key, loaded);
+    // Re-evaluate non-Git boundaries/ignore metadata on each request. Only
+    // simultaneous loads share a scan; no stale permissions/ignore cache.
+    if (!loaded.nonGit) {
+      pruneQModeCache();
+      qModeCache.set(key, loaded);
+    }
     const ranked = filterFileEntries(loaded.entries, scope.q as string, clampLimit(scope.limit));
     return { files: ranked.map((e) => e.path), truncated: loaded.scanCapped };
   }
 
-  const validationError = await validateScope(dir);
-  if (validationError) return validationError;
-
-  const raw = await rawListing(dir, ref);
+  const raw = await scopeListing(scope);
   if ("error" in raw) return raw;
-  return finalize(raw.files);
+  const result = finalize(raw.files);
+  return "error" in result ? result : { ...result, truncated: result.truncated || !!raw.truncated };
 }
 
 /**

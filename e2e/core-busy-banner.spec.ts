@@ -65,7 +65,7 @@ test.describe("core busy banner", () => {
     }).toPass({ timeout: 30_000 });
 
     await gotoApp(page, backend.bootBase);
-    const card = page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+    const card = page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
     await expect(card).toBeVisible();
     const banner = page.getByTestId("core-busy-banner");
     await expect(banner, "no banner on a healthy core").toHaveCount(0);

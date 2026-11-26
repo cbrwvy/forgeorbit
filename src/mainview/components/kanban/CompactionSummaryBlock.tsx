@@ -1,3 +1,4 @@
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 // Collapsed "Compaction summary" block for a `compaction_summary` run event
 // (docs/plans/claude-code-placeholder.md §2.4, P4/P10).
 //
@@ -25,6 +26,7 @@ export const CompactionSummaryBlock = memo(function CompactionSummaryBlock({
 }: {
   text: string;
 }) {
+  useUILocale();
   const [open, setOpen] = useState(false);
   // The summary is searchable (`searchableEventText`), so a search jump onto it
   // must reveal the body — otherwise it lands on a collapsed header.
@@ -49,9 +51,7 @@ export const CompactionSummaryBlock = memo(function CompactionSummaryBlock({
         <ChevronRight
           className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
           aria-hidden
-        />
-        Compaction summary
-        <span className="ml-1 font-normal normal-case tracking-normal text-muted-foreground">
+        /><I18nText id="tasks.compaction_summary" />{" "}<span className="ml-1 font-normal normal-case tracking-normal text-muted-foreground">
           {formatByteSize(compactionSummaryBytes(text))}
         </span>
       </button>

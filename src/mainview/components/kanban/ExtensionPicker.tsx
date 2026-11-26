@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Blocks, BookText, ChevronDown, Plug, Puzzle, Sparkles } from "lucide-react";
 import type { AvailableExtension } from "@/lib/api";
@@ -36,9 +38,9 @@ interface Props {
 }
 
 const KINDS = [
-  { kind: "mcp", label: "MCP Servers", Icon: Plug },
-  { kind: "skill", label: "Skills", Icon: Sparkles },
-  { kind: "plugin", label: "Plugins", Icon: Puzzle },
+  { kind: "mcp", get label() { return tr("common.mcp_servers"); }, Icon: Plug },
+  { kind: "skill", get label() { return tr("common.skills"); }, Icon: Sparkles },
+  { kind: "plugin", get label() { return tr("common.plugins"); }, Icon: Puzzle },
 ] as const;
 
 /** A group row is either an MCP/skill/plugin entry or a saved prompt — the
@@ -68,6 +70,7 @@ export function ExtensionPicker({
   disabled,
   onPromptsOpen,
 }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -124,13 +127,13 @@ export function ExtensionPicker({
     }));
     const promptRows = filterPromptsForPicker(savedPrompts ?? [], query).map((prompt): Row => ({ tag: "prompt", prompt }));
     // Saved Prompts always renders last, after mcp/skill/plugin.
-    return [...extGroups, { key: "prompt", label: "Saved Prompts", Icon: BookText, rows: promptRows }]
+    return [...extGroups, { key: "prompt", label: tr("common.saved_prompts"), Icon: BookText, rows: promptRows }]
       .filter((g) => g.rows.length > 0);
-  }, [extensions, savedPrompts, query]);
+  }, [extensions, savedPrompts, query, uiLocale]);
 
   // Flattened, display-order list so ↑/↓ can move a single highlight across
   // group boundaries; the render derives each row's global index from this.
-  const flat = useMemo(() => grouped.flatMap((g) => g.rows), [grouped]);
+  const flat = useMemo(() => grouped.flatMap((g) => g.rows), [grouped, uiLocale]);
 
   // Reset the highlight whenever the filtered list changes so it never points
   // past the end.
@@ -179,7 +182,7 @@ export function ExtensionPicker({
         data-testid="extension-picker-trigger"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        title="Insert an MCP server, skill, plugin reference, or saved prompt"
+        title={tr("tasks.insert_an_mcp_server_skill_plugin_reference_or")}
         className={cn(
           "inline-flex items-center gap-1 rounded-md border border-border/60 bg-card/40 px-2 py-1 text-[11px] text-muted-foreground",
           "hover:bg-accent/40 hover:text-foreground disabled:opacity-50 disabled:hover:bg-card/40 disabled:hover:text-muted-foreground",
@@ -187,7 +190,7 @@ export function ExtensionPicker({
         )}
       >
         <Blocks className="size-3" />
-        <span>MCP · Skills · Plugins · Prompts</span>
+        <span><I18nText id="tasks.mcp_skills_plugins_prompts" /></span>
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
 
@@ -201,7 +204,7 @@ export function ExtensionPicker({
           data-popover-keys="escape-only"
           data-testid="extension-picker-popover"
           className={cn(
-            "absolute z-30 w-72 max-w-[90vw] overflow-hidden rounded-md border border-border/60 bg-card text-card-foreground shadow-lg",
+            "glass-floating absolute z-30 w-72 max-w-[90vw] overflow-hidden rounded-xl border text-card-foreground shadow-lg",
             placement === "above" ? "bottom-full mb-1" : "top-full mt-1",
             align === "right" ? "right-0" : "left-0",
           )}
@@ -227,7 +230,7 @@ export function ExtensionPicker({
                   if (choice) insert(choice);
                 }
               }}
-              placeholder="Search…"
+              placeholder={tr("common.search")}
               className="w-full rounded bg-muted/40 px-2 py-1 text-[11px] outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -235,8 +238,8 @@ export function ExtensionPicker({
             {grouped.length === 0 ? (
               <p className="px-3 py-2 text-[11px] text-muted-foreground">
                 {extensions.length === 0 && (savedPrompts?.length ?? 0) === 0
-                  ? "No MCP servers, skills, or plugins found for this project, and no saved prompts."
-                  : "No matches."}
+                  ? tr("common.no_mcp_servers_skills_or_plugins_found_for")
+                  : tr("common.no_matches")}
               </p>
             ) : (
               grouped.map((g, gi) => {

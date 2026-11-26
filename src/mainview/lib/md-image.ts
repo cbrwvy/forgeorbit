@@ -14,8 +14,8 @@
 //   - a `file://` URL, which react-markdown's default `urlTransform` blanks
 //     before any `components.img` override ever sees it (see `mdUrlTransform`
 //     below) — so it must be unwrapped in the transform, not here.
-import type { UrlTransform } from "react-markdown";
-import { defaultUrlTransform } from "react-markdown";
+import { defaultUrlTransform, type UrlTransform } from "react-markdown";
+
 import { isImagePath } from "../../shared/attachments.ts";
 
 /** Classification of a markdown image `src`, after resolving it against a

@@ -30,10 +30,16 @@ import { defineConfig, devices } from "@playwright/test";
  * per-worker fixture.
  */
 export const E2E_VITE_PORT = 5173;
+export const E2E_API_PORT_OFFSET = Number(process.env.FORGEORBIT_E2E_API_PORT_OFFSET ?? 0);
+if (!Number.isInteger(E2E_API_PORT_OFFSET) || E2E_API_PORT_OFFSET < 0 || E2E_API_PORT_OFFSET > 50_000) {
+  throw new Error("Invalid FORGEORBIT_E2E_API_PORT_OFFSET");
+}
 export const E2E_BASE_URL = `http://localhost:${E2E_VITE_PORT}`;
 
 export default defineConfig({
   testDir: "e2e",
+  // Allow a targeted QA run to preserve pre-existing local test artifacts.
+  outputDir: process.env.FORGEORBIT_E2E_OUTPUT_DIR ?? "test-results",
   fullyParallel: false,
   // `fullyParallel: false` only serializes tests WITHIN a file — Playwright
   // still gives each spec file its own worker, and (since e2e/fixtures.ts)

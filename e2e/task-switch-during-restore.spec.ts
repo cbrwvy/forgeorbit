@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2E regression coverage for
@@ -168,7 +168,7 @@ async function openTask(page: Page, title: string): Promise<Locator> {
  *  inside the run panel or a menu. Mirrors `e2e/task-context-menu.spec.ts`'s
  *  identical helper. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 /**
@@ -232,7 +232,7 @@ test.describe("task details stay responsive while another task's session restore
     await waitForColumn(request, freshBackend, taskA.id, "review", 40_000);
     await waitForColumn(request, freshBackend, taskB.id, "review", 40_000);
 
-    await gotoApp(page, freshBackend.bootBase);
+    await gotoBoard(page, freshBackend.bootBase);
 
     const panel = await openTask(page, titleA);
     await expect(panel.getByText(`fake response to: ${titleA}`, { exact: true })).toBeVisible();
@@ -367,7 +367,7 @@ test.describe("terminals section is scoped per task", () => {
     await waitForColumn(request, backend, taskD.id, "review", 10_000);
     await waitForColumn(request, backend, taskE.id, "review", 10_000);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
 
     const panel = await openTask(page, titleD);
     await expect(terminalsDetails(panel)).toBeVisible();
@@ -430,7 +430,7 @@ test.describe("terminals section is scoped per task", () => {
       if (/same key/i.test(msg.text())) keyWarnings.push(msg.text());
     });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
     await expect(panel.getByText("draft that mounts the backlog tray")).toBeVisible();
     await expect(panel.getByTestId("terminals-section")).toHaveCount(1);

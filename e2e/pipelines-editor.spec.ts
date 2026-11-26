@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { test, expect, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * E2e coverage for the pipelines canvas editor (docs/plans/pipelines.md
@@ -108,38 +108,31 @@ async function nodeIds(page: Page): Promise<string[]> {
   );
 }
 
-/** Clicks a step node and returns its side panel — waits for the
- *  AnimatePresence exit/enter cycle (keyed per step id, `duration: 0.18`) to
- *  settle to exactly one mounted panel first, since two can transiently
- *  coexist mid-transition (the outgoing panel exiting, the incoming one
- *  entering) and a bare `getByTestId` would otherwise trip Playwright's
- *  strict mode. Falls back to a forced click (bypassing Playwright's
- *  visibility/stability checks) once, since a node whose on-canvas position
- *  the 320px docked side panel narrows the pane around can still be a valid
- *  click target even when Playwright's own actionability heuristic is
- *  unsure — repeatedly re-invoking the toolbar's "Fit view" here (an
- *  earlier version of this helper did) turned out to be the flakier path:
- *  clicking it while React Flow is still measuring a just-changed node (a
- *  new profile chip, a renamed label) can compute a wildly wrong zoom. */
+/** Activate the requested step, then verify the panel's identity before
+ * editing. A forced click on an occluded node could leave the old panel
+ * open and silently edit a different step after FO-001 narrowed the canvas. */
 async function openStepPanel(editor: Locator, node: Locator): Promise<Locator> {
+  const id = await node.getAttribute("data-step-id");
+  const name = await node.locator("[title]").first().getAttribute("title");
   try {
     await node.click({ timeout: 4000 });
   } catch {
-    await node.click({ force: true });
+    // Use the supported keyboard path for a node outside the current pan.
+    const focusable = editor.locator(`.react-flow__node[data-id="${id}"]`);
+    await focusable.focus();
+    await focusable.press("Enter");
   }
-  await expect(editor.locator('[data-testid="pipeline-step-panel"]')).toHaveCount(1);
-  // The panel's own enter transition (`motion.aside`, `duration: 0.18`) is
-  // still translating in at the moment the count above first settles to 1 —
-  // interacting with a child immediately can hit Playwright's "element is
-  // not stable" / a mid-transition detach. Let it finish.
-  await editor.page().waitForTimeout(250);
-  return editor.getByTestId("pipeline-step-panel");
+  await expect(editor.getByTestId("pipeline-step-panel")).toHaveCount(1);
+  const panel = editor.getByTestId("pipeline-step-panel");
+  await expect(panel.getByTestId("pipeline-step-name")).toHaveValue(name!);
+  return panel;
 }
 
 async function openConnectAndPick(panel: Locator, targetName: string): Promise<void> {
   const connect = panel.getByTestId("pipeline-step-connect");
   await connect.getByRole("button", { name: "Connect to another step…" }).click();
-  await connect.getByRole("button", { name: targetName, exact: true }).click();
+  // SearchSelect rows are WAI-ARIA combobox options (`role="option"` on a button), not buttons.
+  await connect.getByRole("option", { name: targetName, exact: true }).click();
 }
 
 /** The Settings modal, located by its own title id — bare
@@ -179,7 +172,7 @@ async function agentProfileExists(backend: E2EBackend, name: string): Promise<bo
 
 /** New pipeline → select the default step → open its "New agent…" dialog. */
 async function openNewAgentDialog(page: Page, backend: E2EBackend): Promise<{ editor: Locator; panel: Locator; dialog: Locator }> {
-  await gotoApp(page, backend.bootBase);
+  await gotoBoard(page, backend.bootBase);
   await pipelinesButton(page).click();
   await page.getByTestId("pipelines-new").click();
   const editor = page.getByTestId("pipeline-editor");
@@ -211,7 +204,7 @@ test.describe("pipelines editor", () => {
     page,
     backend,
   }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await expect(boardReadyColumn(page)).toBeVisible();
 
     await pipelinesButton(page).click();
@@ -239,7 +232,7 @@ test.describe("pipelines editor", () => {
     // is docked on the right (see `openStepPanel`'s doc comment).
     await page.setViewportSize({ width: 1600, height: 900 });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");
@@ -469,7 +462,7 @@ test.describe("pipelines editor", () => {
     const helperTwo = await createProfileRest(backend, `Editor Helper Two ${randomUUID()}`);
     createdProfileIds.push(helperOne.id, helperTwo.id);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");
@@ -492,8 +485,8 @@ test.describe("pipelines editor", () => {
     // Pick two delegate profiles from the multi-select (the popover lists
     // every profile except the step's own bound agent).
     await trigger.click();
-    await subagents.getByRole("button", { name: helperOne.name }).click();
-    await subagents.getByRole("button", { name: helperTwo.name }).click();
+    await subagents.getByRole("option", { name: helperOne.name }).click();
+    await subagents.getByRole("option", { name: helperTwo.name }).click();
     await trigger.click(); // toggles the popover closed
     await expect(trigger).toContainText("2 selected");
 
@@ -577,7 +570,7 @@ test.describe("pipelines editor", () => {
     await expect(settings.getByRole("heading", { name: "Edit agent" })).toBeVisible();
     await expect(settings.getByTestId("agent-profile-editor")).toBeVisible();
     await expect(settings.getByTestId("agent-profiles-section")).toHaveCount(0);
-    await expect(settings.getByRole("button", { name: "Agents", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(settings.getByRole("button", { name: "Library", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(settings.getByTestId("agent-profile-name")).toHaveValue(helperOne.name);
     await settings.getByRole("button", { name: "Back", exact: true }).click();
     await expect(settings.getByRole("heading", { name: "Settings" })).toBeVisible();
@@ -591,7 +584,7 @@ test.describe("pipelines editor", () => {
     // rendered opaque only on an active row).
     await trigger2.click();
     for (const helper of [helperOne, helperTwo]) {
-      const item = subagents2.getByRole("button", { name: helper.name });
+      const item = subagents2.getByRole("option", { name: helper.name });
       await expect(item).toBeVisible();
       await expect(item.locator("svg").first()).toHaveClass(/opacity-100/);
     }
@@ -610,7 +603,7 @@ test.describe("pipelines editor", () => {
     createdProfileIds.push(helper.id);
     await page.setViewportSize({ width: 1600, height: 900 });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");
@@ -639,7 +632,7 @@ test.describe("pipelines editor", () => {
     const subagents = panel.getByTestId("pipeline-step-subagents");
     const trigger = subagents.getByRole("button").first();
     await trigger.click();
-    await subagents.getByRole("button", { name: helper.name }).click();
+    await subagents.getByRole("option", { name: helper.name }).click();
     await trigger.click(); // toggles the popover closed
     const satellite = editor.locator(`[data-testid="pipeline-subagent-node"][data-step-id="${id0}"]`);
     await expect(satellite).toHaveCount(1);
@@ -674,7 +667,7 @@ test.describe("pipelines editor", () => {
   });
 
   test("Escape deselects the step (closes its panel); Enter on a focused node re-selects it", async ({ page, backend }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");
@@ -698,7 +691,7 @@ test.describe("pipelines editor", () => {
     page,
     backend,
   }) => {
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");
@@ -726,7 +719,7 @@ test.describe("pipelines editor", () => {
     const name = `E2E Delete Me ${randomUUID()}`;
     const created = await createPipelineRest(backend, name);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     const row = page.locator(`[data-testid="pipelines-row"][data-pipeline-id="${created.id}"]`);
     await expect(row).toBeVisible();
@@ -749,11 +742,11 @@ test.describe("pipelines editor", () => {
     const created = await createPipelineRest(backend, name);
     createdPipelineIds.push(created.id);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-    await dialog.getByRole("button", { name: "Pipelines", exact: true }).click();
+    await dialog.getByRole("button", { name: "Library", exact: true }).click();
     const section = dialog.getByTestId("pipelines-section");
     await expect(section).toBeVisible();
     const sectionRow = section.locator(`[data-testid="pipelines-section-row"][data-pipeline-id="${created.id}"]`);
@@ -802,7 +795,7 @@ test.describe("pipelines editor", () => {
     createdProfileIds.push(alpha.id);
     await page.setViewportSize({ width: 1600, height: 900 });
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     await pipelinesButton(page).click();
     await page.getByTestId("pipelines-new").click();
     const editor = page.getByTestId("pipeline-editor");

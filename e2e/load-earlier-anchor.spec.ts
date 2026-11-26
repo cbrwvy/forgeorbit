@@ -176,7 +176,7 @@ function runPanel(page: Page): Locator {
 /** Scopes a locator to the board `TaskCard` for the given exact title —
  *  mirrors `e2e/task-switch-during-restore.spec.ts`'s identical helper. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator(".cursor-grab").filter({ has: page.getByText(title, { exact: true }) });
+  return page.locator('[data-testid="task-card"]').filter({ has: page.getByText(title, { exact: true }) });
 }
 
 /** Click a task card by its exact title and wait for the composer textarea

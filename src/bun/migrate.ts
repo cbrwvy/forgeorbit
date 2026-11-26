@@ -1,8 +1,12 @@
 import { Database } from "bun:sqlite";
 
 export interface Migration {
-  id: string;   // e.g. "001_init" — must match the .sql filename (without extension)
+  id: string;   // e.g. "001_init" — must match the versioned migration source basename
   sql: string;
+  /** Synchronous data migration inside the same write transaction. */
+  apply?: (db: Database) => void;
+  /** Commit preparation and the immediately following constraint migration together. */
+  atomicWithNext?: string;
   /** Previous ids used by pre-merge/dogfood branches before this migration was
    *  renumbered. If any alias is already present, the migration's SQL has
    *  already run and only the canonical id needs backfilling. */
@@ -85,7 +89,44 @@ export function splitSqlStatements(sql: string): string[] {
     .filter((s) => s.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().length > 0);
 }
 
+/**
+ * The profile was written by a newer ForgeOrbit than this build.
+ * Opening it is refused before any schema write, so the database is not
+ * downgraded or rewritten in place. Use the newer build, or restore a
+ * snapshot taken with this build into a different folder.
+ */
+export class SchemaAheadError extends Error {
+  readonly code = "SCHEMA_AHEAD";
+  readonly unknownIds: readonly string[];
+  constructor(unknownIds: readonly string[]) {
+    super(
+      `This profile uses a newer schema (${unknownIds.join(", ")}). This build will not open it or change it.`,
+    );
+    this.name = "SchemaAheadError";
+    this.unknownIds = unknownIds;
+  }
+}
+
+/** Migration ids recorded in the database that this build does not know. */
+export function unknownAppliedMigrationIds(db: Database, migrations: Migration[]): string[] {
+  const present = db.query<{ n: number }, []>(
+    "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '_migrations'",
+  ).get()?.n ?? 0;
+  if (!present) return [];
+  const known = new Set<string>();
+  for (const migration of migrations) {
+    known.add(migration.id);
+    for (const alias of migration.aliases ?? []) known.add(alias);
+  }
+  return db.query<{ id: string }, []>("SELECT id FROM _migrations").all()
+    .map((row) => row.id)
+    .filter((id) => !known.has(id))
+    .sort();
+}
+
 export function migrate(db: Database, migrations: Migration[]): string[] {
+  const unknown = unknownAppliedMigrationIds(db, migrations);
+  if (unknown.length > 0) throw new SchemaAheadError(unknown);
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
       id TEXT PRIMARY KEY,
@@ -109,11 +150,31 @@ export function migrate(db: Database, migrations: Migration[]): string[] {
 
   const pending = migrations.filter((m) => !applied.has(m.id));
 
-  const applyOne = db.transaction((m: Migration) => {
-    for (const statement of splitSqlStatements(m.sql)) db.run(statement);
-    db.run(`INSERT INTO _migrations (id, applied_at) VALUES (?, ?)`, [m.id, Date.now()]);
+  const result: string[] = [];
+  const applyGroup = db.transaction((group: Migration[]) => {
+    const ids: string[] = [];
+    for (const m of group) {
+      // Re-read under the writer lock: another connection may have migrated.
+      if (db.query('SELECT id FROM _migrations WHERE id = ?').get(m.id)) continue;
+      for (const statement of splitSqlStatements(m.sql)) db.run(statement);
+      m.apply?.(db);
+      db.run(`INSERT INTO _migrations (id, applied_at) VALUES (?, ?)`, [m.id, Date.now()]);
+      ids.push(m.id);
+    }
+    return ids;
   });
-
-  for (const m of pending) applyOne(m);
-  return pending.map((m) => m.id);
+  for (let i = 0; i < pending.length; i++) {
+    const m = pending[i]!;
+    const group = [m];
+    if (m.atomicWithNext) {
+      const at = migrations.indexOf(m);
+      if (migrations[at + 1]?.id !== m.atomicWithNext) throw new Error(`Missing atomic migration partner: ${m.atomicWithNext}`);
+      if (!applied.has(m.atomicWithNext)) {
+        if (pending[i + 1]?.id !== m.atomicWithNext) throw new Error('Invalid atomic migration order');
+        group.push(pending[++i]!);
+      }
+    }
+    result.push(...applyGroup.immediate(group));
+  }
+  return result;
 }

@@ -1244,6 +1244,7 @@ function normalizeWorkflowRun(raw: unknown): GitHubWorkflowRun | null {
     htmlUrl: typeof obj.html_url === "string" ? obj.html_url : "",
     createdAt: typeof obj.created_at === "string" ? obj.created_at : "",
     workflowId: typeof obj.workflow_id === "number" ? obj.workflow_id : 0,
+    headSha: typeof obj.head_sha === "string" && /^[0-9a-f]{40}$/i.test(obj.head_sha) ? obj.head_sha.toLowerCase() : null,
   };
 }
 

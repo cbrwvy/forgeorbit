@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { test, expect, type APIRequestContext, type E2EBackend, type Locator, type Page } from "./fixtures";
-import { gotoApp } from "./helpers";
+import { gotoBoard } from "./helpers";
 
 /**
  * Mirrors `FAKE_CLAUDE_TODOS_PROMPT_MARKER` in `src/bun/agents.ts` (kept as a
@@ -87,7 +87,7 @@ async function createAndStartFakeTodoTask(
  *  `cursor-grab` on the Card root unconditionally, the only stable hook
  *  available since board cards carry no `data-testid`. */
 function taskCard(page: Page, title: string): Locator {
-  return page.locator('[class*="cursor-grab"]').filter({ hasText: title });
+  return page.locator('[data-testid="task-card"]').filter({ hasText: title });
 }
 
 function runPanel(page: Page) {
@@ -114,7 +114,7 @@ test.describe("todo progress tracker", () => {
     const title = `todo-e2e ${randomUUID()}`;
     await createAndStartFakeTodoTask(request, backend, title);
 
-    await gotoApp(page, backend.bootBase);
+    await gotoBoard(page, backend.bootBase);
     const panel = await openTask(page, title);
 
     // The scenario's final chunk before "turn complete" — proof the whole

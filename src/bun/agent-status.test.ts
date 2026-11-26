@@ -11,7 +11,7 @@ import type { AgentKind, Harness } from "../shared/types.ts";
 // Without this, this file (or whichever file `bun test` loads first) can
 // silently open the real ~/.agetor-dev database.
 process.env.AGETOR_DATA_DIR = mkdtempSync(path.join(tmpdir(), "agetor-agent-status-db-"));
-const { checkHarness, upgradeHintFor, INSTALL_HINTS, __testing } = await import("./agent-status.ts");
+const { checkAllHarnesses, checkHarness, upgradeHintFor, INSTALL_HINTS, __testing } = await import("./agent-status.ts");
 
 function builtin(kind: AgentKind): Harness {
   return { id: kind, kind, label: kind, isBuiltin: true, home: null, bin: null, env: {}, enabled: true };
@@ -756,4 +756,23 @@ test("checkHarness re-probes once the cached entry's TTL has expired (stale-cach
   } finally {
     rmSync(counterDir, { recursive: true, force: true });
   }
+});
+
+
+test("FO-009F: dashboard Codex status checks binary presence without even a version launch", async () => {
+  sandbox = mkdtempSync(path.join(tmpdir(), "fo009f-passive-status-"));
+  const bin = path.join(sandbox, "fake-codex");
+  const marker = path.join(sandbox, "launched");
+  writeFileSync(bin, `#!/bin/sh\nprintf launched > '${marker}'\necho fake-version\n`, { mode: 0o700 });
+  process.env.AGETOR_CODEX_BIN = bin;
+  process.env.AGETOR_CLAUDE_BIN = "/bin/echo";
+  process.env.AGETOR_CURSOR_BIN = "/bin/echo";
+  process.env.AGETOR_GEMINI_BIN = "/bin/echo";
+  process.env.AGETOR_ANTIGRAVITY_BIN = "/bin/echo";
+  process.env.AGETOR_FX_BIN = "/bin/echo";
+  process.env.AGETOR_TMUX_BIN = "/bin/echo";
+  const { existsSync } = await import("node:fs");
+  const statuses = await checkAllHarnesses();
+  expect(statuses.find(s => s.harnessId === "codex")).toMatchObject({ available: true, path: bin, version: null, loggedIn: null });
+  expect(existsSync(marker)).toBe(false);
 });

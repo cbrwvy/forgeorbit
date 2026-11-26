@@ -9,8 +9,12 @@ import {
   openSection,
   openTemplates,
   resolveEscape,
+  LEGACY_SECTION_IDS,
+  resolveSection,
   SETTINGS_SECTIONS,
-  type SettingsSectionId,
+  SETTINGS_SUBSECTIONS,
+  subsectionsOf,
+  type PrimarySectionId,
   type SettingsView,
 } from "./settings-dialog-view.ts";
 import type { HarnessTemplate } from "../../shared/types.ts";
@@ -29,17 +33,47 @@ function template(overrides: Partial<HarnessTemplate> = {}): HarnessTemplate {
   };
 }
 
-const SECTION_IDS: SettingsSectionId[] = ["general", "harnesses", "agents", "pipelines", "git", "prompts"];
+const SECTION_IDS: PrimarySectionId[] = ["general", "providers", "autonomy", "plans", "tools", "library", "advanced"];
 
-test("SETTINGS_SECTIONS lists the six sidebar sections in order", () => {
+test("SETTINGS_SECTIONS lists the sidebar sections in order", () => {
   expect(SETTINGS_SECTIONS).toEqual([
     { id: "general", label: "General" },
-    { id: "harnesses", label: "Harnesses" },
-    { id: "agents", label: "Agents" },
-    { id: "pipelines", label: "Pipelines" },
-    { id: "git", label: "Git Integration" },
-    { id: "prompts", label: "Saved Prompts" },
+    { id: "providers", label: "AI providers and accounts" },
+    { id: "autonomy", label: "Autonomy and safety" },
+    { id: "plans", label: "Execution plans" },
+    { id: "tools", label: "Tools and access" },
+    { id: "library", label: "Library" },
+    { id: "advanced", label: "Advanced" },
   ]);
+});
+
+describe("legacy section ids", () => {
+  const expected = {
+    harnesses: { section: "providers", anchor: "harnesses" },
+    accounts: { section: "providers", anchor: "accounts" },
+    ai_router: { section: "providers", anchor: "ai_router" },
+    agents: { section: "library", anchor: "agents" },
+    pipelines: { section: "library", anchor: "pipelines" },
+    git: { section: "tools", anchor: "git" },
+    prompts: { section: "library", anchor: "prompts" },
+    backup: { section: "advanced", anchor: "backup" },
+  } as const;
+  for (const id of LEGACY_SECTION_IDS) {
+    test(`${id} still opens, on its new section and panel`, () => {
+      expect(resolveSection(id)).toEqual(expected[id]);
+      expect(openSection(id)).toEqual({ kind: "section", ...expected[id] });
+      expect(activeSection(openSection(id))).toBe(expected[id].section);
+    });
+  }
+  test("every subsection belongs to a real section, once", () => {
+    const ids = SETTINGS_SUBSECTIONS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const sub of SETTINGS_SUBSECTIONS) expect(SECTION_IDS).toContain(sub.section);
+    for (const section of SECTION_IDS) expect(subsectionsOf(section).length).toBeGreaterThan(0);
+  });
+  test("an explicit anchor wins over the one a legacy id implies", () => {
+    expect(openSection("autonomy", "owner_trust")).toEqual({ kind: "section", section: "autonomy", anchor: "owner_trust" });
+  });
 });
 
 test("initialView opens on the General section", () => {
@@ -104,22 +138,22 @@ describe("openAgentEditor", () => {
 
 describe("backFromSubview", () => {
   test("the templates view returns the Harnesses section", () => {
-    expect(backFromSubview(openTemplates())).toEqual({ kind: "section", section: "harnesses" });
+    expect(backFromSubview(openTemplates())).toEqual({ kind: "section", section: "providers", anchor: "harnesses" });
   });
 
   test("the harness editor view returns the Harnesses section", () => {
-    expect(backFromSubview(openEditor(null, template()))).toEqual({ kind: "section", section: "harnesses" });
+    expect(backFromSubview(openEditor(null, template()))).toEqual({ kind: "section", section: "providers", anchor: "harnesses" });
   });
 
   test("the agent editor view returns the Agents section (create and edit)", () => {
-    expect(backFromSubview(openAgentEditor(null))).toEqual({ kind: "section", section: "agents" });
-    expect(backFromSubview(openAgentEditor("prof-1"))).toEqual({ kind: "section", section: "agents" });
-    expect(backFromSubview(openAgentEditor(null, "prof-1"))).toEqual({ kind: "section", section: "agents" });
+    expect(backFromSubview(openAgentEditor(null))).toEqual({ kind: "section", section: "library", anchor: "agents" });
+    expect(backFromSubview(openAgentEditor("prof-1"))).toEqual({ kind: "section", section: "library", anchor: "agents" });
+    expect(backFromSubview(openAgentEditor(null, "prof-1"))).toEqual({ kind: "section", section: "library", anchor: "agents" });
   });
 
   for (const id of SECTION_IDS) {
     test(`a ${id} section view returns itself`, () => {
-      expect(backFromSubview(openSection(id))).toEqual({ kind: "section", section: id });
+      expect(backFromSubview(openSection(id))).toEqual(openSection(id));
     });
   }
 });
@@ -131,17 +165,17 @@ describe("activeSection", () => {
     });
   }
 
-  test("the templates view highlights Harnesses", () => {
-    expect(activeSection(openTemplates())).toBe("harnesses");
+  test("the templates view highlights AI providers", () => {
+    expect(activeSection(openTemplates())).toBe("providers");
   });
 
-  test("the editor view highlights Harnesses", () => {
-    expect(activeSection(openEditor(null, template()))).toBe("harnesses");
+  test("the editor view highlights AI providers", () => {
+    expect(activeSection(openEditor(null, template()))).toBe("providers");
   });
 
-  test("the agent editor view highlights Agents", () => {
-    expect(activeSection(openAgentEditor(null))).toBe("agents");
-    expect(activeSection(openAgentEditor("prof-1"))).toBe("agents");
+  test("the agent editor view highlights Library", () => {
+    expect(activeSection(openAgentEditor(null))).toBe("library");
+    expect(activeSection(openAgentEditor("prof-1"))).toBe("library");
   });
 });
 
@@ -186,23 +220,16 @@ describe("isFormSubpage", () => {
 });
 
 describe("round-trip conventions", () => {
-  test("openSection(activeSection(v)) is idempotent for a section view", () => {
-    const view = openSection("git");
+  test("openSection(activeSection(v)) is idempotent for a primary section view", () => {
+    const view = openSection("tools");
     expect(openSection(activeSection(view))).toEqual(view);
   });
 
-  test("openSection(activeSection(v)) lands back on Harnesses from templates", () => {
-    const view: SettingsView = openTemplates();
-    expect(openSection(activeSection(view))).toEqual(backFromSubview(view));
-  });
-
-  test("openSection(activeSection(v)) lands back on Harnesses from the editor", () => {
-    const view: SettingsView = openEditor(null, template());
-    expect(openSection(activeSection(view))).toEqual(backFromSubview(view));
-  });
-
-  test("openSection(activeSection(v)) lands back on Agents from the agent editor", () => {
-    const view: SettingsView = openAgentEditor("prof-1");
-    expect(openSection(activeSection(view))).toEqual(backFromSubview(view));
+  test("a subpage returns to the section (and panel) it was reached from", () => {
+    for (const view of [openTemplates(), openEditor(null, template()), openAgentEditor("prof-1")] as SettingsView[]) {
+      const back = backFromSubview(view);
+      expect(back.kind === "section" && back.section).toBe(activeSection(view));
+      expect(back.kind === "section" && back.anchor).toBeTruthy();
+    }
   });
 });

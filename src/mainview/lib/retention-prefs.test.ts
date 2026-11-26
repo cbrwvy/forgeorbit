@@ -148,7 +148,7 @@ describe("formatBytes", () => {
 
   test("bytes below 1 KB", () => {
     expect(formatBytes(1)).toBe("1 B");
-    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1023)).toBe("1,023 B");
   });
 
   test("KB and MB take one decimal, GB takes two", () => {
@@ -160,7 +160,7 @@ describe("formatBytes", () => {
   });
 
   test("anything past GB stays in GB", () => {
-    expect(formatBytes(2048 * 1024 ** 3)).toBe("2048.00 GB");
+    expect(formatBytes(2048 * 1024 ** 3)).toBe("2,048.00 GB");
   });
 });
 

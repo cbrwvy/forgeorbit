@@ -158,7 +158,7 @@ async function openSettingsAgents(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog").filter({ has: page.locator("#settings-dialog-title") });
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Agents", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   const section = dialog.getByTestId("agent-profiles-section");
   await expect(section).toBeVisible();
   return section;
@@ -168,7 +168,7 @@ async function openSettingsPipelines(page: Page): Promise<Locator> {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog").filter({ has: page.locator("#settings-dialog-title") });
   await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Pipelines", exact: true }).click();
+  await dialog.getByRole("button", { name: "Library", exact: true }).click();
   const section = dialog.getByTestId("pipelines-section");
   await expect(section).toBeVisible();
   return section;

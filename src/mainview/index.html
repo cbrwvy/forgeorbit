@@ -76,6 +76,15 @@
       // → 100 (FONT_SIZE_DEFAULT, the default AND minimum). At exactly 100
       // nothing is written — the inline style stays omitted, matching the
       // "pristine at default" contract.
+      // Control density (Compact/Default/Comfortable, FO-UX02-B): localStorage
+      // `agetor:density`; default is the absence of the attribute. Inline copy
+      // of parseDensity (src/mainview/lib/density.ts).
+      (function () {
+        try {
+          var d = window.localStorage.getItem("agetor:density");
+          if (d === "compact" || d === "comfortable") document.documentElement.setAttribute("data-density", d);
+        } catch (e) {}
+      })();
       (function () {
         var fontSize = 100;
         try {
@@ -139,7 +148,7 @@
     </style>
   </head>
   <body class="bg-background text-foreground antialiased">
-    <div id="splash" role="status" aria-label="Loading ForgeOrbit"><img src="./splash-logo.png" alt="" /></div>
+    <div id="splash" role="status" aria-label="ForgeOrbit"><img src="./splash-logo.png" alt="" /></div>
     <div id="root"></div>
     <script type="module" src="/main.tsx"></script>
   </body>

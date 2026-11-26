@@ -9,11 +9,10 @@
   <string>ForgeOrbit</string>
   <key>CFBundleDisplayName</key>
   <string>ForgeOrbit</string>
-  <!-- Distinct from the main app's com.lunarianforge.forgeorbit. MUST stay stable across
-       releases: TCC keys the granted notification permission on this id, so
-       changing it would re-prompt the user. -->
+  <!-- Distinct from app.forgeorbit and app.forgeorbit.qa. A new id asks for
+       notification permission again. The previous grant is left in place. -->
   <key>CFBundleIdentifier</key>
-  <string>com.lunarianforge.forgeorbit.notifier</string>
+  <string>app.forgeorbit.notifier</string>
   <key>CFBundleExecutable</key>
   <string>notifier</string>
   <key>CFBundlePackageType</key>

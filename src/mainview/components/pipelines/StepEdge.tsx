@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import { memo, useEffect, useRef, useState } from "react";
 import {
   BaseEdge,
@@ -48,6 +50,7 @@ function StepEdgeImpl({
   data,
   selected,
 }: EdgeProps<StepFlowEdgeType>) {
+  useUILocale();
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -140,14 +143,14 @@ function StepEdgeImpl({
             // `nopan nodrag`: React Flow's opt-out classes — a press on the
             // pill (its × button, or just the label) must not start a pane
             // pan / a node drag underneath it.
-            className="nopan nodrag pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground shadow-sm"
+            className="nopan nodrag pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-card px-1.5 py-0.5 text-[length:var(--text-caption)] text-muted-foreground shadow-sm"
           >
-            {data?.label && <span className="max-w-24 truncate">{data.label}</span>}
+            {data?.label && <span className="max-w-40 truncate" title={data.label}>{data.label}</span>}
             {data?.onDelete && !data?.readOnly && (
               <button
                 type="button"
                 data-testid="pipeline-step-edge-delete"
-                title="Remove connection"
+                title={tr("pipelines.remove_connection")}
                 onClick={() => data.onDelete?.(id)}
                 className="rounded-full p-0.5 hover:bg-accent hover:text-foreground"
               >

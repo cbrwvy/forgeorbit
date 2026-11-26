@@ -1,3 +1,6 @@
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useState } from "react";
 import { Download, ExternalLink, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +33,7 @@ interface Props {
  * (docs/plans/agents-pipelines-import-export.md C13).
  */
 export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
+  useUILocale();
   const { pipelines, loading, error: loadError, refresh } = usePipelines();
   const confirm = useConfirm();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -38,15 +42,15 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
 
   const remove = async (p: Pipeline) => {
     const n = p.taskCount ?? 0;
-    const ok = await confirm({
-      title: `Delete "${p.name}"?`,
+    const ok = await confirm(() => ({
+      title: tr("common.delete_988654", { p0: String(p.name) }),
       description:
         n > 0
-          ? `Used by ${n} task(s). Deleting it never affects tasks that already ran — they keep their frozen snapshot — but no new run can be started from it.`
-          : "This can't be undone.",
-      confirmLabel: "Delete pipeline",
+          ? tr("common.used_by_task_s_deleting_it_never_affects", { p0: String(n) })
+          : tr("common.this_can_t_be_undone"),
+      confirmLabel: tr("common.delete_pipeline"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     setBusyId(p.id);
     setActionError(null);
@@ -54,7 +58,7 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
       await api.deletePipeline(p.id);
       await refresh();
     } catch (e) {
-      setActionError(e instanceof ApiError ? e.message : "Failed to delete pipeline.");
+      setActionError(e instanceof ApiError ? e.message : tr("common.failed_to_delete_pipeline"));
     } finally {
       setBusyId(null);
     }
@@ -68,7 +72,7 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
       {...bundle.dropProps}
     >
       <div className="flex items-center justify-between">
-        <label className="text-xs text-muted-foreground">Pipelines</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="common.pipelines" /></label>
         <div className="flex items-center gap-1.5">
           <Button
             variant="ghost"
@@ -77,16 +81,14 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
             onClick={() => onOpenPipelines(null, false)}
             className="gap-1"
           >
-            <ExternalLink className="size-3.5" /> Open pipelines page
-          </Button>
+            <ExternalLink className="size-3.5" />{" "}<I18nText id="settings.open_pipelines_page" />{" "}</Button>
           <Button
             variant="outline"
             size="sm"
             data-testid="pipelines-section-new"
             onClick={() => onOpenPipelines(null, true)}
           >
-            <Plus className="mr-1 size-3.5" /> New pipeline
-          </Button>
+            <Plus className="mr-1 size-3.5" />{" "}<I18nText id="common.new_pipeline" />{" "}</Button>
         </div>
       </div>
 
@@ -96,11 +98,11 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
       {loadError && <p className="text-xs text-danger">{loadError}</p>}
 
       {loading ? (
-        <p className="text-xs text-muted-foreground">Loading pipelines…</p>
+        <p className="text-xs text-muted-foreground"><I18nText id="common.loading_pipelines" /></p>
       ) : pipelines.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
           <Workflow className="size-5 text-muted-foreground" aria-hidden />
-          <p className="text-xs text-muted-foreground">No pipelines yet.</p>
+          <p className="text-xs text-muted-foreground"><I18nText id="common.no_pipelines_yet" /></p>
         </div>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -117,7 +119,7 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
                 className="mt-1 size-3.5 shrink-0 accent-primary"
                 checked={bundle.isSelected(p.id)}
                 onChange={() => bundle.toggle(p.id)}
-                aria-label={`Select ${p.name}`}
+                aria-label={tr("common.select_8d2979", { p0: String(p.name) })}
               />
               <Workflow className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
               <div className="min-w-0 flex-1">
@@ -130,8 +132,8 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
                   {p.name}
                 </button>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {p.graph.steps.length} step{p.graph.steps.length === 1 ? "" : "s"} · Used by{" "}
-                  {p.taskCount ?? 0} task{(p.taskCount ?? 0) === 1 ? "" : "s"}
+                  {p.graph.steps.length}{" "}<I18nText id="common.step" />{p.graph.steps.length === 1 ? "" : englishPluralSuffix()}{" "}<I18nText id="common.used_by" />{" "}
+                  {p.taskCount ?? 0}{" "}<I18nText id="common.task" />{(p.taskCount ?? 0) === 1 ? "" : englishPluralSuffix()}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
@@ -139,8 +141,8 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  title="Export"
-                  aria-label={`Export ${p.name}`}
+                  title={tr("common.export")}
+                  aria-label={tr("common.export_5edce4", { p0: String(p.name) })}
                   data-testid="bundle-row-export"
                   onClick={() => bundle.exportOne(p.id)}
                   className="size-8"
@@ -151,7 +153,7 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  title="Edit"
+                  title={tr("common.edit")}
                   data-testid="pipelines-section-edit"
                   disabled={busyId === p.id}
                   onClick={() => onOpenPipelines(p.id, true)}
@@ -163,7 +165,7 @@ export function PipelinesSection({ onOpenPipelines, onImported }: Props) {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  title="Delete"
+                  title={tr("common.delete")}
                   data-testid="pipelines-section-delete"
                   disabled={busyId === p.id}
                   onClick={() => void remove(p)}

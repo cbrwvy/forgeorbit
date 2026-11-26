@@ -126,7 +126,7 @@ test("/agent-discovery returns commands + extensions for a known agent", async (
   expect(Array.isArray(body.extensions)).toBe(true);
 });
 
-test("PATCH ignores server-managed fields and only writes the allow-listed ones", async () => {
+test("PATCH rejects an isolation change and ignores server-managed fields", async () => {
   // Seed a task we can poke at.
   const created = await fetch(url("/tasks"), {
     method: "POST",
@@ -157,16 +157,51 @@ test("PATCH ignores server-managed fields and only writes the allow-listed ones"
       isolation: "worktree",
     }),
   });
-  expect(patched.status).toBe(200);
-  const after = await patched.json();
-  expect(after.id).toBe(task.id);                 // id can't be overridden
-  expect(after.title).toBe("renamed");            // allowed
-  expect(after.column).toBe("review");            // allowed
-  expect(after.branch).toBeNull();                // not in allow-list, stayed null
-  expect(after.worktreePath).toBeNull();          // not in allow-list
-  expect(after.baseRef).toBeNull();               // not in allow-list
-  expect(after.runId).toBeNull();                 // not in allow-list
-  expect(after.isolation).toBe("none");           // not in allow-list, stayed
+  // Isolation is create-only (security change 1cc094f). A request that tries
+  // to change it is refused as a whole — HTTP 409, code isolation-immutable —
+  // rather than silently applying the other fields.
+  expect(patched.status).toBe(409);
+  const refusal = await patched.json();
+  expect(refusal.code).toBe("isolation-immutable");
+
+  const unchanged = await fetch(url(`/tasks/${task.id}`), {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(unchanged.status).toBe(200);
+  const current = await unchanged.json();
+  expect(current.id).toBe(task.id);               // id can't be overridden
+  expect(current.title).toBe("t");                // whole request refused
+  expect(current.column).toBe("backlog");         // whole request refused
+  expect(current.branch).toBeNull();              // not in allow-list
+  expect(current.worktreePath).toBeNull();        // not in allow-list
+  expect(current.baseRef).toBeNull();             // not in allow-list
+  expect(current.runId).toBeNull();               // not in allow-list
+  expect(current.isolation).toBe("none");         // immutable, stayed
+
+  // The ordinary allow-list contract is unchanged when isolation is not sent.
+  const allowed = await fetch(url(`/tasks/${task.id}`), {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      title: "renamed",
+      column: "review",
+      branch: "/etc/passwd",
+      worktreePath: "/etc/passwd",
+      baseRef: "deadbeef",
+      runId: "fake-run",
+      id: "different-id",
+    }),
+  });
+  expect(allowed.status).toBe(200);
+  const after = await allowed.json();
+  expect(after.id).toBe(task.id);
+  expect(after.title).toBe("renamed");
+  expect(after.column).toBe("review");
+  expect(after.branch).toBeNull();
+  expect(after.worktreePath).toBeNull();
+  expect(after.baseRef).toBeNull();
+  expect(after.runId).toBeNull();
+  expect(after.isolation).toBe("none");
 });
 
 test("PATCH /harnesses/:id accepts `enabled` on a built-in (carve-out from immutability)", async () => {

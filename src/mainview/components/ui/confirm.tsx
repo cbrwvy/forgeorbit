@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { useLocale as useUILocale } from "@/i18n/react";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
@@ -13,10 +15,12 @@ export interface ConfirmOptions {
   variant?: "default" | "destructive";
 }
 
+export type ConfirmRequest = ConfirmOptions | (() => ConfirmOptions);
+
 type Resolver = (ok: boolean) => void;
 
 const ConfirmContext = React.createContext<
-  ((opts: ConfirmOptions) => Promise<boolean>) | null
+  ((opts: ConfirmRequest) => Promise<boolean>) | null
 >(null);
 
 const TITLE_ID = "agetor-confirm-title";
@@ -40,7 +44,9 @@ const DESC_ID = "agetor-confirm-desc";
  * the dialog that asked, instead of under it.
  */
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
-  const [pending, setPending] = React.useState<ConfirmOptions | null>(null);
+  useUILocale();
+  const [request, setPending] = React.useState<{ render: () => ConfirmOptions } | null>(null);
+  const pending = request?.render() ?? null;
   // Single source of truth for the active resolver. `pending` only describes
   // what to render.
   const activeResolver = React.useRef<Resolver | null>(null);
@@ -48,13 +54,13 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const cancelBtnRef = React.useRef<HTMLButtonElement>(null);
   const confirmBtnRef = React.useRef<HTMLButtonElement>(null);
 
-  const confirm = React.useCallback((opts: ConfirmOptions) => {
+  const confirm = React.useCallback((opts: ConfirmRequest) => {
     // If a dialog is already open and a new confirm() is requested, resolve
     // the previous one with `false` so its caller doesn't hang.
     activeResolver.current?.(false);
     return new Promise<boolean>((resolve) => {
       activeResolver.current = resolve;
-      setPending(opts);
+      setPending({ render: typeof opts === "function" ? opts : () => opts });
     });
   }, []);
 
@@ -96,14 +102,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                   variant="outline"
                   onClick={() => settle(false)}
                 >
-                  {pending.cancelLabel ?? "Cancel"}
+                  {pending.cancelLabel ?? tr("common.cancel")}
                 </Button>
                 <Button
                   ref={confirmBtnRef}
                   variant={pending.variant === "destructive" ? "destructive" : "default"}
                   onClick={() => settle(true)}
                 >
-                  {pending.confirmLabel ?? "Confirm"}
+                  {pending.confirmLabel ?? tr("common.confirm")}
                 </Button>
               </div>
             </>

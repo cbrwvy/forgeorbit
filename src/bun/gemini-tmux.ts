@@ -1,3 +1,4 @@
+import { prepareGeminiStdinLaunch, verifyGeminiStdinConfiguration } from "./gemini-stdin.ts";
 import {
   existsSync,
   mkdirSync,
@@ -8,6 +9,7 @@ import {
   closeSync as fsCloseSync,
   statSync as fsStatSync,
   writeFileSync,
+  chmodSync,
   unlinkSync,
 } from "node:fs";
 import { StringDecoder } from "node:string_decoder";
@@ -29,6 +31,7 @@ import {
   type ChunkHandler,
   type SpawnedAgent,
 } from "./claude-tmux.ts";
+import { makeTerminator, type TerminationEvidence } from "./process-termination.ts";
 
 /**
  * Driver that hosts a single `gemini` turn inside a per-task tmux session and
@@ -52,13 +55,10 @@ import {
  *     correctly recalls context established under `--session-id <uuid>` on
  *     an earlier one.
  *
- *  2. Prompt rides in argv, not stdin. Codex's argv ends in a bare `-`
- *     (its stdin sentinel) and the shell wrapper pipes the prompt in via a
- *     file redirect, so the prompt text never touches the tmux client
- *     command string. Gemini's `-p <prompt>` value IS an argv token (see
- *     `GEMINI_PROMPT_ARGV_MAX_BYTES` in agents.ts for the resulting size
- *     cap) — so unlike codex, there's no prompt file to write here at all;
- *     the shell wrapper below has no stdin redirect.
+ *  2. Prompt rides through a private manifest into the existing CLI's stdin.
+ *     A small Bun transport supervisor suppresses user echoes/raw diagnostics
+ *     before writing the recoverable NDJSON log. Interactive mode and upstream
+ *     sandbox relaunch cannot meet this contract and are refused.
  *
  * Capture mechanism, same as codex: wrap the gemini argv in
  * `sh -c 'exec <argv> > <log-file> 2>&1'`. gemini's `stream-json` stdout is
@@ -223,8 +223,12 @@ interface GeminiSessionState {
   seq: { n: number };
   onChunk: ChunkHandler;
   resolved: boolean;
+  /** Set once a Stop begins: the vanished session is the Owner's doing, not a crash. */
+  terminating?: boolean;
   lastCode: number | null;
   resolveDone: (code: number) => void;
+  inputCleanup?: () => void;
+  expectedSessionId?: string;
 }
 
 const geminiSessions = new Map<string, GeminiSessionState>(); // taskId -> state
@@ -292,6 +296,13 @@ function flushGeminiLog(state: GeminiSessionState): void {
 }
 
 function dispatchGeminiEvent(state: GeminiSessionState, evt: GeminiEvent): void {
+  if (evt.type === "init" && state.expectedSessionId && evt.session_id !== state.expectedSessionId) {
+    state.onChunk("status", `${SESSION_DIED_STATUS_PREFIX}approved Gemini session identity mismatch — task blocked`);
+    state.lastCode = 1;
+    killGeminiState(state);
+    return;
+  }
+  if (state.lastCode === 1 && state.expectedSessionId && evt.type !== "init") return;
   // Wrap onChunk to apply the seenLineUuids dedup (idempotent reattach replay).
   const onChunk: ChunkHandler = (stream, data, lineUuid) => {
     if (lineUuid) {
@@ -311,6 +322,7 @@ function resolveGeminiDone(state: GeminiSessionState, code: number): void {
   if (state.resolved) return;
   state.resolved = true;
   disposeGeminiState(state);
+  state.inputCleanup?.();
   geminiSessions.delete(state.taskId);
   // The run is terminal now: its events are persisted in run_events (the panel
   // replays from the DB, not the log) and reattach only applies to running
@@ -371,6 +383,7 @@ function startGeminiTailer(state: GeminiSessionState): Promise<number> {
     tickInFlight = true;
     void (async () => {
       try {
+        if (state.terminating) return;
         tryWatch();
         const liveness = await probe.probe();
         const outcome = deathTickOutcome({
@@ -422,11 +435,13 @@ const sq = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 // tmux-resolution.ts — shared verbatim with codex-tmux.ts/cursor-tmux.ts.
 
 export interface GeminiLaunchOptions {
+  authorize?: () => boolean;
   taskId: string;
   runId: string;
-  /** gemini argv from `buildCommand` — `[bin, "-m", …flags, "-p", prompt]`.
-   *  The prompt rides in argv (not stdin) — see agents.ts for why. */
+  /** Headless argv from buildCommand; -p has an empty value. User bytes are off argv. */
   argv: string[];
+  promptText: string;
+  expectedSessionId?: string;
   /** Env to forward into the gemini process (GEMINI_CLI_HOME + harness env). */
   env: Record<string, string>;
   cwd: string;
@@ -439,20 +454,22 @@ export interface GeminiLaunchOptions {
  * turn ends (0 on a `result` event with `status: "success"`, 1 otherwise).
  */
 export async function spawnGeminiViaTmux(opts: GeminiLaunchOptions): Promise<SpawnedAgent> {
+  verifyGeminiStdinConfiguration(opts.cwd, opts.env, opts.argv);
   ensureLogDir();
   const logPath = geminiLogPath(opts.runId);
   // Truncate/create the log up front so the tailer's first stat succeeds and
   // offsets start at 0 cleanly even if a stale file from a reused id lingers.
-  writeFileSync(logPath, "");
+  writeFileSync(logPath, "", { mode: 0o600 });
+  chmodSync(logPath, 0o600);
 
   const sessionName = sessionNameFor(opts.taskId);
   // Defensive: a zombie session under this name would make new-session fail.
   await killSessionByName(sessionName);
 
   const tmux = resolveTmuxBin();
-  // No stdin redirect — unlike codex, gemini's prompt is already an argv
-  // token (`-p <prompt>`) baked into `opts.argv` by buildCommand.
-  const inner = `exec ${opts.argv.map(sq).join(" ")} > ${sq(logPath)} 2>&1`;
+  // Only fixed supervisor code and a private manifest path reach tmux argv.
+  const input = prepareGeminiStdinLaunch(path.join(dataDir, "gemini-inputs"), opts.argv, opts.promptText);
+  const inner = `${input.command} > ${sq(logPath)} 2>/dev/null`;
   const envArgs: string[] = [];
   // Forward PATH so gemini's own shell-tool invocations resolve dev binaries,
   // plus the harness env (GEMINI_CLI_HOME) that controls gemini's login/history.
@@ -467,13 +484,18 @@ export async function spawnGeminiViaTmux(opts: GeminiLaunchOptions): Promise<Spa
     ...envArgs,
     "--", "sh", "-c", inner,
   ];
-  const res = await spawnTmuxNewSession(tmux, args);
+  let res;
+  try { res = await spawnTmuxNewSession(tmux, args, opts.authorize); }
+  catch (error) { input.cleanup(); throw error; }
+  if (res.status !== 0) input.cleanup();
 
   const state: GeminiSessionState = {
     taskId: opts.taskId,
     runId: opts.runId,
     sessionName,
     logPath,
+    inputCleanup: input.cleanup,
+    expectedSessionId: opts.expectedSessionId,
     offset: 0,
     decoder: new StringDecoder("utf8"),
     partial: "",
@@ -500,6 +522,7 @@ export async function spawnGeminiViaTmux(opts: GeminiLaunchOptions): Promise<Spa
   const done = startGeminiTailer(state);
   return {
     kill: () => killGeminiState(state),
+    terminate: () => geminiTerminator(state)(),
     // gemini doesn't accept conversational input mid-turn; follow-ups are
     // delivered as fresh `--resume` turns (new run rows) by the orchestrator.
     writeInput: () => false,
@@ -514,28 +537,34 @@ export async function spawnGeminiViaTmux(opts: GeminiLaunchOptions): Promise<Spa
  * decides cancelled-vs-failed from its own `handle.cancelled` flag, so the
  * resolution code here is immaterial to the recorded status.
  */
+const geminiTerminators = new WeakMap<GeminiSessionState, () => Promise<TerminationEvidence>>();
+
+/** One terminator per session: a stop kills the tmux session, escalates, and settles only when the process is gone. */
+function geminiTerminator(state: GeminiSessionState): () => Promise<TerminationEvidence> {
+  let terminator = geminiTerminators.get(state);
+  if (!terminator) {
+    terminator = makeTerminator({
+      sessionName: state.sessionName,
+      begin: () => { state.terminating = true; },
+      settle: () => {
+        setTimeout(() => {
+          flushGeminiLog(state);
+          resolveGeminiDone(state, state.lastCode ?? 1);
+        }, DEATH_GRACE_MS);
+      },
+    });
+    geminiTerminators.set(state, terminator);
+  }
+  return terminator;
+}
+
+/** `kill` is a synchronous `SpawnedAgent` field; the confirmed stop is `terminate`. */
 function killGeminiState(state: GeminiSessionState): void {
-  // `kill` is a synchronous `SpawnedAgent` field (shared contract in
-  // claude-tmux.ts), so the now-async tmux kill is fired-and-forgotten here
-  // rather than awaited — never left unhandled: a rejection still falls
-  // through to schedule the flush + resolve so the run can't hang.
-  void (async () => {
-    try {
-      await killSessionByName(state.sessionName);
-    } catch {
-      // best-effort — killSessionByName is expected to never throw (its
-      // underlying tmux() swallows spawn errors into an ok:false result),
-      // but this path must never leave the run stuck in `running` even if
-      // that changes.
-    }
-    setTimeout(() => {
-      flushGeminiLog(state);
-      resolveGeminiDone(state, state.lastCode ?? 1);
-    }, DEATH_GRACE_MS);
-  })();
+  void geminiTerminator(state)().catch(() => undefined);
 }
 
 export interface GeminiReattachOptions {
+  expectedSessionId?: string;
   taskId: string;
   runId: string;
   sessionName: string;
@@ -574,6 +603,7 @@ export async function reattachGeminiSession(opts: GeminiReattachOptions): Promis
   const done = startGeminiTailer(state);
   return {
     kill: () => killGeminiState(state),
+    terminate: () => geminiTerminator(state)(),
     writeInput: () => false,
     done,
   };

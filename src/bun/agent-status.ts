@@ -1,4 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
+import { isCodexProfile, selectedCodexAccount, CodexProfiles } from "./codex-profiles.ts";
+import { isClaudeProfile, selectedClaudeAccount, ClaudeProfiles } from "./claude-profiles.ts";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { TMUX_MISSING_REASON, type AgentKind, type ClaudeAccount, type Harness, type HarnessStatus } from "../shared/types.ts";
 import { resolveBin, harnessEnv } from "./agents.ts";
@@ -331,6 +333,36 @@ async function probeStatus(bin: string, env: Record<string, string>): Promise<{ 
   return { loggedIn: true, authHelp: null };
 }
 
+async function probeCursorStatus(
+  path: string,
+  env: Record<string, string>,
+): Promise<{ loggedIn: boolean | null; authHelp: string | null }> {
+  try {
+    const proc = Bun.spawn([path, "status", "--format", "json"], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+      env: { ...process.env, ...env, NO_COLOR: "1" },
+    });
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* best effort */
+      }
+    }, 4000);
+    const text = await new Response(proc.stdout).text();
+    clearTimeout(timer);
+    const parsed = JSON.parse(text) as { isAuthenticated?: boolean; status?: string };
+    if (parsed.isAuthenticated === true || parsed.status === "authenticated") {
+      return { loggedIn: true, authHelp: null };
+    }
+    return { loggedIn: false, authHelp: "Run cursor-agent login to sign in." };
+  } catch {
+    return { loggedIn: null, authHelp: null };
+  }
+}
+
 type StatusProbeResult = { loggedIn: boolean | null; authHelp: string | null };
 
 const STATUS_CACHE_TTL_MS = 60_000;
@@ -350,18 +382,29 @@ const statusCache = new Map<string, { value: StatusProbeResult; expiresAt: numbe
  * result is still written back to the cache so the *next* poll tick benefits
  * from it instead of immediately re-probing.
  */
+function statusCacheKey(harness: Harness, path: string): string {
+  // In-memory only; hash the exact local configuration without exposing it to callers.
+  return `${harness.id}:${path}:${Bun.hash(JSON.stringify([harness.home, harness.env]))}`;
+}
+
+export function cachedHarnessAuthentication(harness: Harness, now = Date.now()): boolean | null {
+  const path = resolveBinPath(resolveBin(harness));
+  const row = path ? statusCache.get(statusCacheKey(harness, path)) : undefined;
+  return row && row.expiresAt > now ? row.value.loggedIn : null;
+}
+
 async function getCachedStatus(
   harness: Harness,
   path: string,
   env: Record<string, string>,
   opts: { freshAuth?: boolean } | undefined,
 ): Promise<StatusProbeResult> {
-  const key = `${harness.id}:${path}`;
+  const key = statusCacheKey(harness, path);
   if (!opts?.freshAuth) {
     const cached = statusCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
   }
-  const value = await probeStatus(path, env);
+  const value = harness.kind === "cursor" ? await probeCursorStatus(path, env) : await probeStatus(path, env);
   statusCache.set(key, { value, expiresAt: Date.now() + STATUS_CACHE_TTL_MS });
   return value;
 }
@@ -384,7 +427,7 @@ const FX_WRONG_BINARY_HINT =
  * `Bun.which`'s internal cache won't see the mutation. The options object
  * forces a fresh lookup against whatever we currently have on `process.env`.
  */
-function resolveBinPath(bin: string): string | null {
+export function resolveBinPath(bin: string): string | null {
   if (!bin) return null;
   if (isAbsolute(bin)) return existsSync(bin) ? bin : null;
   return Bun.which(bin, { PATH: process.env.PATH });
@@ -413,6 +456,47 @@ function claudeAccountFields(harness: Harness): { account: ClaudeAccount | null;
 }
 
 /**
+ * The last version a real probe read for a resolved executable (Direction 9). A passive screen
+ * (Settings, Accounts) must not start a provider CLI, so it can only report what an earlier,
+ * explicit check already read. The record is bound to the executable's path, size and mtime: a
+ * replaced or upgraded binary is "not checked" again, never the old version.
+ */
+const probedVersions = new Map<string, { path: string; signature: string; raw: string | null }>();
+
+function fileSignature(path: string): string {
+  try {
+    const st = statSync(path);
+    return `${st.size}:${st.mtimeMs}`;
+  } catch {
+    return "absent";
+  }
+}
+
+function rememberProbedVersion(harness: Harness, path: string, raw: string | null): void {
+  probedVersions.set(harness.id, { path, signature: fileSignature(path), raw });
+}
+
+/** What an earlier probe read for this harness's current executable, or `not-checked`. Starts nothing. */
+export function lastProbedVersion(harness: Harness, path: string | null): { raw: string | null; state: "read" | "unreadable" | "not-checked" } {
+  if (!path) return { raw: null, state: "not-checked" };
+  const saved = probedVersions.get(harness.id);
+  if (!saved || saved.path !== path || saved.signature !== fileSignature(path)) return { raw: null, state: "not-checked" };
+  return { raw: saved.raw, state: saved.raw !== null && /\d+\.\d+\.\d+/.test(saved.raw) ? "read" : "unreadable" };
+}
+
+/**
+ * An explicit, Owner-initiated version read of one harness's executable (the "Check" button on an
+ * account, a launch review). Remembered for passive screens. Never called by opening a screen.
+ */
+export async function probeHarnessVersion(harness: Harness): Promise<string | null> {
+  const path = resolveBinPath(resolveBin(harness));
+  if (!path) return null;
+  const version = await probeVersion(path, harnessEnv(harness));
+  rememberProbedVersion(harness, path, version);
+  return version;
+}
+
+/**
  * `opts.freshAuth` bypasses the fx auth-status cache (see `getCachedStatus`
  * above) for this one call. Start (`orchestrator.ts`'s `startTask`) passes
  * `{ freshAuth: true }` — a user who just ran `fx login` must not be refused
@@ -427,8 +511,52 @@ function claudeAccountFields(harness: Harness): { account: ClaudeAccount | null;
  * never hit by `startTask` itself since that call always passes
  * `freshAuth: true`.
  */
-export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolean }): Promise<HarnessStatus> {
+export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolean; probeVersion?: boolean }): Promise<HarnessStatus> {
   const bin = resolveBin(harness);
+  if (isCodexProfile(harness) && opts?.freshAuth) {
+    try {
+      const account = selectedCodexAccount(harness)!;
+      const checked = await new CodexProfiles().check(account.id);
+      // The profile launch is gated on the model's minimum CLI version like every other launch. A
+      // null version here used to read as "unknown" and let a too-old CLI through (Direction 9).
+      const profilePath = resolveBinPath(bin);
+      const profileVersion = profilePath && opts?.probeVersion !== false ? await probeVersion(profilePath, harnessEnv(harness)) : null;
+      if (profilePath && opts?.probeVersion !== false) rememberProbedVersion(harness, profilePath, profileVersion);
+      return { harnessId: harness.id, kind: harness.kind, bin, path: profilePath, version: profileVersion,
+        available: checked.availability === "ready", loggedIn: checked.authentication === "authenticated",
+        reason: checked.availability === "ready" ? null : "Selected Codex profile is unavailable; no default fallback.",
+        authHelp: "Check this profile in Settings → Accounts.", installHint: null, account: null, usage: null };
+    } catch {
+      return { harnessId: harness.id, kind: harness.kind, bin, path: null, version: null, available: false, loggedIn: false,
+        reason: "Selected Codex profile is missing or changed; no default fallback.", authHelp: null, installHint: null, account: null, usage: null };
+    }
+  }
+  if (isClaudeProfile(harness)) {
+    if (opts?.freshAuth) {
+      try {
+        const account = selectedClaudeAccount(harness);
+        const checked = await new ClaudeProfiles().check(account.id);
+        const profilePath = resolveBinPath(bin);
+        const profileVersion = profilePath && opts?.probeVersion !== false ? await probeVersion(profilePath, harnessEnv(harness)) : null;
+        if (profilePath && opts?.probeVersion !== false) rememberProbedVersion(harness, profilePath, profileVersion);
+        return { harnessId: harness.id, kind: harness.kind, bin, path: profilePath, version: profileVersion,
+          available: checked.availability === "ready", loggedIn: checked.authentication === "authenticated",
+          reason: checked.availability === "ready" ? null : "Selected Claude profile is unavailable; no default fallback.",
+          authHelp: "Check this profile in Settings → Accounts.", installHint: null, account: null, usage: null };
+      } catch (err) {
+        return { harnessId: harness.id, kind: harness.kind, bin, path: null, version: null, available: false, loggedIn: false,
+          reason: err instanceof Error ? err.message : "Selected Claude profile is missing or changed; no default fallback.",
+          authHelp: null, installHint: null, account: null, usage: null };
+      }
+    }
+    try {
+      selectedClaudeAccount(harness);
+    } catch (err) {
+      return { harnessId: harness.id, kind: harness.kind, bin, path: resolveBinPath(bin), version: null, available: false, loggedIn: null,
+        reason: err instanceof Error ? err.message : "Selected Claude profile is unavailable; no default fallback.",
+        authHelp: "Check this profile in Settings → Accounts.", installHint: null, account: null, usage: null };
+    }
+  }
   const path = resolveBinPath(bin);
   const accountFields = claudeAccountFields(harness);
   if (!path) {
@@ -472,7 +600,8 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
     // the system install and always passes — no per-harness symlink needed.
   }
 
-  const version = await probeVersion(path, harnessEnv(harness));
+  const version = opts?.probeVersion === false ? null : await probeVersion(path, harnessEnv(harness));
+  if (opts?.probeVersion !== false) rememberProbedVersion(harness, path, version);
 
   // fx-only pre-flight auth state. `available: true` regardless — the binary
   // IS installed and IS Vercel's fx; being logged out is a separate state
@@ -516,6 +645,11 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
     ({ loggedIn, authHelp } = status);
   }
 
+  if (harness.kind === "cursor" && version !== null) {
+    const env = harnessEnv(harness);
+    ({ loggedIn, authHelp } = await getCachedStatus(harness, path, env, opts));
+  }
+
   return {
     harnessId: harness.id,
     kind: harness.kind,
@@ -537,10 +671,21 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
  * each probe times out independently after VERSION_PROBE_TIMEOUT_MS.
  */
 export function checkAllHarnesses(): Promise<HarnessStatus[]> {
-  return Promise.all(harnesses.list().map((h) => checkHarness(h)));
+  // Passive dashboard reads must not launch Codex, including --version.
+  // Filesystem binary presence is distinct from auth and execution readiness.
+  return Promise.all(harnesses.list().map((h) => checkHarness(h, h.kind === "codex" || isClaudeProfile(h) ? { probeVersion: false } : undefined)));
 }
 
 // Exposed for tests: clears the fx auth-status memoization (see
 // `getCachedStatus`/`statusCache` above) so a test isn't left racing a TTL
 // window set by an earlier test's probe against the same harness id + path.
 export const __testing = { clearStatusCache: () => statusCache.clear() };
+
+/**
+ * Whether the harness's binary resolves on this machine. A local path lookup
+ * only: no process is spawned and nothing is probed (FO-ORCH01 recommendations
+ * must stay as read-only as the preflight they build on).
+ */
+export function harnessBinaryPresent(harness: Harness): boolean {
+  return resolveBinPath(resolveBin(harness)) !== null;
+}

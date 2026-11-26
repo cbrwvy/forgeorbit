@@ -1,3 +1,6 @@
+import { englishPluralSuffix, t as tr } from "@/i18n/core";
+
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, Workflow, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +35,7 @@ function filterPipelines(list: Pipeline[], query: string): Pipeline[] {
  * agent picker (D1, `docs/plans/pipelines.md`).
  */
 export function PipelinePicker({ value, onChange, pipelines, onManage, disabled, className }: PipelinePickerProps) {
+  const { locale: uiLocale } = useUILocale();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   // 0 = the "No pipeline" row; 1..n = `filtered[i - 1]`.
@@ -63,7 +67,7 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
     if (!open) setQuery("");
   }, [open]);
 
-  const filtered = useMemo(() => filterPipelines(pipelines, query), [pipelines, query]);
+  const filtered = useMemo(() => filterPipelines(pipelines, query), [pipelines, query, uiLocale]);
   const rowCount = filtered.length + 1;
 
   useEffect(() => {
@@ -114,12 +118,12 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
           ) : value ? (
             <span className="flex min-w-0 items-center gap-1.5 text-warning">
               <Workflow className="size-4 shrink-0" aria-hidden />
-              <span className="truncate">Selected pipeline is no longer available</span>
+              <span className="truncate"><I18nText id="pipelines.selected_pipeline_is_no_longer_available" /></span>
             </span>
           ) : (
             <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
               <Workflow className="size-4 shrink-0" aria-hidden />
-              <span className="truncate">No pipeline</span>
+              <span className="truncate"><I18nText id="pipelines.no_pipeline" /></span>
             </span>
           )}
           <ChevronDown className={cn("size-4 shrink-0 opacity-60 transition-transform", open && "rotate-180")} aria-hidden />
@@ -130,7 +134,7 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
             data-testid="pipeline-picker-clear"
             onClick={() => onChange(null)}
             disabled={disabled}
-            title="Clear pipeline"
+            title={tr("pipelines.clear_pipeline")}
             className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
           >
             <X className="size-4" aria-hidden />
@@ -158,7 +162,7 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onSearchKeyDown}
-              placeholder="Search pipelines…"
+              placeholder={tr("pipelines.search_pipelines")}
               className="h-7 border-0 px-0 shadow-none focus-visible:ring-0"
             />
           </div>
@@ -179,14 +183,12 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
                 active === 0 ? "bg-accent text-accent-foreground" : "hover:bg-accent/40",
               )}
             >
-              <Workflow className="size-4 shrink-0" aria-hidden />
-              No pipeline
-            </button>
+              <Workflow className="size-4 shrink-0" aria-hidden /><I18nText id="pipelines.no_pipeline" />{" "}</button>
 
             {pipelines.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No pipelines yet.</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="common.no_pipelines_yet" /></p>
             ) : filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No matches.</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground"><I18nText id="common.no_matches" /></p>
             ) : (
               filtered.map((p, i) => {
                 const idx = i + 1;
@@ -213,7 +215,7 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">{p.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {p.graph.steps.length} step{p.graph.steps.length === 1 ? "" : "s"}
+                        {p.graph.steps.length}{" "}<I18nText id="common.step" />{p.graph.steps.length === 1 ? "" : englishPluralSuffix()}
                       </span>
                     </span>
                   </button>
@@ -231,9 +233,7 @@ export function PipelinePicker({ value, onChange, pipelines, onManage, disabled,
                   onManage();
                 }}
                 className="w-full px-3 py-1.5 text-left text-xs text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-              >
-                Manage pipelines…
-              </button>
+              ><I18nText id="pipelines.manage_pipelines" />{" "}</button>
             </div>
           )}
         </div>

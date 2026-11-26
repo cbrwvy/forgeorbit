@@ -281,3 +281,23 @@ test("a provider throw on a non-allowed sweep is stored unavailable, and does no
   expect(capturedOpts).toBeDefined();
   expect(capturedOpts?.allowIdeRead).toBe(false);
 });
+
+test("AGETOR_USAGE_OFFLINE never reaches a real provider (e2e cores, FO-007B)", async () => {
+  // claude-code has a real provider (OAuth API / Keychain). Offline, with no
+  // test override registered, nothing is consulted, stored or broadcast.
+  process.env.AGETOR_USAGE_OFFLINE = "1";
+  try {
+    const events: AppEvent[] = [];
+    trackSubscribe((e) => events.push(e));
+    expect(await refreshOne("claude-code", { force: true })).toBeNull();
+    await pollAllUsage();
+    expect(harnessUsage.get("claude-code")).toBeNull();
+    expect(events.filter((e) => e.type === "harness_usage")).toEqual([]);
+
+    // A test override still works, so in-process tests keep their seam.
+    __setUsageProviderForTest("claude-code", async () => fakeQuota());
+    expect((await refreshOne("claude-code", { force: true }))?.status).toBe("ok");
+  } finally {
+    delete process.env.AGETOR_USAGE_OFFLINE;
+  }
+});

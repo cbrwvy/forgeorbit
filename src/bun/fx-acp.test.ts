@@ -713,6 +713,7 @@ function spawnFake(
   scenario: string,
   opts: {
     mode?: FxMode;
+    authorize?: () => boolean;
     resumeSessionId?: string;
     env?: Record<string, string>;
     continueRecovery?: boolean;
@@ -736,6 +737,7 @@ function spawnFake(
   const captureFile = path.join(scratchDir, `capture-${runId}.jsonl`);
 
   const agent = spawnFxViaAcp({
+    authorize: opts.authorize,
     taskId,
     runId,
     argv: [process.execPath, fakeScriptPath],
@@ -2585,4 +2587,14 @@ describe("session/resume replay window closes on the reply LINE, not on the awai
     },
     10_000,
   );
+});
+
+
+test("Owner authorization is rechecked after ACP resume, before any session/prompt bytes", async () => {
+  const { agent, captureFile, chunks } = spawnFake("resume", { resumeSessionId: "exact-approved-session", authorize: () => false });
+  expect(await agent.done).not.toBe(0);
+  const entries = readCaptured(captureFile);
+  expect(entries.some(e => e.label === "session/resume")).toBe(true);
+  expect(entries.some(e => e.label === "session/new" || e.label === "session/prompt")).toBe(false);
+  expect(chunks.some(c => c.data.includes("Owner authorization changed"))).toBe(true);
 });

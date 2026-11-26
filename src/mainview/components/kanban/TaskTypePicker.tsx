@@ -1,7 +1,9 @@
+import { staticLabel } from "@/i18n/presentation";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { taskTypeIcon } from "@/lib/task-type-icon";
-import { TASK_TYPES, type TaskType } from "../../../shared/types.ts";
+import { TASK_TYPES, type TaskType } from "@/i18n/options";
 
 /**
  * The Type grid — Task / Bug / Spike buttons, each with its icon and hint
@@ -19,9 +21,10 @@ export function TaskTypePicker({
   onChange: (t: TaskType) => void;
   className?: string;
 }) {
+  useUILocale();
   return (
     <div className={cn("space-y-1", className)} data-testid="task-type-picker">
-      <label className="text-muted-foreground">Type</label>
+      <label className="text-muted-foreground"><I18nText id="common.type" /></label>
       <div className="grid grid-cols-3 gap-1">
         {TASK_TYPES.map((t) => {
           const Icon = taskTypeIcon(t.icon);
@@ -32,11 +35,11 @@ export function TaskTypePicker({
               size="sm"
               variant={selected ? "default" : "outline"}
               onClick={() => onChange(t.id)}
-              title={t.hint}
+              title={staticLabel(t.hint)}
               className="justify-start"
             >
               <Icon className={cn("mr-1 size-3.5", !selected && t.iconClass)} />
-              <span className="truncate">{t.label}</span>
+              <span className="truncate">{staticLabel(t.label)}</span>
             </Button>
           );
         })}

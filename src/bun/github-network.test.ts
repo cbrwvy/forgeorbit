@@ -1697,6 +1697,7 @@ test("listGitHubWorkflowRuns reads the nested workflow_runs array (not a bare ar
       htmlUrl: "https://github.com/acme/widgets/actions/runs/101",
       createdAt: "2026-01-02T00:00:00Z",
       workflowId: 1,
+      headSha: null,
     });
     expect(mock.calls).toHaveLength(1);
   } finally {

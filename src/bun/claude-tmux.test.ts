@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { homedir, tmpdir } from "node:os";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 // cycleToMode's tmux send-keys call runs `Bun.spawnSync` on the tmux
@@ -51,6 +51,34 @@ test("jsonlPathFor honors a per-harness CLAUDE_CONFIG_DIR override", () => {
   // override path itself is the root — no `.claude/` segment in between.
   const p = jsonlPathFor("/a/b", "session-uuid", "/tmp/alt-home");
   expect(p).toBe(`/tmp/alt-home/projects/${encodeProjectPath("/a/b")}/session-uuid.jsonl`);
+});
+
+test("jsonlPathFor encodes realpath(cwd), the directory Claude actually writes", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "agetor-jsonl-real-"));
+  const real = path.join(root, "real");
+  const link = path.join(root, "link");
+  mkdirSync(real);
+  symlinkSync(real, link);
+  const config = mkdtempSync(path.join(tmpdir(), "agetor-jsonl-cfg-"));
+  const session = "session-uuid";
+  const resolved = realpathSync(link);
+  expect(jsonlPathFor(link, session, config)).toBe(
+    path.join(config, "projects", encodeProjectPath(resolved), `${session}.jsonl`),
+  );
+
+  // A session written against the unresolved path is still found.
+  const logicalDir = path.join(config, "projects", encodeProjectPath(link));
+  mkdirSync(logicalDir, { recursive: true });
+  const logicalFile = path.join(logicalDir, `${session}.jsonl`);
+  writeFileSync(logicalFile, "");
+  expect(jsonlPathFor(link, session, config)).toBe(logicalFile);
+
+  // Once the realpath file exists, that is the session Claude is writing.
+  const realDir = path.join(config, "projects", encodeProjectPath(resolved));
+  mkdirSync(realDir, { recursive: true });
+  const realFile = path.join(realDir, `${session}.jsonl`);
+  writeFileSync(realFile, "");
+  expect(jsonlPathFor(link, session, config)).toBe(realFile);
 });
 
 test("encodeProjectPath turns every slash and dot into a dash", () => {

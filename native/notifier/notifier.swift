@@ -137,7 +137,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
   private func activateMainAppAndOpen(_ url: URL, ack: @escaping () -> Void) {
     let target =
       NSRunningApplication.runningApplications(
-        withBundleIdentifier: "com.lunarianforge.forgeorbit"
+        withBundleIdentifier: "app.forgeorbit.qa"
+      ).first
+      ?? NSRunningApplication.runningApplications(
+        withBundleIdentifier: "app.forgeorbit"
       ).first
       ?? NSRunningApplication.runningApplications(
         withBundleIdentifier: "sh.alamops.agetor"

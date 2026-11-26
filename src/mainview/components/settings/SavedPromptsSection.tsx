@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
@@ -17,6 +19,7 @@ type FormState = { id: string | null; name: string; content: string };
  * edit path, since the fields are identical.
  */
 export function SavedPromptsSection() {
+  useUILocale();
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -71,12 +74,12 @@ export function SavedPromptsSection() {
   };
 
   const remove = async (p: SavedPrompt) => {
-    const ok = await confirm({
+    const ok = await confirm(() => ({
       title: `Delete "${p.name}"?`,
-      description: "The prompt will be removed permanently.",
-      confirmLabel: "Delete",
+      get description() { return tr("settings.the_prompt_will_be_removed_permanently_9e2396"); },
+      confirmLabel: tr("common.delete"),
       variant: "destructive",
-    });
+    }));
     if (!ok) return;
     setDeletingId(p.id);
     setDeleteError(null);
@@ -93,20 +96,19 @@ export function SavedPromptsSection() {
   return (
     <div className="space-y-4 pt-3 text-sm">
       <div className="flex items-center justify-between">
-        <label className="text-xs text-muted-foreground">Saved Prompts</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="common.saved_prompts" /></label>
         {!form && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setForm({ id: null, name: "", content: "" })}
           >
-            <Plus className="mr-1 size-3.5" /> Add prompt
-          </Button>
+            <Plus className="mr-1 size-3.5" />{" "}<I18nText id="settings.add_prompt" />{" "}</Button>
         )}
       </div>
 
       {loadError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {loadError}
         </div>
       )}
@@ -120,34 +122,30 @@ export function SavedPromptsSection() {
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{p.name}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{p.content}</div>
+                <div className="truncate text-[length:var(--text-caption)] text-muted-foreground">{p.content}</div>
               </div>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => setForm({ id: p.id, name: p.name, content: p.content })}
                 disabled={form !== null}
-              >
-                Edit
-              </Button>
+              ><I18nText id="common.edit" />{" "}</Button>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => void remove(p)}
                 disabled={deletingId === p.id}
-              >
-                Delete
-              </Button>
+              ><I18nText id="common.delete" />{" "}</Button>
             </div>
           ))}
           {prompts.length === 0 && (
-            <p className="text-xs text-muted-foreground">No saved prompts yet.</p>
+            <p className="text-xs text-muted-foreground"><I18nText id="settings.no_saved_prompts_yet" /></p>
           )}
         </div>
       )}
 
       {deleteError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {deleteError}
         </div>
       )}
@@ -184,19 +182,20 @@ function PromptForm({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  useUILocale();
   const disabled = saving || !form.name.trim() || !form.content.trim();
   return (
     <div className="space-y-2 rounded-md border border-border/60 p-3">
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Name</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="common.name" /></label>
         <Input
           value={form.name}
           onChange={(e) => onChange({ ...form, name: e.target.value })}
-          placeholder="Bug repro checklist"
+          placeholder={tr("settings.bug_repro_checklist")}
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">Content</label>
+        <label className="text-xs text-muted-foreground"><I18nText id="settings.content" /></label>
         <Textarea
           value={form.content}
           onChange={(e) => onChange({ ...form, content: e.target.value })}
@@ -205,17 +204,15 @@ function PromptForm({
       </div>
 
       {error && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground">
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-danger">
           {error}
         </div>
       )}
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}><I18nText id="common.cancel" />{" "}</Button>
         <Button size="sm" onClick={onSave} disabled={disabled}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? "Saving…" : tr("common.save")}
         </Button>
       </div>
     </div>

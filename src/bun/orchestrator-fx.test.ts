@@ -2101,3 +2101,49 @@ test("fireFxAutoResume: when resumeFxRecovery itself rejects the auto-resume att
     events.some((e) => e.stream === "status" && e.data.startsWith("auto-resume could not start: ")),
   ).toBe(true);
 }, 8000);
+
+/* ── FO-ORCH08: an automatic resume is a Run ForgeOrbit makes on a timer ────── */
+
+test("auto-resume asks the shared resource-eligibility contract: an Owner prohibition refuses it with no Run, while the Owner's own manual Resume is untouched", async () => {
+  const { createTask, startTask, resumeFxRecovery } = await import("./orchestrator.ts");
+  const { tasks, runs, harnesses, preferences, projects } = await import("./db.ts");
+  const { FAKE_FX_RECOVERY_PROMPT_MARKER } = await import("./agents.ts");
+  harnesses.setEnabled("fx", true);
+  // Eligibility needs routing facts, which exist for a registered project.
+  const project = mkdtempSync(path.join(tmpdir(), "agetor-fx-orch08-"));
+  projects.upsert(project, "fx orch08");
+  const created = await createTask({
+    title: "fx auto-resume eligibility",
+    prompt: `hit the gateway limit ${FAKE_FX_RECOVERY_PROMPT_MARKER}`,
+    agent: "fx",
+    mode: "yolo",
+    workdir: project,
+    isolation: "none",
+    taskType: "task",
+  });
+  if ("error" in created) throw new Error(created.error);
+  const taskId = created.task.id;
+  const started = await startTask(taskId);
+  if ("error" in started) throw new Error(started.error);
+  await waitForRunSettled("runId" in started ? started.runId : "", 5000);
+  expect(tasks.get(taskId)?.column).toBe("ready");
+  const before = runs.listForTask(taskId).length;
+
+  preferences.set("executorRoutingPreferences", JSON.stringify({ allowedHarnessIds: ["codex"] }));
+  try {
+    const refused = await resumeFxRecovery(taskId, { origin: "auto", attempt: 1, max: 3 });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.status).toBe(409);
+      expect(refused.error).toContain("no other account or model was tried");
+    }
+    expect(runs.listForTask(taskId).length).toBe(before); // nothing was started or retried
+
+    // The Owner's own Resume is the Owner's decision and is not gated by this contract.
+    const manual = await resumeFxRecovery(taskId);
+    expect(manual.ok).toBe(true);
+    if (manual.ok) await waitForRunSettled(manual.runId, 5000);
+  } finally {
+    preferences.set("executorRoutingPreferences", "");
+  }
+});

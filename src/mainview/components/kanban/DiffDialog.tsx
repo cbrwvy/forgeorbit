@@ -1,3 +1,5 @@
+import { t as tr } from "@/i18n/core";
+import { I18nText, useLocale as useUILocale } from "@/i18n/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "sonner";
 import {
@@ -86,6 +88,7 @@ function lastSelectableIndex(rows: DiffRow[]): number {
  * place of the file list.
  */
 export function DiffDialog({ open, task, onClose }: Props) {
+  const { locale: uiLocale } = useUILocale();
   const taskId = task?.id ?? null;
   const [diff, setDiff] = useState<TaskDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -443,7 +446,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
       (acc, f) => ({ additions: acc.additions + f.additions, deletions: acc.deletions + f.deletions }),
       { additions: 0, deletions: 0 },
     );
-  }, [diff]);
+  }, [diff, uiLocale]);
 
   const toggle = (path: string) =>
     setOpenFiles((prev) => {
@@ -499,7 +502,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
     let n = 0;
     for (const set of selected.values()) n += set.size;
     return n;
-  }, [selected]);
+  }, [selected, uiLocale]);
   const composerVisible = totalSelected > 0;
 
   // `@` popover + highlight for the compose-from-diff box — the same scope
@@ -515,11 +518,11 @@ export function DiffDialog({ open, task, onClose }: Props) {
     if (task.isolation === "worktree") {
       return {
         dir: task.workdir,
-        ref: task.branchSource === "existing" && task.branch ? task.branch : task.baseRef ?? "HEAD",
+        ref: task.branchSource === "existing" && task.branch ? task.branch : task.baseRef ?? tr("tasks.head"),
       };
     }
     return { dir: task.workdir };
-  }, [task?.worktreePath, task?.isolation, task?.workdir, task?.baseRef, task?.branchSource, task?.branch]);
+  }, [task?.worktreePath, task?.isolation, task?.workdir, task?.baseRef, task?.branchSource, task?.branch, uiLocale]);
   const projectFiles = useProjectFiles(open && composerVisible ? fileScope : null);
 
   // A new selection starting (composer reappearing) supersedes whatever hint
@@ -584,7 +587,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
       result.push(...groupSelectedRows(f.path, toRows(f.hunks), indices));
     }
     return result;
-  }, [diff, selected]);
+  }, [diff, selected, uiLocale]);
 
   const clearSelection = () => {
     setSelected(new Map());
@@ -660,12 +663,10 @@ export function DiffDialog({ open, task, onClose }: Props) {
       <header className="flex items-start justify-between gap-3 border-b border-border/60 p-3">
         <div className="min-w-0">
           <div id="diff-dialog-title" className="flex items-center gap-2 text-sm font-semibold">
-            <GitCompare className="size-4 shrink-0 text-muted-foreground" />
-            Changes
-          </div>
+            <GitCompare className="size-4 shrink-0 text-muted-foreground" /><I18nText id="tasks.changes" />{" "}</div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {task?.title ?? "Task"}
-            {diff?.base && <> · vs base <span className="font-mono">{diff.base}</span></>}
+            {task?.title ?? tr("common.task_4bc74b")}
+            {diff?.base && <>{" "}<I18nText id="tasks.vs_base" />{" "}<span className="font-mono">{diff.base}</span></>}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -678,11 +679,11 @@ export function DiffDialog({ open, task, onClose }: Props) {
                 <span className="text-danger">−{totals.deletions}</span>
               </span>
               <Button size="sm" variant="ghost" onClick={() => setAll(!allOpen)}>
-                {allOpen ? "Collapse all" : "Expand all"}
+                {allOpen ? tr("common.collapse_all") : tr("common.expand_all")}
               </Button>
             </div>
           )}
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={tr("common.close")}>
             <X className="size-4" />
           </Button>
         </div>
@@ -694,8 +695,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
       >
         {loading && (
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading diff…
-          </div>
+            <Loader2 className="size-4 animate-spin" />{" "}<I18nText id="tasks.loading_diff_3944c7" />{" "}</div>
         )}
 
         {!loading && error && (
@@ -707,7 +707,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
         {!loading && !error && diff && diff.files.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-muted-foreground">
             <GitCompare className="size-6 opacity-40" />
-            {diff.note ?? "No changes to show."}
+            {diff.note ?? tr("common.no_changes_to_show")}
           </div>
         )}
 
@@ -742,12 +742,11 @@ export function DiffDialog({ open, task, onClose }: Props) {
             <>
               <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {totalSelected} {totalSelected === 1 ? "line" : "lines"} in{" "}
+                  {totalSelected} {totalSelected === 1 ? tr("common.line") : "lines"}{" "}<I18nText id="common.in" />{" "}
                   {selected.size} {selected.size === 1 ? "file" : "files"}
                 </span>
                 <Button size="sm" variant="ghost" onClick={clearSelection} disabled={busy}>
-                  <X className="mr-1 size-3" /> Clear
-                </Button>
+                  <X className="mr-1 size-3" />{" "}<I18nText id="common.clear" />{" "}</Button>
               </div>
               <div className="relative">
               {fileScope && (
@@ -772,7 +771,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
                     }
                   }
                 }}
-                placeholder="Add a message about the selected lines… (optional)"
+                placeholder={tr("tasks.add_a_message_about_the_selected_lines_optional")}
                 rows={2}
                 disabled={busy}
                 className="relative h-16 min-h-0 w-full resize-none text-xs"
@@ -791,9 +790,7 @@ export function DiffDialog({ open, task, onClose }: Props) {
               )}
               </div>
               {archived && (
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Sending will unarchive this task and restore its worktree.
-                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground"><I18nText id="tasks.sending_will_unarchive_this_task_and_restore_its" />{" "}</p>
               )}
               <div className="mt-2 flex items-center justify-end gap-2">
                 <Button
@@ -801,24 +798,22 @@ export function DiffDialog({ open, task, onClose }: Props) {
                   variant="ghost"
                   onClick={() => void doSave()}
                   disabled={archived || busy}
-                  title={archived ? "Unarchive the task to save drafts." : "Save this message to the backlog to send later."}
+                  title={archived ? tr("common.unarchive_the_task_to_save_drafts") : tr("common.save_this_message_to_the_backlog_to_send")}
                 >
-                  <BookmarkPlus className="mr-1 size-3" /> Save for later
-                </Button>
+                  <BookmarkPlus className="mr-1 size-3" />{" "}<I18nText id="tasks.save_for_later" />{" "}</Button>
                 <Button
                   size="sm"
                   onClick={() => void doSend()}
                   disabled={!canSend}
                   title={
                     !resumableRunId
-                      ? "This task hasn't run yet — Save for later instead."
+                      ? tr("common.this_task_hasn_t_run_yet_save_for")
                       : modalPending
-                        ? "A prompt is waiting for a response — answer it, or Save for later instead."
-                        : "Send to the agent"
+                        ? tr("common.a_prompt_is_waiting_for_a_response_answer")
+                        : tr("common.send_to_the_agent")
                   }
                 >
-                  <Send className="mr-1 size-3" /> Send to agent
-                </Button>
+                  <Send className="mr-1 size-3" />{" "}<I18nText id="tasks.send_to_agent" />{" "}</Button>
               </div>
               {hint && <p className="mt-1 text-[10px] text-muted-foreground">{hint}</p>}
             </>
@@ -870,6 +865,7 @@ function FileBlock({
   dragRange: DiffDragRange | null;
   registerBody: (path: string, el: HTMLDivElement | null) => void;
 }) {
+  useUILocale();
   const meta = STATUS_META[file.status];
   const Icon = meta.icon;
   return (
@@ -904,9 +900,7 @@ function FileBlock({
               registerBody={registerBody}
             />
             {file.truncated && (
-              <div className="border-t border-border/60 px-3 py-1.5 text-[11px] italic text-muted-foreground">
-                Diff truncated — this file's changes are too large to display in full.
-              </div>
+              <div className="border-t border-border/60 px-3 py-1.5 text-[11px] italic text-muted-foreground"><I18nText id="tasks.diff_truncated_this_file_s_changes_are_too" />{" "}</div>
             )}
           </>
         )
@@ -922,9 +916,10 @@ function FileBlock({
  *  the right side to classify for a rename. Deliberately outside `DiffBody`'s
  *  row machinery — no `data-diff-path`/`data-diff-index`, no selection. */
 function BinaryDiffPreview({ taskId, file }: { taskId: string | null; file: DiffFile }) {
+  useUILocale();
   const kind = binaryPreviewKind(file.path);
   if (kind === null || !taskId) {
-    return <div className="px-3 py-2 text-xs italic text-muted-foreground">Binary file — no textual diff.</div>;
+    return <div className="px-3 py-2 text-xs italic text-muted-foreground"><I18nText id="tasks.binary_file_no_textual_diff" /></div>;
   }
   const { oldUrl, newUrl } = binaryPreviewSides(file, (path, side) => api.taskDiffBlobUrl(taskId, path, side));
   return (
@@ -966,7 +961,8 @@ const DiffBody = memo(function DiffBody({
   dragRange: DiffDragRange | null;
   registerBody: (path: string, el: HTMLDivElement | null) => void;
 }) {
-  const rows = useMemo(() => toRows(hunks), [hunks]);
+  const { locale: uiLocale } = useUILocale();
+  const rows = useMemo(() => toRows(hunks), [hunks, uiLocale]);
   // Stable per (path, registerBody) so the ref callback doesn't detach/
   // reattach on every unrelated re-render (e.g. a selection change elsewhere
   // in the same file re-renders every row).
