@@ -184,3 +184,74 @@ test("legacy unsafe blank-description proposal shows alert, disables Approve, an
   expect(ruText).toContain("Подтверждение заблокировано: сохранённое предложение содержит пустое описание");
   expect(ruText).toContain("Заблокировано: сохранённое предложение содержит пустое описание и стёрло бы текст задачи.");
 });
+
+test("create_batch proposal renders numbered task list and Create all button in EN and RU", async () => {
+  const batchAction = {
+    kind: "create_batch" as const,
+    title: "3 tasks",
+    projectPath: "/tmp/fo-head-preview",
+    tasks: [
+      { title: "Add dark mode", description: "Support system and manual theme toggle.", projectPath: "/tmp/fo-head-preview" },
+      { title: "Fix login redirect", description: "Preserve return URL after sign in.", projectPath: "/tmp/fo-head-preview" },
+      { title: "Update README", description: "Update README", projectPath: "/tmp/fo-head-preview" },
+    ],
+  };
+  const proposal: HeadBoardProposal = {
+    messageId: "msg-batch-create",
+    context: baseContext,
+    action: batchAction,
+    status: "pending",
+    taskId: null,
+    error: null,
+    affectedProjects: [{ path: "/tmp/fo-head-preview", name: "DemoApp" }],
+    permissions: "None (draft creation in Backlog)",
+    policy: "Supervised backlog policy",
+    sideEffects: "Creates 3 draft tasks in Backlog. No specialist runs.",
+  };
+
+  await choose("en");
+  const enHtml = renderToStaticMarkup(
+    <LocaleProvider>
+      <HeadBoardProposalCard proposal={proposal} onChange={noop} onOpenProject={noop} onOpenTask={noopTask} />
+    </LocaleProvider>,
+  );
+  const enText = plainText(enHtml);
+  expect(enHtml).toContain('data-kind="create_batch"');
+  expect(enHtml).toContain('data-testid="head-pm-batch-list"');
+  expect(enText).toContain("Add tasks to Backlog");
+  expect(enText).toContain("Add dark mode");
+  expect(enText).toContain("Support system and manual theme toggle.");
+  expect(enText).toContain("Fix login redirect");
+  expect(enText).toContain("Update README");
+  expect(enText).toContain("Create all (3)");
+  expect(enText).toContain("Creates 3 draft tasks in Backlog. No specialist runs.");
+
+  await choose("ru");
+  const ruHtml = renderToStaticMarkup(
+    <LocaleProvider>
+      <HeadBoardProposalCard proposal={proposal} onChange={noop} onOpenProject={noop} onOpenTask={noopTask} />
+    </LocaleProvider>,
+  );
+  const ruText = plainText(ruHtml);
+  expect(ruText).toContain("Добавить задачи в бэклог");
+  expect(ruText).toContain("Создать все (3)");
+  expect(ruText).toContain("Создаёт черновики задач (3) в Бэклоге. Специалисты не запускаются.");
+
+  const appliedProposal: HeadBoardProposal = {
+    ...proposal,
+    status: "applied",
+    taskId: "t-1",
+    action: {
+      ...batchAction,
+      createdTaskIds: ["t-1", "t-2", "t-3"],
+    },
+  };
+  const collapsedRu = plainText(renderToStaticMarkup(
+    <LocaleProvider>
+      <HeadBoardProposalCard proposal={appliedProposal} onChange={noop} onOpenProject={noop} onOpenTask={noopTask} />
+    </LocaleProvider>,
+  ));
+  expect(collapsedRu).toContain("Добавить задачи в бэклог");
+  expect(collapsedRu).toContain("Задач: 3");
+  expect(collapsedRu).toContain("Применено");
+});

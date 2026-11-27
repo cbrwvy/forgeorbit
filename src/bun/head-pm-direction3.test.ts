@@ -254,3 +254,90 @@ test("a specialist outside the scope cannot be proposed; one the scope listed ca
   // Nothing is assigned until the Owner approves.
   expect(store.db.query("SELECT 1 FROM employee_task_assignments WHERE task_id = ?").get(task.id)).toBeNull();
 });
+
+test("workspace and project scopes support create_batch to add multiple Backlog tasks in one approval", async () => {
+  const baseline = counts();
+  // Workspace prompt advertises create_batch so Head of PM can create tasks directly from Workspace scope.
+  await send("__fake_head_scope__ batch prompt check", { kind: "workspace" });
+  expect(fake.lastPortfolioPrompt).toContain('"kind":"create_batch"');
+
+  // Workspace-scoped batch targeting one project (including terse item with omitted description).
+  const batchMsg = board({
+    kind: "create_batch",
+    project: "Beta",
+    tasks: [
+      { title: "Batch task 1", description: "Implement login page." },
+      { title: "Batch task 2", description: "Add dark mode toggle." },
+      { title: "Batch task 3" },
+    ],
+  });
+  const state = await send(batchMsg, { kind: "workspace" });
+  const proposal = state.boardProposals!.at(-1)!;
+  expect(proposal.status).toBe("pending");
+  expect(proposal.action.kind).toBe("create_batch");
+  expect(proposal.affectedProjects).toEqual([{ path: beta, name: "Beta" }]);
+  expect(proposal.context.projectPath).toBe(beta);
+  expect(counts()).toEqual(baseline);
+
+  const applied = await call("POST", `/head-pm/board-proposals/${proposal.messageId}/approve`, { confirm: true });
+  expect(applied.status).toBe("applied");
+  expect(applied.action.kind).toBe("create_batch");
+  const ids = applied.action.createdTaskIds as string[];
+  expect(ids).toHaveLength(3);
+  expect(counts()).toEqual({ ...baseline, tasks: baseline.tasks + 3 });
+  const created = ids.map((taskId) => store.tasks.get(taskId)!);
+  expect(created.map((t) => ({ title: t.title, prompt: t.prompt, workdir: t.workdir, column: t.column }))).toEqual([
+    { title: "Batch task 1", prompt: "Implement login page.", workdir: beta, column: "backlog" },
+    { title: "Batch task 2", prompt: "Add dark mode toggle.", workdir: beta, column: "backlog" },
+    { title: "Batch task 3", prompt: "Batch task 3", workdir: beta, column: "backlog" },
+  ]);
+  // Replaying approve is idempotent and does not duplicate tasks.
+  expect(await call("POST", `/head-pm/board-proposals/${proposal.messageId}/approve`, { confirm: true })).toEqual(applied);
+  expect(counts()).toEqual({ ...baseline, tasks: baseline.tasks + 3 });
+
+  // Multi-project batch from Workspace scope creates each task in its own project.
+  const crossState = await send(board({
+    kind: "create_batch",
+    tasks: [
+      { project: "Alpha", title: "Alpha batch item", description: "For Alpha." },
+      { project: "Beta", title: "Beta batch item", description: "For Beta." },
+    ],
+  }), { kind: "workspace" });
+  const crossProposal = crossState.boardProposals!.at(-1)!;
+  expect(crossProposal.status).toBe("pending");
+  expect(crossProposal.affectedProjects).toEqual([{ path: alpha, name: "Alpha" }, { path: beta, name: "Beta" }]);
+  const crossApplied = await call("POST", `/head-pm/board-proposals/${crossProposal.messageId}/approve`, { confirm: true });
+  expect(crossApplied.status).toBe("applied");
+  const crossIds = crossApplied.action.createdTaskIds as string[];
+  expect(store.tasks.get(crossIds[0]!)!.workdir).toBe(alpha);
+  expect(store.tasks.get(crossIds[1]!)!.workdir).toBe(beta);
+  expect(counts()).toEqual({ ...baseline, tasks: baseline.tasks + 5 });
+
+  // Single-item create_batch normalizes to single create.
+  const singleState = await send(board({
+    kind: "create_batch",
+    project: "Alpha",
+    tasks: [{ title: "Solo batch item", description: "Just one." }],
+  }), { kind: "workspace" });
+  expect(singleState.boardProposals!.at(-1)!.action.kind).toBe("create");
+
+  // Scope and limit enforcement: project-scoped batch cannot target another project; >25 tasks rejected.
+  const pendingCount = (await proposals()).length;
+  const crossScopeRefused = await send(board({
+    kind: "create_batch",
+    tasks: [
+      { title: "Ok in Alpha", description: "Fine" },
+      { project: "Beta", title: "Sneaky Beta", description: "Out of scope" },
+    ],
+  }), a);
+  expect((await proposals()).length).toBe(pendingCount);
+  expect(crossScopeRefused.messages.at(-1)!.protocolErrors.join(" ")).toMatch(/outside the selected scope/i);
+
+  const tooManyRefused = await send(board({
+    kind: "create_batch",
+    project: "Alpha",
+    tasks: Array.from({ length: 26 }, (_, i) => ({ title: `Task ${i + 1}`, description: `Desc ${i + 1}` })),
+  }), { kind: "workspace" });
+  expect((await proposals()).length).toBe(pendingCount);
+  expect(tooManyRefused.messages.at(-1)!.protocolErrors.join(" ")).toMatch(/at most 25/i);
+});

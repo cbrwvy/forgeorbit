@@ -88,6 +88,7 @@ const PATTERNS: ReadonlyArray<readonly [RegExp, (m: RegExpExecArray) => string]>
   }],
   [/^Updates task priority to (.+)\.$/s, (m) => `Меняет приоритет задачи на ${m[1]}.`],
   [/^Assigns specialist (.+) to task\.$/s, (m) => `Назначает специалиста ${m[1]} на задачу.`],
+  [/^Creates (\d+) draft tasks in Backlog\. No specialist runs\.$/, (m) => `Создаёт черновики задач (${m[1]}) в Бэклоге. Специалисты не запускаются.`],
 ];
 
 const BY_EN = new Map(EXACT);

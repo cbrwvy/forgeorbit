@@ -1,5 +1,5 @@
 import { sanitizeProviderRefusal } from "./provider-refusal.ts";
-import { HEAD_BOARD_FORMAT, storedHeadScope, type HeadScopeSnapshot, type HeadBoardProposal } from "./head-pm-scope.ts";
+import { HEAD_BOARD_FORMAT, HEAD_BOARD_WORKSPACE_FORMAT, storedHeadScope, type HeadScopeSnapshot, type HeadBoardProposal } from "./head-pm-scope.ts";
 import { storedPortfolioAttribution, type PortfolioTurnAttribution, type HeadPortfolioBinding } from "./head-portfolio-binding.ts";
 /**
  * Global portfolio manager (FO-008C). Pure, shared by the Portfolio tab, the
@@ -433,10 +433,13 @@ export function buildPortfolioPrompt(input: PortfolioPromptInput): string {
   if (input.browser) parts.push(renderBrowserObservationSection(input.browser, nonce, input.browserOrigins ?? []));
   if (input.native) parts.push(renderNativeObservationSection(input.native, nonce));
   parts.push(["## The owner's message", input.message.trim()].join("\n"));
+  const allowHeadBoardAction = Boolean(
+    input.headScope && !input.brain?.length && !input.knowledge?.length && !input.browser && !input.native,
+  );
   let format = input.headScope
     ? "## Reply format\nAlways answer inside <reply>…</reply> in Markdown." +
-      (input.headScope.projectPath && !input.brain?.length && !input.knowledge?.length && !input.browser && !input.native
-        ? `\n${HEAD_BOARD_FORMAT}` : "")
+      (allowHeadBoardAction
+        ? `\n${input.headScope.projectPath ? HEAD_BOARD_FORMAT : HEAD_BOARD_WORKSPACE_FORMAT}` : "")
     : REPLY_FORMAT;
   if (input.memoryProposals) {
     format += `\n${renderMemoryProposalInstructions(input.memoryProposals, input.context.projects.map((item) => ({ path: item.path, name: item.name })))}`;

@@ -94,6 +94,7 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
   const { action, context, status } = proposal;
   const name = action.kind === "replan_mission" ? t("usage.replanTitle")
     : action.kind === "create" ? t("headPm.board.create")
+    : action.kind === "create_batch" ? t("headPm.board.create_batch")
     : action.kind === "edit" ? t("headPm.board.edit")
     : action.kind === "admit" ? t("headPm.board.admit")
     : action.kind === "stage_ready" ? t("headPm.board.stage_ready")
@@ -112,14 +113,21 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
   const affected = proposal.affectedProjects?.length ? proposal.affectedProjects
     : context.projectPath ? [{ path: context.projectPath, name: context.label }] : [];
   const taskId = proposal.taskId ?? ("taskId" in action ? action.taskId : null);
+  const batchTaskIds = action.kind === "create_batch"
+    ? (action.createdTaskIds ?? action.tasks.map((item) => item.createdTaskId).filter((id): id is string => Boolean(id)))
+    : [];
+  const journeyTaskIds = action.kind === "create_batch" ? batchTaskIds : (taskId ? [taskId] : []);
   const editPreview = resolveEditPreview(proposal, tasks);
   const unsafeBlankEdit = editPreview?.descriptionStatus === "unsafe-blank";
   const isSettled = status === "applied" || status === "rejected";
   const summarySubject =
     action.kind === "edit"
       ? (editPreview?.nextTitle ?? editPreview?.currentTitle ?? action.title)
-      : action.title;
+      : action.kind === "create_batch"
+        ? t("headPm.board.batchCount", { count: String(action.tasks.length) })
+        : action.title;
   const hasTechMeta = Boolean(proposal.permissions || proposal.policy || proposal.result);
+  const projectLabelByPath = new Map(affected.map((p) => [p.path, friendlyProjectName(p)]));
 
   // Settled proposals (already applied or rejected) collapse to a calm 1-line summary
   // so old history never overwhelms the chat window; full details stay one click away.
@@ -160,9 +168,9 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
             <ChevronRight className="size-3" aria-hidden />
           </button>
         </div>
-        {status === "applied" && taskId && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "execute" || action.kind === "request_qc") && (
+        {status === "applied" && journeyTaskIds.length > 0 && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "create_batch" || action.kind === "execute" || action.kind === "request_qc") && (
           <div className="mt-2">
-            <GoalJourney compact tasks={tasks} taskIds={[taskId]} onOpenTask={onOpenTaskRecord} />
+            <GoalJourney compact tasks={tasks} taskIds={journeyTaskIds} onOpenTask={onOpenTaskRecord} />
           </div>
         )}
       </section>
@@ -181,7 +189,14 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
       data-kind={action.kind}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto font-semibold">{name}</h3>
+        <h3 className="mr-auto flex items-center gap-1.5 font-semibold">
+          <span>{name}</span>
+          {action.kind === "create_batch" && (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground" data-testid="head-pm-batch-count">
+              {action.tasks.length}
+            </span>
+          )}
+        </h3>
         <Badge
           variant={status === "pending" ? "warning" : status === "applied" ? "success" : status === "failed" ? "destructive" : "secondary"}
           data-testid="head-pm-board-status"
@@ -199,7 +214,7 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
           </button>
         )}
       </div>
-      {action.kind !== "edit" && <p className="font-medium">{action.title}</p>}
+      {action.kind !== "edit" && action.kind !== "create_batch" && <p className="font-medium">{action.title}</p>}
       {affected.length === 0 && <p className="text-xs text-muted-foreground">{context.label}</p>}
       {affected.length > 0 && (
         <p
@@ -213,6 +228,55 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
       )}
       {action.kind === "create" && "description" in action && action.description && (
         <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/90">{action.description}</p>
+      )}
+      {action.kind === "create_batch" && (
+        <ol className="max-h-72 space-y-1.5 overflow-y-auto rounded-lg bg-muted/35 p-2 text-xs" data-testid="head-pm-batch-list">
+          {action.tasks.map((item, idx) => {
+            const itemProject = item.projectPath ? projectLabelByPath.get(item.projectPath) : null;
+            const showDesc = Boolean(item.description && item.description.trim() !== item.title.trim());
+            return (
+              <li
+                key={`${idx}-${item.title}`}
+                className="rounded-md border border-border/50 bg-background/60 px-2.5 py-1.5"
+                data-testid="head-pm-batch-item"
+              >
+                <div className="flex items-start gap-2">
+                  <span className="mt-0.5 shrink-0 font-mono text-[10px] text-muted-foreground">{idx + 1}.</span>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {item.createdTaskId ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void Promise.resolve(onOpenTask(item.createdTaskId!)).then((opened) => {
+                              if (!opened && (item.projectPath ?? context.projectPath)) {
+                                onOpenProject((item.projectPath ?? context.projectPath)!);
+                              }
+                            });
+                          }}
+                          className="text-left font-medium text-foreground underline-offset-2 hover:underline"
+                          data-testid="head-pm-batch-open-task"
+                        >
+                          {item.title}
+                        </button>
+                      ) : (
+                        <span className="font-medium text-foreground">{item.title}</span>
+                      )}
+                      {affected.length > 1 && itemProject && (
+                        <span className="rounded bg-muted px-1.5 py-0.2 text-[10px] text-muted-foreground">{itemProject}</span>
+                      )}
+                    </div>
+                    {showDesc && (
+                      <p className="whitespace-pre-wrap break-words text-[11px] leading-snug text-muted-foreground">
+                        {item.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       )}
       {action.kind === "edit" && editPreview && (
         <div className="space-y-1.5 rounded-lg bg-muted/45 p-2.5 text-xs" data-testid="head-pm-edit-preview">
@@ -333,20 +397,28 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
           <p>{error ?? proposal.error}</p>
         </details>
       </div>}
-      {status === "applied" && taskId && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "execute" || action.kind === "request_qc") && (
-        <GoalJourney compact tasks={tasks} taskIds={[taskId]} onOpenTask={onOpenTaskRecord} />
+      {status === "applied" && journeyTaskIds.length > 0 && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "create_batch" || action.kind === "execute" || action.kind === "request_qc") && (
+        <GoalJourney compact tasks={tasks} taskIds={journeyTaskIds} onOpenTask={onOpenTaskRecord} />
       )}
       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
         {status === "pending" && <>
           <Button type="button" size="sm" disabled={working || unsafeBlankEdit} onClick={() => void act("approve")}
-            data-testid="head-pm-board-approve">{t(action.kind === "replan_mission" ? "usage.replanApprove" : action.kind === "edit" ? "headPm.board.applyEdit" : "headPm.board.approve")}</Button>
+            data-testid="head-pm-board-approve">
+            {action.kind === "replan_mission"
+              ? t("usage.replanApprove")
+              : action.kind === "edit"
+                ? t("headPm.board.applyEdit")
+                : action.kind === "create_batch"
+                  ? t("headPm.board.createAll", { count: String(action.tasks.length) })
+                  : t("headPm.board.approve")}
+          </Button>
           <Button type="button" size="sm" variant="outline" disabled={working} onClick={() => void act("reject")}
             data-testid="head-pm-board-reject">{t(action.kind === "replan_mission" ? "usage.replanReject" : "headPm.board.reject")}</Button>
         </>}
         {context.projectPath && <Button type="button" size="sm" variant="ghost" onClick={() => onOpenProject(context.projectPath!)}>
           {t("headPm.board.openProject")}
         </Button>}
-        {taskId && <Button type="button" size="sm" variant="ghost" onClick={() => {
+        {action.kind !== "create_batch" && taskId && <Button type="button" size="sm" variant="ghost" onClick={() => {
           void Promise.resolve(onOpenTask(taskId)).then((opened) => {
             if (!opened && context.projectPath) onOpenProject(context.projectPath);
           });

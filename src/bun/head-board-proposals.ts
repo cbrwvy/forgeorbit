@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { db, projects, tasks } from "./db.ts";
 import { AssignmentCore, AssignmentCoreError } from "./assignment-core.ts";
 import { canAdmitTaskToInbox, admitTaskToInbox } from "./pm-intake.ts";
-import { createTask, moveTaskColumn } from "./orchestrator.ts";
+import { createTask, moveTaskColumn, prepareTaskCreation } from "./orchestrator.ts";
 import { gitWorkingTreeCapability } from "./worktree.ts";
 import { ownerProjectOf, taskInProject } from "./project-ownership.ts";
 import { updateScheduling } from "./task-scheduling.ts";
@@ -14,7 +14,7 @@ import { resolveHeadScope, sameHeadScope, type ScopedHeadContext } from "./head-
 import type { ManagerResult } from "./project-manager.ts";
 import { parseJsonObject } from "../shared/project-manager.ts";
 import { lastTagBody, redactSecrets } from "../shared/project-interview.ts";
-import type { HeadBoardAction, HeadBoardEditPreview, HeadBoardProposal, HeadScopeSnapshot } from "../shared/head-pm-scope.ts";
+import type { HeadBoardAction, HeadBoardBatchTaskDraft, HeadBoardEditPreview, HeadBoardProposal, HeadScopeSnapshot } from "../shared/head-pm-scope.ts";
 import { getMissionResourceProposal, missionResourceOptions, planMissionReallocation, prepareMissionResourceProposal, settleMissionResourceProposal } from "./orchestration/mission-replan.ts";
 import { missionStore } from "./orchestration/mission-store.ts";
 import { routerV2Service } from "./router-v2/router-v2-service.ts";
@@ -63,27 +63,94 @@ function validateStoredEditAction(
   };
 }
 
+const MAX_BATCH_CREATE_TASKS = 25;
+
 export function readHeadBoardDraft(reply: string, gathered: ScopedHeadContext, sensitive: boolean): Result<HeadBoardAction | null> {
   if (!marker.test(reply)) return { ok: true, value: null };
   if (sensitive) return fail(400, "Board proposals require a separate turn without attached memories, notes, or Computer Use observations.");
   const block = lastTagBody(reply, HEAD_BOARD_TAG);
-  if (!block || (reply.match(/<head_board_action\b/gi)?.length ?? 0) !== 1 || block.length > 6000) {
+  if (!block || (reply.match(/<head_board_action\b/gi)?.length ?? 0) !== 1 || block.length > 48000) {
     return fail(400, "Expected one complete board action.");
   }
   const parsed = parseJsonObject(block);
   if (!parsed.ok) return fail(400, parsed.error);
   const value = parsed.value as Record<string, unknown>;
+  if (value.kind !== "create_batch" && block.length > 6000) {
+    return fail(400, "Expected one complete board action.");
+  }
+
+  const resolveProjectTarget = (raw: unknown): Result<string> => {
+    if (typeof raw !== "string" || !raw.trim()) {
+      return fail(400, "Select the exact project or task before proposing a board action.");
+    }
+    const resolved = resolveHeadScope({ kind: "project", path: raw }, "selection");
+    if (!resolved.ok) return fail(resolved.status, resolved.error);
+    const resolvedPath = resolved.value.projectPath!;
+    if (gathered.scope.projectPath && resolvedPath !== gathered.scope.projectPath) {
+      return fail(400, "The target project is outside the selected scope.");
+    }
+    if (gathered.scope.scope.kind === "cluster" && gathered.scope.clusterId && !gathered.includesProject(resolvedPath)) {
+      return fail(400, "The target project is not a member of the selected cluster.");
+    }
+    return { ok: true, value: resolvedPath };
+  };
 
   // Resolve target project: from turn scope or explicit project indicator in the action.
   let targetProjectPath = gathered.scope.projectPath;
   if (!targetProjectPath && (typeof value.projectPath === "string" || typeof value.project === "string")) {
-    const rawTarget = (value.projectPath || value.project) as string;
-    const resolved = resolveHeadScope({ kind: "project", path: rawTarget }, "selection");
-    if (!resolved.ok) return fail(resolved.status, resolved.error);
-    targetProjectPath = resolved.value.projectPath;
-    if (gathered.scope.scope.kind === "cluster" && gathered.scope.clusterId && !gathered.includesProject(targetProjectPath!)) {
-      return fail(400, "The target project is not a member of the selected cluster.");
+    const resolved = resolveProjectTarget(value.projectPath || value.project);
+    if (!resolved.ok) return resolved;
+    targetProjectPath = resolved.value;
+  }
+
+  if (value.kind === "create_batch") {
+    if (!Array.isArray(value.tasks) || value.tasks.length === 0) {
+      return fail(400, "Batch task create requires at least one task.");
     }
+    if (value.tasks.length > MAX_BATCH_CREATE_TASKS) {
+      return fail(400, `A batch proposal can create at most ${MAX_BATCH_CREATE_TASKS} tasks at once.`);
+    }
+    const drafts: HeadBoardBatchTaskDraft[] = [];
+    for (const rawItem of value.tasks) {
+      if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+        return fail(400, "Each batch task must be an object with a title.");
+      }
+      const item = rawItem as Record<string, unknown>;
+      const title = typeof item.title === "string" ? redactSecrets(item.title.trim().replace(/\s+/g, " ")) : "";
+      const rawDesc = typeof item.description === "string"
+        ? item.description
+        : (typeof item.prompt === "string" ? item.prompt : "");
+      const description = redactSecrets(rawDesc.trim()) || title;
+      if (!title || title.length > 160 || description.length > 4000) {
+        return fail(400, "Each batch task requires a valid title (up to 160 chars) and description (up to 4000 chars).");
+      }
+      let itemProjectPath = targetProjectPath;
+      if (typeof item.projectPath === "string" || typeof item.project === "string") {
+        const resolved = resolveProjectTarget(item.projectPath || item.project);
+        if (!resolved.ok) return resolved;
+        itemProjectPath = resolved.value;
+      }
+      if (!itemProjectPath) {
+        return fail(400, "Select the exact project or name a registered project for each task.");
+      }
+      drafts.push({ title, description, projectPath: itemProjectPath });
+    }
+    if (drafts.length === 1) {
+      const only = drafts[0]!;
+      return { ok: true, value: { kind: "create", title: only.title, description: only.description, projectPath: only.projectPath } };
+    }
+    const uniquePaths = [...new Set(drafts.map((item) => item.projectPath!))];
+    const customTitle = typeof value.title === "string" ? redactSecrets(value.title.trim().replace(/\s+/g, " ")) : "";
+    const batchTitle = customTitle && customTitle.length <= 160 ? customTitle : `${drafts.length} tasks`;
+    return {
+      ok: true,
+      value: {
+        kind: "create_batch",
+        title: batchTitle,
+        ...(uniquePaths.length === 1 ? { projectPath: uniquePaths[0] } : {}),
+        tasks: drafts,
+      },
+    };
   }
   if (value.kind === "replan_mission" && typeof value.objective === "string" && !Array.isArray(value.changes) && typeof value.taskId !== "string") {
     const missionId = value.missionId;
@@ -355,6 +422,9 @@ function affectedProjectsOf(proposal: HeadBoardProposal): { path: string; name: 
     add(action.projectPath);
     const mission = missionStore.getMission(action.missionId);
     for (const change of action.changes ?? []) add(mission?.plan.tasks.find((item) => item.taskId === change.taskId)?.projectPath);
+  } else if (action.kind === "create_batch") {
+    add(action.projectPath);
+    for (const item of action.tasks) add(item.projectPath);
   } else if ("projectPath" in action && action.projectPath) {
     add(action.projectPath);
   } else if ("taskId" in action) {
@@ -419,6 +489,11 @@ function enrichOne(proposal: HeadBoardProposal): HeadBoardProposal {
       permissions = "None (draft creation in Backlog)";
       policy = "Supervised backlog policy";
       sideEffects = "Creates a draft task in Backlog. No specialist runs.";
+      break;
+    case "create_batch":
+      permissions = "None (draft creation in Backlog)";
+      policy = "Supervised backlog policy";
+      sideEffects = `Creates ${action.tasks.length} draft tasks in Backlog. No specialist runs.`;
       break;
     case "edit":
       permissions = "None (task metadata modification)";
@@ -514,7 +589,15 @@ export function saveHeadBoardDraft(messageId: string, context: HeadScopeSnapshot
   if (action.kind !== "replan_mission" && !finalContext.projectPath) {
     // A company- or cluster-scoped turn that proposes for one project is settled against that project, so the
     // proposal names it and approval re-checks its ownership and cluster membership like any project proposal.
-    const target = "projectPath" in action && action.projectPath ? action.projectPath
+    const batchTargets = action.kind === "create_batch"
+      ? (() => {
+          const fallback = action.projectPath;
+          return [...new Set(action.tasks.map((item) => item.projectPath ?? fallback).filter((p): p is string => Boolean(p)))];
+        })()
+      : null;
+    const target = batchTargets
+      ? (batchTargets.length === 1 ? batchTargets[0]! : null)
+      : "projectPath" in action && action.projectPath ? action.projectPath
       : "taskId" in action ? ((t) => (t ? ownerProjectOf(t.workdir, { fresh: true }) : null))(tasks.get(action.taskId)) : null;
     const resolved = target ? resolveHeadScope({ kind: "project", path: target }, "canonical") : null;
     if (resolved?.ok) finalContext = resolved.value;
@@ -650,20 +733,88 @@ export async function resolveHeadBoardProposal(id: string, body: Record<string, 
   applying.add(id);
   const checkScope = () => {
     const current = resolveHeadScope(context.scope);
-    const project = projects.get(path);
-    if (!current.ok || !sameHeadScope(context, current.value) || !project) {
+    if (!current.ok || !sameHeadScope(context, current.value)) {
+      throw new BoardConflict("The proposal's project or cluster changed. Ask Head of PM to prepare it again.");
+    }
+    if (action.kind === "create_batch") {
+      const clusterMembers = context.scope.kind === "cluster"
+        ? new Set(db.query<{ project_path: string }, [string]>(
+            "SELECT project_path FROM cluster_project_memberships WHERE cluster_id = ?",
+          ).all(context.scope.id).map((row) => row.project_path))
+        : null;
+      for (const item of action.tasks) {
+        const targetPath = item.projectPath ?? action.projectPath ?? context.projectPath;
+        if (!targetPath || !projects.get(targetPath)) {
+          throw new BoardConflict("A target project in this batch is no longer registered. Ask Head of PM to prepare it again.");
+        }
+        if (context.projectPath && targetPath !== context.projectPath) {
+          throw new BoardConflict("A task in this batch targets a different project than the approved scope.");
+        }
+        if (clusterMembers && !clusterMembers.has(targetPath)) {
+          throw new BoardConflict("A target project is no longer a member of the selected cluster.");
+        }
+      }
+      return;
+    }
+    if (!context.projectPath || !projects.get(context.projectPath)) {
       throw new BoardConflict("The proposal's project or cluster changed. Ask Head of PM to prepare it again.");
     }
   };
   try {
     checkScope();
     if (grant && action.kind !== "plan_execution") throw new BoardConflict("This board action does not take an execution permission. Nothing was changed.");
-    if (action.kind === "create") {
-      if (!existsSync(path) || !statSync(path).isDirectory()) throw new BoardConflict("The registered project folder is unavailable.");
-      const capability = await gitWorkingTreeCapability(path);
+    if (action.kind === "create_batch") {
+      if (!Array.isArray(action.tasks) || action.tasks.length === 0) {
+        throw new BoardConflict("Batch task create has no tasks.");
+      }
+      const capabilities = new Map<string, "git" | "non-git">();
+      for (const item of action.tasks) {
+        const targetPath = (item.projectPath ?? action.projectPath ?? path)!;
+        if (!capabilities.has(targetPath)) {
+          if (!existsSync(targetPath) || !statSync(targetPath).isDirectory()) {
+            throw new BoardConflict("The registered project folder is unavailable.");
+          }
+          const capability = await gitWorkingTreeCapability(targetPath);
+          if (capability.kind === "unknown") {
+            throw new BoardConflict("Could not verify the project's Git capability.");
+          }
+          capabilities.set(targetPath, capability.kind);
+        }
+      }
+      const preparedItems: Array<{ targetPath: string; commit: () => { task: { id: string } } }> = [];
+      for (const item of action.tasks) {
+        const targetPath = (item.projectPath ?? action.projectPath ?? path)!;
+        const prepared = await prepareTaskCreation({
+          title: item.title,
+          prompt: item.description,
+          workdir: targetPath,
+          isolation: capabilities.get(targetPath) === "git" ? "worktree" : "none",
+          column: "backlog",
+        });
+        if ("error" in prepared) throw new BoardConflict(prepared.error);
+        preparedItems.push({ targetPath, commit: prepared.commit });
+      }
+      db.transaction(() => {
+        checkScope();
+        const createdIds: string[] = [];
+        const updatedTasks: HeadBoardBatchTaskDraft[] = action.tasks.map((item, idx) => {
+          const { task } = preparedItems[idx]!.commit();
+          createdIds.push(task.id);
+          return { ...item, projectPath: preparedItems[idx]!.targetPath, createdTaskId: task.id };
+        });
+        settle(id, "applied", createdIds[0] ?? null, null, {
+          ...action,
+          tasks: updatedTasks,
+          createdTaskIds: createdIds,
+          result: { createdCount: createdIds.length, taskIds: createdIds },
+        });
+      }).immediate();
+    } else if (action.kind === "create") {
+      if (!existsSync(path!) || !statSync(path!).isDirectory()) throw new BoardConflict("The registered project folder is unavailable.");
+      const capability = await gitWorkingTreeCapability(path!);
       if (capability.kind === "unknown") throw new BoardConflict("Could not verify the project's Git capability.");
       const created = await createTask({
-        title: action.title, prompt: action.description, workdir: path,
+        title: action.title, prompt: action.description, workdir: path!,
         isolation: capability.kind === "git" ? "worktree" : "none", column: "backlog",
       }, { reservedTask: { id, beforeInsert: checkScope } });
       if ("error" in created) throw new BoardConflict(created.error);
@@ -672,7 +823,7 @@ export async function resolveHeadBoardProposal(id: string, body: Record<string, 
       db.transaction(() => {
         checkScope();
         const task = tasks.get(action.taskId);
-        if (!task || task.archivedAt != null || !taskInProject(task, path, { fresh: true })) {
+        if (!task || task.archivedAt != null || !taskInProject(task, path!, { fresh: true })) {
           throw new BoardConflict("The task changed or is no longer in this project.");
         }
         const checked = validateStoredEditAction(action as unknown as Record<string, unknown>);

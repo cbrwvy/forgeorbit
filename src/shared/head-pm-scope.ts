@@ -12,6 +12,13 @@ export interface HeadScopeSnapshot {
   clusterId: string | null;
 }
 
+export interface HeadBoardBatchTaskDraft {
+  title: string;
+  description: string;
+  projectPath?: string;
+  createdTaskId?: string | null;
+}
+
 export type HeadBoardAction =
   | { kind: "replan_mission"; taskId: string; title: string; projectPath: string; missionId: string;
       role: "developer" | "reviewer"; resource: { harnessId: string; modelId: string; accountId: string; mode: string };
@@ -20,6 +27,7 @@ export type HeadBoardAction =
       allocation?: { objective: string; optimal: boolean; explored: number; limit: number; feasible: boolean };
       reason: string; proposalId?: string; digest?: string; result?: Record<string, unknown> | string | null }
   | { kind: "create"; title: string; description: string; projectPath?: string; result?: Record<string, unknown> | string | null }
+  | { kind: "create_batch"; title: string; projectPath?: string; tasks: HeadBoardBatchTaskDraft[]; createdTaskIds?: string[]; result?: Record<string, unknown> | string | null }
   | { kind: "edit"; taskId: string; title: string; description?: string; result?: Record<string, unknown> | string | null }
   | { kind: "prioritize"; taskId: string; title: string; priority: "critical" | "high" | "normal" | "low"; result?: Record<string, unknown> | string | null }
   | { kind: "admit"; taskId: string; title: string; result?: Record<string, unknown> | string | null }
@@ -98,7 +106,8 @@ export function storedHeadScope(raw: unknown): HeadScopeSnapshot | null {
 
 export const HEAD_BOARD_FORMAT = [
   "In a selected project or task, or in workspace/cluster scope targeting a registered project, you may propose ONE board action. Keep all prose inside <reply>…</reply>. Put the action after it in <head_board_action>…</head_board_action> as one JSON object:",
-  '{"kind":"create","title":"…","description":"…"} — adds to Backlog. Can specify "projectPath" if in workspace or cluster scope.',
+  '{"kind":"create","title":"…","description":"…"} — adds one draft task to Backlog. Can specify "project" (exact registered name) or "projectPath" if in workspace or cluster scope.',
+  '{"kind":"create_batch","tasks":[{"title":"…","description":"…"},{"title":"…","description":"…"}]} — adds multiple draft tasks (2–25) to Backlog in one Owner approval. Can specify "project" or "projectPath" (top-level or per task) in workspace or cluster scope.',
   '{"kind":"edit","taskId":"…","title":"…","description":"…"} — edits an existing task title and/or description (omit "description" to leave the task prompt unchanged; never send an empty description).',
   '{"kind":"admit","taskId":"…"} — requests Owner approval to move a Backlog task to Inbox.',
   '{"kind":"stage_ready","taskId":"…"} — moves an Inbox task to Ready for execution review.',
@@ -111,4 +120,12 @@ export const HEAD_BOARD_FORMAT = [
   '{"kind":"replan_mission","missionId":"…","taskId":"…","role":"reviewer","harnessId":"…","modelId":"…","accountId":"…","mode":"…","reason":"…"} — proposes one exact eligible resource. Use "changes":[{"taskId":"…","role":"developer","harnessId":"…","modelId":"…","accountId":"…","mode":"…"}] for one atomic multi-stage amendment, or "objective":"fastest"|"lowest-charge"|"balanced"|"quota-preserving"|"minimum-wait" to ask the shared planner for the remaining stages. Include projectPath for workspace or cluster scope. The Owner reviews the exact digest before it applies.',
   '{"kind":"complete","taskId":"…"} — marks task Done and confirms QC acceptance.',
   "Use only exact IDs listed in this turn. Never copy secrets, Brain or restricted observations into a worker task. No command, file, infrastructure, deployment, or unapproved launch action is available.",
+].join("\n");
+
+export const HEAD_BOARD_WORKSPACE_FORMAT = [
+  "In workspace or cluster scope, you may propose ONE board action targeting registered project(s) listed in the context above. Keep all prose inside <reply>…</reply>. Put the action after it in <head_board_action>…</head_board_action> as one JSON object:",
+  '{"kind":"create","project":"<exact project name>","title":"…","description":"…"} — adds one draft task to that project\'s Backlog.',
+  '{"kind":"create_batch","project":"<exact project name>","tasks":[{"title":"…","description":"…"},{"title":"…","description":"…"}]} — adds multiple draft tasks (2–25) to Backlog in one Owner approval. If tasks belong to different projects, omit top-level "project" and set "project" on each item.',
+  "Always set \"project\" to an exact registered project name from Project names above (or \"projectPath\" if shown). If the workspace has only one registered project and the owner did not name another, use that project's name. If multiple projects exist and the target project is ambiguous, ask the owner which project to use instead of guessing.",
+  "Never invent task IDs or propose edits/moves/assignments in workspace scope; existing task actions require selecting that project or task first. Never copy secrets, Brain or restricted observations into a task. No command, file, infrastructure, deployment, or unapproved launch action is available.",
 ].join("\n");
