@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CheckCircle2, ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { publishTaskAssignmentChanged } from "@/lib/task-assignment-events";
 import { Badge } from "@/components/ui/badge";
 import { priorityText } from "@/lib/status-presenters";
@@ -11,6 +12,15 @@ import { MissionResourceReview } from "../orchestration/MissionResourceReview";
 import type { TaskStagingGrant } from "../../../shared/execution/workspace-grant.ts";
 import type { Task } from "../../../shared/types.ts";
 import { GoalJourney } from "../workspace/manager/GoalJourney";
+
+function friendlyProjectName(project: { path: string; name: string }): string {
+  const raw = project.name.trim();
+  if (!raw) return project.path.split("/").filter(Boolean).pop() ?? project.path;
+  if (raw.startsWith("/") || raw.includes("/Users/")) {
+    return raw.split("/").filter(Boolean).pop() ?? raw;
+  }
+  return raw;
+}
 
 function resolveEditPreview(proposal: HeadBoardProposal, tasks?: readonly Task[]): HeadBoardEditPreview | null {
   const action = proposal.action;
@@ -59,6 +69,7 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
   const [error, setError] = useState<string | null>(null);
   const [allowStaging, setAllowStaging] = useState(false);
   const [outputPaths, setOutputPaths] = useState("");
+  const [settledExpanded, setSettledExpanded] = useState(false);
   const act = async (decision: "approve" | "reject") => {
     if (busy.current) return;
     busy.current = true;
@@ -103,26 +114,108 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
   const taskId = proposal.taskId ?? ("taskId" in action ? action.taskId : null);
   const editPreview = resolveEditPreview(proposal, tasks);
   const unsafeBlankEdit = editPreview?.descriptionStatus === "unsafe-blank";
+  const isSettled = status === "applied" || status === "rejected";
+  const summarySubject =
+    action.kind === "edit"
+      ? (editPreview?.nextTitle ?? editPreview?.currentTitle ?? action.title)
+      : action.title;
+  const hasTechMeta = Boolean(proposal.permissions || proposal.policy || proposal.result);
+
+  // Settled proposals (already applied or rejected) collapse to a calm 1-line summary
+  // so old history never overwhelms the chat window; full details stay one click away.
+  if (isSettled && !settledExpanded) {
+    return (
+      <section
+        className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2 text-xs [overflow-wrap:anywhere]"
+        data-testid="head-pm-board-proposal"
+        data-status={status}
+        data-kind={action.kind}
+      >
+        <div className="flex items-center gap-2">
+          {status === "applied" ? (
+            <CheckCircle2 className="size-3.5 shrink-0 text-success" aria-hidden />
+          ) : (
+            <XCircle className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          )}
+          <div className="min-w-0 flex-1 truncate">
+            <span className="font-medium text-foreground">{name}</span>
+            {summarySubject && (
+              <span className="text-muted-foreground"> · {summarySubject}</span>
+            )}
+          </div>
+          <Badge
+            variant={status === "applied" ? "success" : "secondary"}
+            data-testid="head-pm-board-status"
+            className="shrink-0 text-[10px]"
+          >
+            {statusLabel}
+          </Badge>
+          <button
+            type="button"
+            onClick={() => setSettledExpanded(true)}
+            className="inline-flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            data-testid="head-pm-board-expand"
+          >
+            <span>{t("headPm.board.showDetails")}</span>
+            <ChevronRight className="size-3" aria-hidden />
+          </button>
+        </div>
+        {status === "applied" && taskId && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "execute" || action.kind === "request_qc") && (
+          <div className="mt-2">
+            <GoalJourney compact tasks={tasks} taskIds={[taskId]} onOpenTask={onOpenTaskRecord} />
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-card p-3 text-sm [overflow-wrap:anywhere]"
-      data-testid="head-pm-board-proposal" data-status={status} data-kind={action.kind}>
+    <section
+      className={
+        status === "pending"
+          ? "space-y-2.5 rounded-xl border border-warning/35 bg-card p-3.5 text-sm shadow-sm [overflow-wrap:anywhere]"
+          : "space-y-2.5 rounded-xl border border-border/70 bg-card/80 p-3 text-sm [overflow-wrap:anywhere]"
+      }
+      data-testid="head-pm-board-proposal"
+      data-status={status}
+      data-kind={action.kind}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto font-semibold">{name}</h3>
-        <Badge variant={status === "pending" ? "warning" : status === "applied" ? "success" : status === "failed" ? "destructive" : "secondary"}
-          data-testid="head-pm-board-status">{statusLabel}</Badge>
+        <Badge
+          variant={status === "pending" ? "warning" : status === "applied" ? "success" : status === "failed" ? "destructive" : "secondary"}
+          data-testid="head-pm-board-status"
+        >
+          {statusLabel}
+        </Badge>
+        {isSettled && (
+          <button
+            type="button"
+            onClick={() => setSettledExpanded(false)}
+            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <span>{t("headPm.board.hideDetails")}</span>
+            <ChevronDown className="size-3" aria-hidden />
+          </button>
+        )}
       </div>
       {action.kind !== "edit" && <p className="font-medium">{action.title}</p>}
       {affected.length === 0 && <p className="text-xs text-muted-foreground">{context.label}</p>}
       {affected.length > 0 && (
-        <p className="text-xs font-medium text-muted-foreground" data-testid="head-pm-board-affected" title={affected.map((p) => p.path).join("\n")} data-projects={affected.map((p) => p.path).join("|")}>
-          {t("d3.board.affects", { projects: affected.map((p) => p.name).join(", ") })}
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="head-pm-board-affected"
+          title={affected.map((p) => p.path).join("\n")}
+          data-projects={affected.map((p) => p.path).join("|")}
+        >
+          {t("d3.board.affects", { projects: affected.map((p) => friendlyProjectName(p)).join(", ") })}
         </p>
       )}
       {action.kind === "create" && "description" in action && action.description && (
-        <p className="whitespace-pre-wrap break-words">{action.description}</p>
+        <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/90">{action.description}</p>
       )}
       {action.kind === "edit" && editPreview && (
-        <div className="space-y-2 rounded-md bg-muted/45 p-3 text-sm" data-testid="head-pm-edit-preview">
+        <div className="space-y-1.5 rounded-lg bg-muted/45 p-2.5 text-xs" data-testid="head-pm-edit-preview">
           <p data-testid="head-pm-edit-task">
             <span className="font-medium text-foreground">{t("headPm.board.editTask")}:</span>{" "}
             <span title={editPreview.taskId}>{editPreview.currentTitle ?? action.title}</span>
@@ -146,7 +239,7 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
               )}
             </p>
             {editPreview.descriptionStatus === "updated" && (
-              <div className="space-y-1 pl-2 border-l border-border">
+              <div className="space-y-1 border-l border-border pl-2">
                 {editPreview.currentDescription !== null && status === "pending" && (
                   <p className="whitespace-pre-wrap break-words text-muted-foreground" data-testid="head-pm-edit-description-current">
                     <span className="font-medium">{t("headPm.board.editCurrent")}:</span> {editPreview.currentDescription}
@@ -167,11 +260,11 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
           </div>
         </div>
       )}
-      {action.kind === "assign" && <p>{action.employeeName} · {t("headPm.board.separateLaunch")}</p>}
-      {action.kind === "prioritize" && <p>{priorityText(action.priority)}</p>}
-      {action.kind === "plan_execution" && <p>{action.employeeName} ({action.harnessId}{action.model ? ` / ${action.model}` : ""})</p>}
+      {action.kind === "assign" && <p className="text-xs">{action.employeeName} · {t("headPm.board.separateLaunch")}</p>}
+      {action.kind === "prioritize" && <p className="text-xs">{priorityText(action.priority)}</p>}
+      {action.kind === "plan_execution" && <p className="text-xs">{action.employeeName} ({action.harnessId}{action.model ? ` / ${action.model}` : ""})</p>}
       {action.kind === "plan_execution" && status === "pending" && context.projectPath && (
-        <div className="space-y-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5" data-testid="head-pm-staging-permission">
+        <div className="space-y-1.5 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs" data-testid="head-pm-staging-permission">
           <p role="status">{t("headPm.board.stagingPermission", { path: context.projectPath })}</p>
           <label className="flex items-start gap-2">
             <input
@@ -197,37 +290,45 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
           </label>
         </div>
       )}
-      {action.kind === "execute" && <p>{action.employeeName ?? proposal.specialistName ?? t("m0.assignedSpecialist")} ({action.harnessId ?? proposal.provider ?? t("m0.configuredHarness")})</p>}
-      {action.kind === "request_qc" && <p>{action.reviewerHarness ?? "QC Reviewer"}{action.reviewerModel ? ` (${action.reviewerModel})` : ""}</p>}
-      {action.kind === "rework" && action.feedback && <p className="italic text-muted-foreground">{action.feedback}</p>}
+      {action.kind === "execute" && <p className="text-xs">{action.employeeName ?? proposal.specialistName ?? t("m0.assignedSpecialist")} ({action.harnessId ?? proposal.provider ?? t("m0.configuredHarness")})</p>}
+      {action.kind === "request_qc" && <p className="text-xs">{action.reviewerHarness ?? "QC Reviewer"}{action.reviewerModel ? ` (${action.reviewerModel})` : ""}</p>}
+      {action.kind === "rework" && action.feedback && <p className="text-xs italic text-muted-foreground">{action.feedback}</p>}
 
       {proposal.missionResource && <MissionResourceReview proposal={proposal.missionResource} />}
 
-      {/* Unified proposal metadata (Section 5) */}
-      {proposal.permissions && (
-        <p className="text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">{t("headPm.board.permissions")}:</span> {knownText(proposal.permissions)}
-        </p>
-      )}
-      {proposal.policy && (
-        <p className="text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">{t("headPm.board.policy")}:</span> {knownText(proposal.policy)}
-        </p>
-      )}
       {proposal.sideEffects && (
-        <p className="text-[11px] text-muted-foreground">
-          <span className="font-medium text-foreground">{t("headPm.board.sideEffects")}:</span> {knownText(proposal.sideEffects)}
-        </p>
-      )}
-      {proposal.result && (
-        <p className="text-[11px] text-muted-foreground font-mono">
-          <span className="font-medium font-sans text-foreground">{t("headPm.board.result")}:</span> {typeof proposal.result === "string" ? proposal.result : JSON.stringify(proposal.result)}
-        </p>
+        <p className="text-xs text-muted-foreground">{knownText(proposal.sideEffects)}</p>
       )}
 
-      {(error || proposal.error) && <div role="alert" className="text-danger">
+      {hasTechMeta && (
+        <details className="text-[11px] text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">
+            {t("headPm.board.techDetails")}
+          </summary>
+          <div className="mt-1.5 space-y-1 rounded-md border border-border/50 bg-muted/20 p-2">
+            {proposal.permissions && (
+              <p>
+                <span className="font-medium text-foreground">{t("headPm.board.permissions")}:</span> {knownText(proposal.permissions)}
+              </p>
+            )}
+            {proposal.policy && (
+              <p>
+                <span className="font-medium text-foreground">{t("headPm.board.policy")}:</span> {knownText(proposal.policy)}
+              </p>
+            )}
+            {proposal.result && (
+              <p className="font-mono">
+                <span className="font-sans font-medium text-foreground">{t("headPm.board.result")}:</span>{" "}
+                {typeof proposal.result === "string" ? proposal.result : JSON.stringify(proposal.result)}
+              </p>
+            )}
+          </div>
+        </details>
+      )}
+
+      {(error || proposal.error) && <div role="alert" className="text-xs text-danger">
         <p>{t("headPm.board.applyError")}</p>
-        <details className="mt-1 text-xs text-muted-foreground">
+        <details className="mt-1 text-muted-foreground">
           <summary className="cursor-pointer">{t("manager.details")}</summary>
           <p>{error ?? proposal.error}</p>
         </details>
@@ -235,7 +336,7 @@ export function HeadBoardProposalCard({ proposal, onChange, onOpenProject, onOpe
       {status === "applied" && taskId && tasks && onOpenTaskRecord && (action.kind === "create" || action.kind === "execute" || action.kind === "request_qc") && (
         <GoalJourney compact tasks={tasks} taskIds={[taskId]} onOpenTask={onOpenTaskRecord} />
       )}
-      <div className="flex flex-wrap gap-1 pt-0.5">
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
         {status === "pending" && <>
           <Button type="button" size="sm" disabled={working || unsafeBlankEdit} onClick={() => void act("approve")}
             data-testid="head-pm-board-approve">{t(action.kind === "replan_mission" ? "usage.replanApprove" : action.kind === "edit" ? "headPm.board.applyEdit" : "headPm.board.approve")}</Button>

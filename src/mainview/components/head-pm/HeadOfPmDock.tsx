@@ -5,7 +5,7 @@ import { useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ArrowUpRight, Loader2, RotateCcw, Send, Sparkles, Square, X } from "lucide-react";
+import { Compass, Flame, HelpCircle, ListTodo, Loader2, RotateCcw, Send, Settings2, ShieldPlus, Sparkles, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,7 @@ function statusLabel(status: OrbStatus): string {
 export function HeadOfPmDock({ workspace, openRequest, projects, tasks, hidden, suspended = false, ownerRows, onOwnerActionsChanged, onOpenProjectManager, onOpenPortfolioManager, onOpenBrowser, onOpenNativeComputer, onOpenProject, onOpenTask, onOpenNeedsYou }: Props) {
   useUILocale();
   const [open, setOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [selectedScope, setSelectedScope] = useState<HeadScope | null>(null);
   const [clusters, setClusters] = useState<{ id: string; name: string; slug: string | null }[]>([]);
   const [clusterMembers, setClusterMembers] = useState<{ id: string; paths: string[] } | null>(null);
@@ -239,53 +240,131 @@ export function HeadOfPmDock({ workspace, openRequest, projects, tasks, hidden, 
           role="region"
           aria-label={tr("headPm.title")}
           onFocusCapture={onPanelFocus}
-          className="glass-floating flex max-h-[min(47rem,calc(100dvh-7rem))] w-[min(34rem,calc(100vw-2rem))] min-w-0 flex-col overflow-hidden rounded-xl border shadow-xl"
+          className="glass-floating flex max-h-[min(48rem,calc(100dvh-6.5rem))] w-[min(34rem,calc(100vw-2rem))] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/80 shadow-2xl"
           data-testid="head-pm-panel"
         >
-          <header className="flex items-start justify-between gap-2 border-b border-[hsl(var(--glass-border)/var(--glass-border-alpha))] px-3 py-2">
-            <div className="min-w-0">
-              <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-                <Sparkles className="size-4" aria-hidden />{tr("headPm.title")}
-              </h2>
-              <p className="truncate text-xs text-muted-foreground" data-testid="head-pm-context-name">
-                {tr("headPm.unified.hint")}
-              </p>
-              {/* Exact safety text stays one click away; open by default it left ~100pt for the conversation in an 800pt window. */}
-              <details className="text-xs text-muted-foreground" data-testid="head-pm-owner-channel-details">
+          <header className="flex items-center justify-between gap-2 border-b border-[hsl(var(--glass-border)/var(--glass-border-alpha))] px-3.5 py-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand/15 text-brand">
+                <Sparkles className="size-4" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate text-sm font-semibold leading-tight">{tr("headPm.title")}</h2>
+                  <label className="sr-only" htmlFor="head-pm-scope">{tr("headPm.contextLabel")}</label>
+                  <select
+                    id="head-pm-scope"
+                    data-testid="head-pm-scope"
+                    value={key}
+                    disabled={pm.thinking}
+                    title={tr("headPm.contextLabel")}
+                    className="max-w-[11.5rem] truncate rounded-md border border-border/70 bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-foreground/90 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    onChange={(event) => setSelectedScope(scopeOptions.find((item) => headScopeKey(item) === event.target.value) ?? null)}
+                  >
+                    {!knownScope && <option value={key} disabled>{tr("headPm.unified.unavailable")}</option>}
+                    <option value="workspace">{tr("headPm.unified.workspace")}</option>
+                    {clusters.length > 0 && (
+                      <optgroup label={tr("headPm.unified.clusters")}>
+                        {clusters.map((cluster) => (
+                          <option key={cluster.id} value={`cluster:${cluster.id}`}>
+                            {cluster.name}{clusters.filter((item) => item.name === cluster.name).length > 1 ? ` (${cluster.slug || cluster.id.slice(0, 8)})` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {projects.length > 0 && (
+                      <optgroup label={tr("headPm.unified.projects")}>
+                        {projects.map((project) => (
+                          <option key={project.path} value={`project:${project.path}`}>
+                            {project.name}{projects.filter((item) => item.name === project.name).length > 1 ? ` (${project.path})` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {taskOptions.length > 0 && (
+                      <optgroup label={tr("headPm.unified.tasks")}>
+                        {taskOptions.map((task) => (
+                          <option key={task.id} value={`task:${task.id}`}>{task.title} · #{task.id.slice(0, 8)}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+                {scopeLoadError && (
+                  <p role="status" className="mt-0.5 text-[11px] text-muted-foreground">{tr("headPm.unified.clusterError")}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn("size-7 text-muted-foreground hover:text-foreground", guideOpen && "bg-accent text-foreground")}
+                onClick={() => setGuideOpen((v) => !v)}
+                aria-label={tr("headPm.guide.toggle")}
+                title={tr("headPm.guide.toggle")}
+                aria-expanded={guideOpen}
+                data-testid="head-pm-guide-toggle"
+              >
+                <HelpCircle className="size-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                onClick={() => { close(); onOpenPortfolioManager(); }}
+                aria-label={tr("headPm.unified.settings")}
+                title={tr("headPm.unified.settings")}
+                data-testid="head-pm-open-full"
+              >
+                <Settings2 className="size-4" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                onClick={close}
+                aria-label={tr("headPm.close")}
+                data-testid="head-pm-close"
+              >
+                <X className="size-4" aria-hidden />
+              </Button>
+            </div>
+          </header>
+
+          {guideOpen && (
+            <div className="space-y-2.5 border-b border-border/70 bg-muted/30 px-4 py-3 text-xs" data-testid="head-pm-guide-panel">
+              <div>
+                <p className="font-semibold text-foreground">{tr("headPm.guide.title")}</p>
+                <p className="mt-0.5 text-muted-foreground" data-testid="head-pm-safety">{tr("headPm.guide.subtitle")}</p>
+              </div>
+              <ol className="space-y-1.5 text-foreground/90">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">1</span>
+                  <span>{tr("headPm.guide.step1")}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">2</span>
+                  <span>{tr("headPm.guide.step2")}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">3</span>
+                  <span>{tr("headPm.guide.step3")}</span>
+                </li>
+              </ol>
+              <details className="pt-0.5 text-[11px] text-muted-foreground" data-testid="head-pm-owner-channel-details">
                 <summary className="cursor-pointer select-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   {tr("runtime.notice.more")}
                 </summary>
                 <p className="mt-1" data-testid="head-pm-owner-channel">{tr("runtime.owner_channel")}</p>
               </details>
             </div>
-            <Button type="button" variant="ghost" size="icon" className="size-7" onClick={close} aria-label={tr("headPm.close")} data-testid="head-pm-close">
-              <X className="size-4" aria-hidden />
-            </Button>
-          </header>
+          )}
 
-          <div className="space-y-1 border-b border-border px-3 py-2">
-            <label className="block text-xs font-medium" htmlFor="head-pm-scope">{tr("headPm.contextLabel")}</label>
-            <select id="head-pm-scope" data-testid="head-pm-scope" value={key}
-              disabled={pm.thinking} className="w-full rounded border border-border bg-background px-2 py-1 text-xs"
-              onChange={(event) => setSelectedScope(scopeOptions.find((item) => headScopeKey(item) === event.target.value) ?? null)}>
-              {!knownScope && <option value={key} disabled>{tr("headPm.unified.unavailable")}</option>}
-              <option value="workspace">{tr("headPm.unified.workspace")}</option>
-              <optgroup label={tr("headPm.unified.clusters")}>
-                {clusters.map((cluster) => <option key={cluster.id} value={`cluster:${cluster.id}`}>
-                  {cluster.name}{clusters.filter((item) => item.name === cluster.name).length > 1 ? ` (${cluster.slug || cluster.id.slice(0, 8)})` : ""}
-                </option>)}
-              </optgroup>
-              <optgroup label={tr("headPm.unified.projects")}>
-                {projects.map((project) => <option key={project.path} value={`project:${project.path}`}>
-                  {project.name}{projects.filter((item) => item.name === project.name).length > 1 ? ` (${project.path})` : ""}
-                </option>)}
-              </optgroup>
-              {taskOptions.length > 0 && <optgroup label={tr("headPm.unified.tasks")}>
-                {taskOptions.map((task) => <option key={task.id} value={`task:${task.id}`}>{task.title} · #{task.id.slice(0, 8)}</option>)}
-              </optgroup>}
-            </select>
-            {scopeLoadError && <p role="status" className="text-xs text-muted-foreground">{tr("headPm.unified.clusterError")}</p>}
-          </div>
           <HeadPmChat
             pm={pm}
             scope={scope}
@@ -375,6 +454,7 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
   const [nativeGrantId, setNativeGrantId] = useState<string | null>(null);
   const allowedProjects = projects.filter((project) => allowedPaths.includes(project.path));
   const [memoryOptIn, setMemoryOptIn] = useState<MemoryProposalOptInValue>({ allow: false, company: false, projectPaths: [] });
+  const [accessOpen, setAccessOpen] = useState(false);
   const [focusInitiativeId, setFocusInitiativeId] = useState<string | null>(null);
   const [focusInitiativeRequest, setFocusInitiativeRequest] = useState(0);
   const focusInitiative = (id: string) => {
@@ -436,7 +516,7 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
     }
   };
   const onComposerKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       void submit();
     }
@@ -472,6 +552,22 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
     void pm.reload();
   };
   const proposals = new Map(data.boardProposals?.map((item) => [item.messageId, item]));
+  const activeAccessCount =
+    (brain ? 1 : 0) +
+    (knowledge ? 1 : 0) +
+    (scope.kind === "workspace" && browserGrantId ? 1 : 0) +
+    (scope.kind === "workspace" && nativeGrantId ? 1 : 0) +
+    (memoryOptIn.allow ? 1 : 0);
+  const quickStarters = [
+    { id: "status", label: tr("headPm.quick.status"), prompt: tr("headPm.quick.statusPrompt"), icon: Compass },
+    { id: "plan", label: tr("headPm.quick.plan"), prompt: tr("headPm.quick.planPrompt"), icon: ListTodo },
+    { id: "priorities", label: tr("headPm.quick.priorities"), prompt: tr("headPm.quick.prioritiesPrompt"), icon: Flame },
+    { id: "attention", label: tr("headPm.quick.attention"), prompt: tr("headPm.quick.attentionPrompt"), icon: Sparkles },
+  ];
+  const pickStarter = (promptText: string) => {
+    setComposer(promptText);
+    requestAnimationFrame(() => composerRef.current?.focus());
+  };
 
   return (
     <>
@@ -481,7 +577,7 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
         aria-live="polite"
         aria-label={tr("headPm.history")}
         tabIndex={0}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-3.5"
         data-testid="head-pm-log"
       >
         {!isProject && (
@@ -504,25 +600,42 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
           </>
         )}
         {messages.length === 0 && (
-          <div className="space-y-2" data-testid="head-pm-empty">
-            <p className="text-sm text-muted-foreground">{isProject ? tr("headPm.empty.project") : tr("headPm.empty.all")}</p>
-            <ul className="flex flex-wrap gap-1.5">
-              {(isProject
-                ? (["headPm.example.project1", "headPm.example.project2", "headPm.example.project3"] as const)
-                : (["headPm.example.all1", "headPm.example.all2", "headPm.example.all3"] as const)
-              ).map((key) => (
-                <li key={key}>
-                  <button
-                    type="button"
-                    className="glass-nav-item rounded-md border px-2 py-1 text-xs"
-                    data-testid="head-pm-example"
-                    onClick={() => { setComposer(tr(key)); composerRef.current?.focus(); }}
-                  >
-                    {tr(key)}
-                  </button>
+          <div className="space-y-3.5 py-2" data-testid="head-pm-empty">
+            <div className="rounded-xl border border-border/60 bg-muted/25 p-3.5 text-xs">
+              <p className="text-sm font-semibold text-foreground">{tr("headPm.guide.title")}</p>
+              <p className="mt-1 leading-relaxed text-muted-foreground">{tr("headPm.guide.subtitle")}</p>
+              <ol className="mt-2.5 space-y-1.5 text-foreground/90">
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">1</span>
+                  <span>{tr("headPm.guide.step1")}</span>
                 </li>
-              ))}
-            </ul>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">2</span>
+                  <span>{tr("headPm.guide.step2")}</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full bg-brand/15 text-[10px] font-semibold text-brand">3</span>
+                  <span>{tr("headPm.guide.step3")}</span>
+                </li>
+              </ol>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{tr("headPm.quick.label")}</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {quickStarters.map(({ id, label, prompt, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    data-testid="head-pm-example"
+                    onClick={() => pickStarter(prompt)}
+                    className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/60 px-2.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:border-brand/40 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Icon className="size-3.5 shrink-0 text-brand" aria-hidden />
+                    <span className="truncate">{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         {messages.map((message) => (
@@ -530,23 +643,26 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
             {message.role === "system" ? (
               <p className="text-center text-[11px] text-muted-foreground">{message.text}</p>
             ) : message.role === "owner" ? (
-              <div className="ml-auto max-w-[88%] rounded-lg border border-border px-3 py-2 text-sm" data-status={message.status ?? ""}>
-                <span className="mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{tr("headPm.you")}</span>
-                {message.headScope && <span className="mb-1 block text-xs text-muted-foreground" data-testid="head-pm-message-scope">
-                  {message.headScope.scope.kind === "workspace" ? tr("headPm.unified.workspace") : message.headScope.label}
-                </span>}
-                <span className="whitespace-pre-wrap break-words">{message.text}</span>
+              <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-sm border border-brand/25 bg-brand/12 px-3.5 py-2 text-sm" data-status={message.status ?? ""}>
+                {message.headScope && (
+                  <span className="mb-1 inline-block rounded bg-background/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" data-testid="head-pm-message-scope">
+                    {message.headScope.scope.kind === "workspace" ? tr("headPm.unified.workspace") : message.headScope.label}
+                  </span>
+                )}
+                <p className="whitespace-pre-wrap break-words leading-relaxed">{message.text}</p>
                 {message.nativeAction && <div className="mt-2"><NativeActionCard action={message.nativeAction} onOpenNativeComputer={onOpenNativeComputer} /></div>}
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="rounded-lg bg-muted/60 px-3 py-2 text-sm">
-                  <div className="agetor-md break-words" data-testid="head-pm-reply">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={ASSISTANT_MD_COMPONENTS} urlTransform={MD_URL_TRANSFORM}>
-                      {message.text}
-                    </ReactMarkdown>
+                {message.text.trim().length > 0 && (
+                  <div className="rounded-2xl rounded-bl-sm bg-muted/45 px-3.5 py-2.5 text-sm leading-relaxed">
+                    <div className="agetor-md break-words" data-testid="head-pm-reply">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={ASSISTANT_MD_COMPONENTS} urlTransform={MD_URL_TRANSFORM}>
+                        {message.text}
+                      </ReactMarkdown>
+                    </div>
                   </div>
-                </div>
+                )}
                 <MemoryProposalList messageId={message.id} />
                 {message.browserAction && <BrowserActionCard action={message.browserAction} onOpenBrowser={onOpenBrowser} />}
                 {message.nativeAction && <NativeActionCard action={message.nativeAction} onOpenNativeComputer={onOpenNativeComputer} />}
@@ -568,10 +684,12 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
                     return true;
                   }}
                 />}
-                {message.headScope && message.sources.length > 0 && <details className="text-[11px] text-muted-foreground" data-testid="head-pm-sources">
-                  <summary className="cursor-pointer">{tr("headPm.sources")}</summary>
-                  <ul>{message.sources.map((source) => <li key={source.id}>{source.label}{source.detail && ` · ${source.detail}`}</li>)}</ul>
-                </details>}
+                {message.headScope && message.sources.length > 0 && (
+                  <details className="px-1 text-[11px] text-muted-foreground/75" data-testid="head-pm-sources">
+                    <summary className="cursor-pointer select-none hover:text-foreground">{tr("headPm.sources")}</summary>
+                    <ul className="mt-1 space-y-0.5 pl-3">{message.sources.map((source) => <li key={source.id}>{source.label}{source.detail && ` · ${source.detail}`}</li>)}</ul>
+                  </details>
+                )}
                 <PortfolioExtras
                   message={message}
                   data={data}
@@ -590,20 +708,21 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
           </div>
         ))}
         {pm.thinking && (
-          <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="head-pm-busy">
-            <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />{tr("headPm.answering")}
-          </p>
+          <div role="status" className="inline-flex items-center gap-2 rounded-2xl bg-muted/45 px-3 py-2 text-xs text-muted-foreground" data-testid="head-pm-busy">
+            <Loader2 className="size-3.5 motion-safe:animate-spin text-brand" aria-hidden />
+            <span>{tr("headPm.answering")}</span>
+          </div>
         )}
       </div>
 
-      <footer className="max-h-[45%] shrink-0 space-y-2 overflow-y-auto overscroll-contain border-t border-[hsl(var(--glass-border)/var(--glass-border-alpha))] px-3 py-2">
+      <footer className="max-h-[48%] shrink-0 space-y-2 overflow-y-auto overscroll-contain border-t border-[hsl(var(--glass-border)/var(--glass-border-alpha))] px-3.5 py-2.5">
         <PlansWaiting
           rows={planRows}
           projectName={(path) => { const project = projects.find((item) => item.path === path); return project ? projectLabel(project) : path; }}
           onReview={(path) => onOpenProjectManager(path, "inbox")}
         />
         {actions.total > 0 && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px]" data-testid="head-pm-owner-actions">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-[11px]" data-testid="head-pm-owner-actions">
             <span className="min-w-0 flex-1 font-medium text-warning" data-testid="head-pm-pending">{ownerActionsText(actions)}</span>
             <button type="button" className="glass-nav-item shrink-0 rounded px-1.5 py-0.5 underline decoration-dotted" onClick={onOpenNeedsYou} data-testid="head-pm-open-needs-you">{tr("uxfix.owner.open")}</button>
           </div>
@@ -615,10 +734,10 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
           <SetupNote text={tr("headPm.consent")} onAction={onOpenFull} testId="head-pm-consent" />
         )}
         {pm.error && (
-          <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] text-danger" data-testid="head-pm-error">{pm.error}</p>
+          <p role="alert" className="rounded-xl border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger" data-testid="head-pm-error">{pm.error}</p>
         )}
         {retryable && !busy && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px] text-danger" data-testid="head-pm-turn-error">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger" data-testid="head-pm-turn-error">
             <span className="min-w-0 flex-1 break-words">
               {retryable.status !== "cancelled" && retryable.providerRefusal
                 ? <ProviderRefusalNotice refusal={retryable.providerRefusal} testId="head-pm-provider-refusal" onOpenAccount={requestOpenAccounts} />
@@ -629,58 +748,107 @@ function HeadPmChat({ pm, scope, scopeReady, knowledgeClusterId, allowedPaths, t
             </Button>
           </div>
         )}
-        <details key={key} open={brain || knowledge || browserGrantId || nativeGrantId || memoryOptIn.allow ? true : undefined} className="space-y-2 text-xs">
-          <summary className="cursor-pointer font-medium text-muted-foreground">{tr("headPm.unified.turnAccess")}</summary>
-          <BrainContextPicker key={JSON.stringify([key, allowedPaths])} target={HEAD_BRAIN_TARGET} grant={brain}
-            onGrantChange={(grant) => setBrainState(grant ? { key, grant } : null)}
-            allowedProjectPaths={allowedPaths} disabled={busy} testId="head-pm-brain" />
-          <MemoryProposalOptIn
-            mode="portfolio"
-            projects={allowedProjects.map((project) => ({ path: project.path, name: project.name }))}
-            value={memoryOptIn}
-            onChange={setMemoryOptIn}
+
+        {/* Quick-start chips stay handy even when chat history exists */}
+        {messages.length > 0 && !composer.trim() && !busy && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" data-testid="head-pm-quick-chips">
+            {quickStarters.map(({ id, label, prompt }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => pickStarter(prompt)}
+                className="shrink-0 rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-brand/40 hover:bg-accent/60 hover:text-foreground"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Optional one-turn access panel — hidden by default until user clicks "Доступ" */}
+        {(accessOpen || activeAccessCount > 0) && (
+          <div key={key} className="space-y-2 rounded-xl border border-border/70 bg-muted/25 p-2.5 text-xs" data-testid="head-pm-turn-access-panel">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-foreground">{tr("headPm.unified.turnAccess")}</span>
+              <button
+                type="button"
+                onClick={() => setAccessOpen(false)}
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                {tr("headPm.board.hideDetails")}
+              </button>
+            </div>
+            <BrainContextPicker key={JSON.stringify([key, allowedPaths])} target={HEAD_BRAIN_TARGET} grant={brain}
+              onGrantChange={(grant) => setBrainState(grant ? { key, grant } : null)}
+              allowedProjectPaths={allowedPaths} disabled={busy} testId="head-pm-brain" />
+            <MemoryProposalOptIn
+              mode="portfolio"
+              projects={allowedProjects.map((project) => ({ path: project.path, name: project.name }))}
+              value={memoryOptIn}
+              onChange={setMemoryOptIn}
+              disabled={busy}
+              testId="head-pm-memory-proposals"
+            />
+            <KnowledgeContextPicker target={HEAD_BRAIN_TARGET} grant={knowledge}
+              onGrantChange={(grant) => setKnowledgeState(grant ? { key, grant } : null)}
+              allowOwner={allowKnowledgeOwner} disabled={busy} testId="head-pm-knowledge" />
+            {scope.kind === "workspace" && <>
+              <p className="mt-1 text-[11px] text-muted-foreground" data-testid="head-pm-cu-access-note">{tr("access.cu.cu-full-computer-grant-note")}</p>
+              <BrowserAccessPicker managerKind="head-of-pm" grantId={browserGrantId} onGrantChange={setBrowserGrantId}
+                onOpenBrowser={onOpenBrowser} disabled={busy} testId="head-pm-browser" />
+              <NativeAccessPicker managerKind="head-of-pm" grantId={nativeGrantId} onGrantChange={setNativeGrantId}
+                onOpenNativeComputer={onOpenNativeComputer} disabled={busy} testId="head-pm-native" />
+            </>}
+          </div>
+        )}
+
+        {/* Unified sleek chat composer */}
+        <div className="rounded-2xl border border-border/80 bg-background/85 p-2 transition-colors focus-within:border-brand/50 focus-within:ring-1 focus-within:ring-brand/25">
+          <label htmlFor="head-pm-composer" className="sr-only">{tr("headPm.composerLabel")}</label>
+          <Textarea
+            id="head-pm-composer"
+            ref={composerRef}
+            value={composer}
+            rows={2}
+            className="min-h-[2.75rem] resize-none border-0 bg-transparent px-1.5 py-1 text-sm shadow-none focus-visible:ring-0"
+            maxLength={MANAGER_LIMITS.messageChars}
+            placeholder={tr("headPm.composerPlaceholderSimple")}
+            onChange={(event) => setComposer(event.target.value)}
+            onKeyDown={onComposerKey}
             disabled={busy}
-            testId="head-pm-memory-proposals"
+            data-testid="head-pm-composer"
           />
-          <KnowledgeContextPicker target={HEAD_BRAIN_TARGET} grant={knowledge}
-            onGrantChange={(grant) => setKnowledgeState(grant ? { key, grant } : null)}
-            allowOwner={allowKnowledgeOwner} disabled={busy} testId="head-pm-knowledge" />
-          {scope.kind === "workspace" && <>
-            <p className="mt-1 text-[11px] text-muted-foreground" data-testid="head-pm-cu-access-note">{tr("access.cu.cu-full-computer-grant-note")}</p>
-            <BrowserAccessPicker managerKind="head-of-pm" grantId={browserGrantId} onGrantChange={setBrowserGrantId}
-              onOpenBrowser={onOpenBrowser} disabled={busy} testId="head-pm-browser" />
-            <NativeAccessPicker managerKind="head-of-pm" grantId={nativeGrantId} onGrantChange={setNativeGrantId}
-              onOpenNativeComputer={onOpenNativeComputer} disabled={busy} testId="head-pm-native" />
-          </>}
-        </details>
-        <label htmlFor="head-pm-composer" className="sr-only">{tr("headPm.composerLabel")}</label>
-        <Textarea
-          id="head-pm-composer"
-          ref={composerRef}
-          value={composer}
-          rows={2}
-          className="min-h-0"
-          maxLength={MANAGER_LIMITS.messageChars}
-          placeholder={tr("headPm.composerPlaceholder")}
-          onChange={(event) => setComposer(event.target.value)}
-          onKeyDown={onComposerKey}
-          disabled={busy}
-          data-testid="head-pm-composer"
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" onClick={() => void submit()} disabled={!allowed} data-testid="head-pm-send">
-            <Send className="size-3.5" aria-hidden />{pm.sending ? tr("headPm.sending") : tr("headPm.send")}
-          </Button>
-          {data.activeTurn && (
-            <Button type="button" size="sm" variant="outline" onClick={pm.cancel} data-testid="head-pm-cancel">
-              <Square className="size-3.5" aria-hidden />{tr("headPm.cancel")}
-            </Button>
-          )}
-          <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={onOpenFull} data-testid="head-pm-open-full">
-            {tr("headPm.unified.settings")}<ArrowUpRight className="size-3.5" aria-hidden />
-          </Button>
+          <div className="mt-1 flex items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setAccessOpen((v) => !v)}
+              data-testid="head-pm-turn-access-toggle"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors",
+                accessOpen || activeAccessCount > 0
+                  ? "bg-brand/15 text-brand"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <ShieldPlus className="size-3.5" aria-hidden />
+              <span>{tr("headPm.accessButton")}</span>
+              {activeAccessCount > 0 && (
+                <span className="rounded-full bg-brand px-1.5 text-[10px] text-white">{activeAccessCount}</span>
+              )}
+            </button>
+            <div className="flex items-center gap-1.5">
+              {data.activeTurn ? (
+                <Button type="button" size="sm" variant="outline" className="h-7 rounded-xl px-2.5 text-xs" onClick={pm.cancel} data-testid="head-pm-cancel">
+                  <Square className="size-3" aria-hidden />{tr("headPm.cancel")}
+                </Button>
+              ) : (
+                <Button type="button" size="sm" className="h-7 rounded-xl px-3 text-xs" onClick={() => void submit()} disabled={!allowed} data-testid="head-pm-send">
+                  <Send className="size-3" aria-hidden />{pm.sending ? tr("headPm.sending") : tr("headPm.send")}
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
-        <p className="text-[11px] text-muted-foreground" data-testid="head-pm-safety">{tr("headPm.unified.safety")}</p>
       </footer>
     </>
   );
