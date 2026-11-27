@@ -304,7 +304,10 @@ test("passive local auth detection works for codex, antigravity, gemini, and cus
 
     // 3. Antigravity with antigravity_state.pbtxt -> loggedIn: true
     mkdirSync(join(isoHome, ".gemini", "antigravity"), { recursive: true });
-    writeFileSync(join(isoHome, ".gemini", "antigravity", "antigravity_state.pbtxt"), "agent_onboarding_completed: true\n");
+    writeFileSync(
+      join(isoHome, ".gemini", "antigravity", "antigravity_state.pbtxt"),
+      "agent_onboarding_completed:  AGENT_ONBOARDING_STATE_COMPLETED\n",
+    );
     const agyHarness: Harness = {
       id: "agy-auth-test",
       label: "Antigravity",

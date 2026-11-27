@@ -463,8 +463,8 @@ function readAntigravityLocalAuth(harness: Harness, env: Record<string, string>)
     if (existsSync(statePath)) {
       const text = readFileSync(statePath, "utf8");
       if (
-        /agent_onboarding_completed\s*:\s*true/i.test(text) ||
-        /\buids\s*:\s*"[^"]+"/.test(text)
+        /agent_onboarding_completed\s*:\s*(?:true|AGENT_ONBOARDING_STATE_COMPLETED)\b/i.test(text) ||
+        /\buids\s*:\s*(?:"[^"]+"|\d+)/.test(text)
       ) {
         return { loggedIn: true, authHelp: null };
       }
@@ -861,8 +861,13 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
   } else if (harness.kind === "antigravity") {
     const env = harnessEnv(harness);
     ({ loggedIn, authHelp } = readAntigravityLocalAuth(harness, env));
-    if (loggedIn === null && opts?.freshAuth) {
-      ({ loggedIn, authHelp } = await getCachedStatus(harness, path, env, opts));
+    if (loggedIn === null) {
+      if (opts?.freshAuth) {
+        ({ loggedIn, authHelp } = await getCachedStatus(harness, path, env, opts));
+      } else {
+        const cached = cachedHarnessAuthentication(harness);
+        if (cached !== null) loggedIn = cached;
+      }
     }
   } else if (harness.kind === "custom") {
     ({ loggedIn, authHelp } = readCustomLocalAuth(harness, harnessEnv(harness)));
