@@ -154,11 +154,11 @@ function evaluateAccountItem(
   if (loggedIn === false) {
     return { light: "red", shortStatus: "auth_needed", available, loggedIn };
   }
-  if (!capabilities.autonomousDeveloper && harness?.kind === "custom") {
-    return { light: "yellow", shortStatus: "manual_only", available, loggedIn };
-  }
   if (loggedIn === true) {
     return { light: "green", shortStatus: "ready", available, loggedIn };
+  }
+  if (!capabilities.autonomousDeveloper && harness?.kind === "custom") {
+    return { light: "yellow", shortStatus: "manual_only", available, loggedIn };
   }
   return { light: "yellow", shortStatus: "connected", available, loggedIn };
 }

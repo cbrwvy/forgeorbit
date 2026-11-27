@@ -313,8 +313,7 @@ async function describeHarnessInUse(err: unknown): Promise<string | null> {
       // identifies *which* tasks are blocking, even if not by name.
       titles = taskIds.map((id) => `${id.slice(0, 8)}…`);
     }
-    const noun = titles.length === 1 ? "task" : "tasks";
-    segments.push(`${titles.length} ${noun}: ${titles.join(", ")}`);
+    segments.push(tr("providersUi.delete.used_tasks", { count: String(titles.length), list: titles.join(", ") }));
   }
   if (profileIds.length > 0) {
     let names: string[];
@@ -325,10 +324,9 @@ async function describeHarnessInUse(err: unknown): Promise<string | null> {
     } catch {
       names = profileIds.map((id) => `${id.slice(0, 8)}…`);
     }
-    const noun = names.length === 1 ? "agent" : "agents";
-    segments.push(`${names.length} ${noun}: ${names.join(", ")}`);
+    segments.push(tr("providersUi.delete.used_agents", { count: String(names.length), list: names.join(", ") }));
   }
-  return tr("common.in_use_by", { p0: String(segments.join(" and ")) });
+  return tr("common.in_use_by", { p0: String(segments.join(` ${tr("providersUi.delete.and")} `)) });
 }
 
 /** The view the modal opens on: a deep-linked agent's edit subpage, else the

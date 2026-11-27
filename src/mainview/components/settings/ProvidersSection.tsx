@@ -229,6 +229,7 @@ export function ProvidersSection({
       }
       if (item.harness) {
         const st = await api.checkHarnessConnection(item.harness.id);
+        await api.refreshHarnessUsage(item.harness.id).catch(() => {});
         await onRefresh();
         if (!st.available) {
           toast.error(tr("providersUi.check.missing", { label: item.displayName }));

@@ -106,6 +106,12 @@ export const providersSimplifyEn = {
   "providersUi.account.save": "Add account",
   "providersUi.account.cancel": "Cancel",
   "providersUi.filter_empty": "No services configured yet.",
+  "providersUi.limits.refresh": "Refresh",
+  "providersUi.limits.refreshing": "Refreshing…",
+  "providersUi.limits.no_cli_telemetry": "This CLI does not report live quota telemetry.",
+  "providersUi.delete.used_tasks": "{count} task(s): {list}",
+  "providersUi.delete.used_agents": "{count} agent(s): {list}",
+  "providersUi.delete.and": "and",
 } as const;
 
 export const providersSimplifyRu: Record<keyof typeof providersSimplifyEn, string> = {
@@ -216,4 +222,10 @@ export const providersSimplifyRu: Record<keyof typeof providersSimplifyEn, strin
   "providersUi.account.save": "Добавить аккаунт",
   "providersUi.account.cancel": "Отмена",
   "providersUi.filter_empty": "Сервисы ещё не настроены.",
+  "providersUi.limits.refresh": "Обновить",
+  "providersUi.limits.refreshing": "Обновляем…",
+  "providersUi.limits.no_cli_telemetry": "Этот CLI не передаёт данные о лимитах.",
+  "providersUi.delete.used_tasks": "задачи ({count}): {list}",
+  "providersUi.delete.used_agents": "агенты ({count}): {list}",
+  "providersUi.delete.and": "и",
 };

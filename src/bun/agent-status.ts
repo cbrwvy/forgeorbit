@@ -1,7 +1,9 @@
 import { isCodexProfile, selectedCodexAccount, CodexProfiles } from "./codex-profiles.ts";
 import { isClaudeProfile, selectedClaudeAccount, ClaudeProfiles } from "./claude-profiles.ts";
-import { existsSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import path, { isAbsolute } from "node:path";
+import { Database } from "bun:sqlite";
 import { TMUX_MISSING_REASON, type AgentKind, type ClaudeAccount, type Harness, type HarnessStatus } from "../shared/types.ts";
 import { resolveBin, harnessEnv } from "./agents.ts";
 import { buildMacSearchPath } from "./cli-discovery.ts";
@@ -9,6 +11,8 @@ import { accountUsageSummary } from "./account-usage.ts";
 import { harnesses } from "./db.ts";
 import { effectiveClaudeConfigDir, readClaudeAccount } from "./harness-discovery.ts";
 import { resolveTmuxBin } from "./tmux-resolution.ts";
+import { codexHome, readCodexToken } from "./usage/codex-usage.ts";
+import { hasDeepSeekLocalCredentials } from "./usage/deepseek-usage.ts";
 
 const VERSION_PROBE_TIMEOUT_MS = 2000;
 
@@ -395,18 +399,218 @@ export function cachedHarnessAuthentication(harness: Harness, now = Date.now()):
   return row && row.expiresAt > now ? row.value.loggedIn : null;
 }
 
+function readCodexLocalAuth(harness: Harness, env: Record<string, string>): StatusProbeResult {
+  if (env.OPENAI_API_KEY?.trim() || (harness.home === null && process.env.OPENAI_API_KEY?.trim())) {
+    return { loggedIn: true, authHelp: null };
+  }
+  const { accessToken } = readCodexToken(harness);
+  if (accessToken) return { loggedIn: true, authHelp: null };
+  try {
+    const authPath = path.join(codexHome(harness), "auth.json");
+    if (existsSync(authPath)) {
+      const parsed = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, unknown>;
+      if (typeof parsed.OPENAI_API_KEY === "string" && parsed.OPENAI_API_KEY.trim()) {
+        return { loggedIn: true, authHelp: null };
+      }
+      if (typeof parsed.api_key === "string" && parsed.api_key.trim()) {
+        return { loggedIn: true, authHelp: null };
+      }
+    }
+  } catch {
+    // ignore malformed auth.json
+  }
+  if (process.env.AGETOR_CODEX_DRIVER === "fake" && harness.home === null) {
+    return { loggedIn: null, authHelp: null };
+  }
+  return { loggedIn: false, authHelp: "Run codex login to sign in." };
+}
+
+function readGeminiLocalAuth(harness: Harness, env: Record<string, string>): StatusProbeResult {
+  const effectiveEnv = harness.home === null ? { ...process.env, ...env } : env;
+  if (
+    effectiveEnv.GEMINI_API_KEY?.trim() ||
+    effectiveEnv.GOOGLE_API_KEY?.trim() ||
+    effectiveEnv.GOOGLE_APPLICATION_CREDENTIALS?.trim()
+  ) {
+    return { loggedIn: true, authHelp: null };
+  }
+  const baseHome = harness.home ?? homedir();
+  const oauthPath = path.join(baseHome, ".gemini", "oauth_creds.json");
+  try {
+    if (existsSync(oauthPath)) {
+      const parsed = JSON.parse(readFileSync(oauthPath, "utf8")) as Record<string, unknown>;
+      if (
+        (typeof parsed.access_token === "string" && parsed.access_token.trim()) ||
+        (typeof parsed.refresh_token === "string" && parsed.refresh_token.trim())
+      ) {
+        return { loggedIn: true, authHelp: null };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return { loggedIn: null, authHelp: null };
+}
+
+function readAntigravityLocalAuth(harness: Harness, env: Record<string, string>): StatusProbeResult {
+  const effectiveEnv = harness.home === null ? { ...process.env, ...env } : env;
+  if (effectiveEnv.GEMINI_API_KEY?.trim() || effectiveEnv.GOOGLE_API_KEY?.trim()) {
+    return { loggedIn: true, authHelp: null };
+  }
+  const baseHome = harness.home ?? homedir();
+  const statePath = path.join(baseHome, ".gemini", "antigravity", "antigravity_state.pbtxt");
+  try {
+    if (existsSync(statePath)) {
+      const text = readFileSync(statePath, "utf8");
+      if (
+        /agent_onboarding_completed\s*:\s*true/i.test(text) ||
+        /\buids\s*:\s*"[^"]+"/.test(text)
+      ) {
+        return { loggedIn: true, authHelp: null };
+      }
+    }
+  } catch {
+    // ignore
+  }
+  if (harness.home === null) {
+    const dbPath = path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "Antigravity",
+      "User",
+      "globalStorage",
+      "state.vscdb",
+    );
+    if (existsSync(dbPath)) {
+      try {
+        const db = new Database(dbPath, { readonly: true });
+        try {
+          const row = db
+            .query("SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'")
+            .get() as { value?: string } | null;
+          if (row?.value && row.value !== "null" && row.value !== "{}" && row.value.trim().length > 2) {
+            return { loggedIn: true, authHelp: null };
+          }
+        } finally {
+          db.close();
+        }
+      } catch {
+        // ignore locked/unreadable IDE db
+      }
+    }
+  }
+  return { loggedIn: null, authHelp: null };
+}
+
+async function probeAntigravityModelsAuth(
+  binPath: string,
+  env: Record<string, string>,
+): Promise<StatusProbeResult> {
+  try {
+    const proc = Bun.spawn([binPath, "models"], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, ...env, NO_COLOR: "1" },
+    });
+    const timer = setTimeout(() => {
+      try {
+        proc.kill();
+      } catch {
+        /* ignore */
+      }
+    }, 5000);
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    clearTimeout(timer);
+    if (exitCode === 0 && /\b(?:gemini|claude|gpt)-/i.test(stdout)) {
+      return { loggedIn: true, authHelp: null };
+    }
+    return { loggedIn: null, authHelp: null };
+  } catch {
+    return { loggedIn: null, authHelp: null };
+  }
+}
+
+function readCustomLocalAuth(harness: Harness, env: Record<string, string>): StatusProbeResult {
+  const sid = (harness.cliConfig?.serviceId ?? "").toLowerCase();
+  const idLower = harness.id.toLowerCase();
+  const binLower = (harness.bin ?? "").toLowerCase();
+  const baseHome = harness.home ?? homedir();
+  const effectiveEnv = harness.home === null ? { ...process.env, ...env } : env;
+
+  // DeepSeek (dsh)
+  if (sid === "deepseek" || idLower.includes("deepseek") || binLower.endsWith("/dsh") || binLower === "dsh") {
+    if (hasDeepSeekLocalCredentials(harness, env)) {
+      return { loggedIn: true, authHelp: null };
+    }
+    return { loggedIn: null, authHelp: null };
+  }
+
+  // GitHub Copilot (gh)
+  if (sid === "copilot" || idLower.includes("copilot") || binLower === "gh" || binLower.endsWith("/gh")) {
+    if (effectiveEnv.GH_TOKEN?.trim() || effectiveEnv.GITHUB_TOKEN?.trim()) {
+      return { loggedIn: true, authHelp: null };
+    }
+    const hostsPath = path.join(baseHome, ".config", "gh", "hosts.yml");
+    try {
+      if (existsSync(hostsPath)) {
+        const raw = readFileSync(hostsPath, "utf8");
+        if (/\b(?:oauth_token|user)\s*:\s*[^\s]+/.test(raw)) {
+          return { loggedIn: true, authHelp: null };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return { loggedIn: null, authHelp: null };
+  }
+
+  // OpenCode
+  if (sid === "opencode" || idLower.includes("opencode") || binLower === "opencode" || binLower.endsWith("/opencode")) {
+    const authPath = path.join(baseHome, ".local", "share", "opencode", "auth.json");
+    try {
+      if (existsSync(authPath)) {
+        const parsed = JSON.parse(readFileSync(authPath, "utf8")) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+          return { loggedIn: true, authHelp: null };
+        }
+      }
+    } catch {
+      // ignore
+    }
+    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY"]) {
+      if (effectiveEnv[key]?.trim()) return { loggedIn: true, authHelp: null };
+    }
+    return { loggedIn: null, authHelp: null };
+  }
+
+  // Generic custom CLI: if user explicitly supplied an API key/token env var on the harness, mark authenticated.
+  for (const [k, v] of Object.entries(harness.env)) {
+    if (/(?:API_KEY|_TOKEN)$/i.test(k) && typeof v === "string" && v.trim()) {
+      return { loggedIn: true, authHelp: null };
+    }
+  }
+  return { loggedIn: null, authHelp: null };
+}
+
 async function getCachedStatus(
   harness: Harness,
-  path: string,
+  binPath: string,
   env: Record<string, string>,
   opts: { freshAuth?: boolean } | undefined,
 ): Promise<StatusProbeResult> {
-  const key = statusCacheKey(harness, path);
+  const key = statusCacheKey(harness, binPath);
   if (!opts?.freshAuth) {
     const cached = statusCache.get(key);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
   }
-  const value = harness.kind === "cursor" ? await probeCursorStatus(path, env) : await probeStatus(path, env);
+  const value =
+    harness.kind === "cursor"
+      ? await probeCursorStatus(binPath, env)
+      : harness.kind === "antigravity"
+        ? await probeAntigravityModelsAuth(binPath, env)
+        : await probeStatus(binPath, env);
   statusCache.set(key, { value, expiresAt: Date.now() + STATUS_CACHE_TTL_MS });
   return value;
 }
@@ -650,6 +854,18 @@ export async function checkHarness(harness: Harness, opts?: { freshAuth?: boolea
   if (harness.kind === "cursor" && version !== null) {
     const env = harnessEnv(harness);
     ({ loggedIn, authHelp } = await getCachedStatus(harness, path, env, opts));
+  } else if (harness.kind === "codex") {
+    ({ loggedIn, authHelp } = readCodexLocalAuth(harness, harnessEnv(harness)));
+  } else if (harness.kind === "gemini") {
+    ({ loggedIn, authHelp } = readGeminiLocalAuth(harness, harnessEnv(harness)));
+  } else if (harness.kind === "antigravity") {
+    const env = harnessEnv(harness);
+    ({ loggedIn, authHelp } = readAntigravityLocalAuth(harness, env));
+    if (loggedIn === null && opts?.freshAuth) {
+      ({ loggedIn, authHelp } = await getCachedStatus(harness, path, env, opts));
+    }
+  } else if (harness.kind === "custom") {
+    ({ loggedIn, authHelp } = readCustomLocalAuth(harness, harnessEnv(harness)));
   }
 
   return {

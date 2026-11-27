@@ -37,7 +37,10 @@ export function claudeDotJsonPath(harness: Harness): string {
  * `HOME=<home>` instead of `CLAUDE_CONFIG_DIR=<home>`).
  */
 export function claudeCredentialsPath(harness: Harness): string | null {
-  if (!harness.home) return null;
+  if (!harness.home) {
+    const mainFresh = path.join(homedir(), ".claude", ".credentials.json");
+    return existsSync(mainFresh) ? mainFresh : null;
+  }
   const fresh = path.join(harness.home, ".credentials.json");
   if (existsSync(fresh)) return fresh;
   const legacy = path.join(harness.home, ".claude", ".credentials.json");
@@ -74,12 +77,18 @@ const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
  * return null so the caller falls through to the `.claude.json` cache.
  */
 const KEYCHAIN_SPAWN_TIMEOUT_MS = 3000;
+const KEYCHAIN_INTERACTIVE_TIMEOUT_MS = 15_000;
 
-export async function readKeychainClaudeToken(): Promise<string | null> {
+export async function readKeychainClaudeToken(opts?: {
+  allowPrompt?: boolean;
+}): Promise<string | null> {
   const now = Date.now();
-  if (keychainCooldownUntilMs !== null && now < keychainCooldownUntilMs) {
+  if (opts?.allowPrompt) {
+    keychainCooldownUntilMs = null;
+  } else if (keychainCooldownUntilMs !== null && now < keychainCooldownUntilMs) {
     return null;
   }
+  const timeoutMs = opts?.allowPrompt ? KEYCHAIN_INTERACTIVE_TIMEOUT_MS : KEYCHAIN_SPAWN_TIMEOUT_MS;
   try {
     const proc = Bun.spawn(
       ["security", "find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
@@ -93,7 +102,7 @@ export async function readKeychainClaudeToken(): Promise<string | null> {
       } catch {
         /* already gone */
       }
-    }, KEYCHAIN_SPAWN_TIMEOUT_MS);
+    }, timeoutMs);
     let stdout: string;
     let exitCode: number;
     try {
@@ -131,6 +140,7 @@ export async function readKeychainClaudeToken(): Promise<string | null> {
  */
 export async function readClaudeToken(
   harness: Harness,
+  opts?: { allowKeychainPrompt?: boolean },
 ): Promise<{ token: string | null; scopes: string[] }> {
   try {
     const credsPath = claudeCredentialsPath(harness);
@@ -156,7 +166,7 @@ export async function readClaudeToken(
   if (harness.home !== null) {
     return { token: null, scopes: [] };
   }
-  const keychainToken = await readKeychainClaudeToken();
+  const keychainToken = await readKeychainClaudeToken({ allowPrompt: opts?.allowKeychainPrompt });
   if (keychainToken) {
     // The keychain blob doesn't separately expose scopes to us via `-w`
     // (that flag prints only the secret); assume `user:profile` is granted

@@ -1,7 +1,7 @@
 import { t as tr } from "@/i18n/core";
 import type { TranslationKey } from "@/i18n/core";
 import { useLocale as useUILocale } from "@/i18n/react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
 import { AgentIcon } from "@/components/kanban/AgentIcon";
 import { clampPercent, formatResetsIn } from "@/lib/usage";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,8 @@ export interface TopbarServiceCardProps {
   service: TopbarServiceSummary;
   nowMs?: number;
   onOpenAccounts: (harnessId?: string) => void;
+  onRefreshUsage?: (harnessId: string) => void | Promise<void>;
+  refreshingUsage?: boolean;
 }
 
 /**
@@ -80,6 +82,8 @@ export function TopbarServiceCard({
   service,
   nowMs = Date.now(),
   onOpenAccounts,
+  onRefreshUsage,
+  refreshingUsage = false,
 }: TopbarServiceCardProps) {
   useUILocale();
   const reasonMessage = serviceReasonText(service.reason, service.retryHint);
@@ -162,8 +166,26 @@ export function TopbarServiceCard({
 
         {/* Limits */}
         <div className="border-t border-border/60 pt-2">
-          <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            {tr("topbar.services.field.limits")}
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {tr("topbar.services.field.limits")}
+            </span>
+            {service.supportsQuotaRefresh && onRefreshUsage && service.accountsTargetHarnessId && (
+              <button
+                type="button"
+                data-testid="topbar-service-refresh-limits"
+                disabled={refreshingUsage}
+                onClick={() => void onRefreshUsage(service.accountsTargetHarnessId)}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                <RefreshCw className={cn("size-2.5", refreshingUsage && "animate-spin")} aria-hidden />
+                <span>
+                  {refreshingUsage
+                    ? tr("providersUi.limits.refreshing")
+                    : tr("providersUi.limits.refresh")}
+                </span>
+              </button>
+            )}
           </div>
           {service.meters.length > 0 ? (
             <div data-testid="topbar-service-meters" className="space-y-2">
@@ -210,8 +232,17 @@ export function TopbarServiceCard({
               })}
             </div>
           ) : (
-            <div data-testid="topbar-service-quota-unknown" className="text-[11px] text-muted-foreground">
-              {tr("topbar.services.quota.unknown")}
+            <div data-testid="topbar-service-quota-unknown" className="space-y-1 text-[11px] text-muted-foreground">
+              <div>
+                {service.supportsQuotaRefresh === false
+                  ? tr("providersUi.limits.no_cli_telemetry")
+                  : tr("topbar.services.quota.unknown")}
+              </div>
+              {service.quotaReason && service.supportsQuotaRefresh !== false && (
+                <div className="text-[10px] leading-snug text-muted-foreground/80">
+                  {service.quotaReason}
+                </div>
+              )}
             </div>
           )}
         </div>

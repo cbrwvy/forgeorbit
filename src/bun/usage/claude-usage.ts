@@ -221,8 +221,11 @@ function errorQuota(harness: Harness, status: "error" | "unavailable", reason: s
  *  token, missing scope, non-2xx, network throw, unparseable body, or zero
  *  mapped meters) so the caller falls through to the file-cache fallback —
  *  never throws. */
-async function tryFetchApiQuota(harness: Harness): Promise<HarnessQuota | null> {
-  const { token, scopes } = await readClaudeToken(harness);
+async function tryFetchApiQuota(
+  harness: Harness,
+  opts?: { allowKeychainPrompt?: boolean },
+): Promise<HarnessQuota | null> {
+  const { token, scopes } = await readClaudeToken(harness, opts);
   if (!token || !scopes.includes(REQUIRED_SCOPE)) return null;
 
   try {
@@ -326,9 +329,12 @@ async function tryReadCacheQuota(harness: Harness): Promise<HarnessQuota | null>
  * harness (plan section 3, "Provider seam"). Always resolves — never
  * throws — so a single misbehaving harness can't take down the poller.
  */
-export async function fetchClaudeQuota(harness: Harness): Promise<HarnessQuota> {
+export async function fetchClaudeQuota(
+  harness: Harness,
+  opts?: { allowKeychainPrompt?: boolean },
+): Promise<HarnessQuota> {
   try {
-    const apiQuota = await tryFetchApiQuota(harness);
+    const apiQuota = await tryFetchApiQuota(harness, opts);
     if (apiQuota) return apiQuota;
   } catch {
     // fall through to cache

@@ -134,6 +134,10 @@ export interface TopbarServiceSummary {
   profiles: ServiceProfileSummary[];
   /** Target harness id passed to onOpenAccounts(harnessId). */
   accountsTargetHarnessId: string;
+  /** Optional reason from the last quota fetch when live meters are absent. */
+  quotaReason?: string | null;
+  /** True when the backend supports live quota refresh (`POST /harnesses/:id/usage/refresh`). */
+  supportsQuotaRefresh?: boolean;
   /** Secondary technical notes kept collapsed under Details. */
   technicalNotes: {
     version: string | null;
@@ -511,14 +515,13 @@ export function buildTopbarServiceSummary(
     });
     const allUnits = [...profileUnits, ...harnessUnits];
     const anyEnabledUnit = allUnits.some((u) => u.enabled);
-    const connected = detected || anyEnabledUnit;
+    const connected = anyEnabledUnit;
     const primary = allUnits.length > 0 ? pickBestUnit(allUnits) : null;
+    const primaryQuota = primary?.harnessId ? (input.usage[primary.harnessId] ?? null) : null;
     const light: ServiceLight = primary ? primary.light : "red";
     const reason: ServiceReasonCode = primary
       ? primary.reason
-      : detected
-        ? "blocked"
-        : "disabled";
+      : "disabled";
     return {
       id: def.id,
       label: def.label,
@@ -526,7 +529,7 @@ export function buildTopbarServiceSummary(
       connected,
       light,
       reason,
-      availability: primary ? (primary.available ? "available" : "unavailable") : detected ? "unavailable" : "disabled",
+      availability: primary ? (primary.available ? "available" : "unavailable") : "disabled",
       auth: primary ? primary.auth : "unknown",
       planType: primary?.planType ?? null,
       meters: primary?.meters ?? [],
@@ -536,6 +539,8 @@ export function buildTopbarServiceSummary(
       retryHint: primary?.retryHint ?? null,
       profiles: profileUnits.map((u) => u.profileSummary!).filter(Boolean),
       accountsTargetHarnessId: primary?.harnessId ?? def.builtinHarnessId,
+      quotaReason: primaryQuota?.reason ?? null,
+      supportsQuotaRefresh: anyEnabledUnit,
       technicalNotes: {
         version: installation?.version ?? null,
         cliReason: null,
@@ -621,6 +626,9 @@ export function buildTopbarServiceSummary(
 
   const accountsTargetHarnessId =
     primary.harnessId || builtinHarness?.id || def.builtinHarnessId;
+  const primaryQuota = input.usage[accountsTargetHarnessId] ?? builtinQuota ?? null;
+  const supportsQuotaRefresh =
+    def.id === "codex" || def.id === "claude" || def.id === "cursor";
 
   return {
     id: def.id,
@@ -639,6 +647,8 @@ export function buildTopbarServiceSummary(
     retryHint: primary.retryHint,
     profiles,
     accountsTargetHarnessId,
+    quotaReason: primaryQuota?.reason ?? null,
+    supportsQuotaRefresh,
     technicalNotes: {
       version: builtinAgent?.version ?? null,
       cliReason: !builtinUnit.available ? (builtinAgent?.reason ?? null) : null,
@@ -720,6 +730,8 @@ export function buildAllTopbarServices(input: {
       retryHint: best.retryHint,
       profiles,
       accountsTargetHarnessId: primaryHarness.id,
+      quotaReason: input.usage[primaryHarness.id]?.reason ?? null,
+      supportsQuotaRefresh: false,
       technicalNotes: {
         version: input.agents.find((a) => a.harnessId === primaryHarness.id)?.version ?? null,
         cliReason: !best.available ? (input.agents.find((a) => a.harnessId === primaryHarness.id)?.reason ?? null) : null,

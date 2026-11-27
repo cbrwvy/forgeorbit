@@ -39,6 +39,8 @@ interface TopbarServicePopoverLayerProps {
   layerRef: React.RefObject<HTMLDivElement | null>;
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
   onOpenAccounts: (harnessId?: string) => void;
+  onRefreshUsage?: (harnessId: string) => Promise<void>;
+  refreshingUsage?: boolean;
 }
 
 function TopbarServicePopoverLayer({
@@ -47,6 +49,8 @@ function TopbarServicePopoverLayer({
   layerRef,
   onKeyDown,
   onOpenAccounts,
+  onRefreshUsage,
+  refreshingUsage,
 }: TopbarServicePopoverLayerProps) {
   const anchorRef = useRef<HTMLButtonElement | null>(anchorEl);
   anchorRef.current = anchorEl;
@@ -70,7 +74,12 @@ function TopbarServicePopoverLayer({
       style={position}
       className="electrobun-webkit-app-region-no-drag glass-floating z-popover max-h-[75vh] w-[328px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border border-border p-3.5 text-xs text-card-foreground shadow-xl outline-none"
     >
-      <TopbarServiceCard service={service} onOpenAccounts={onOpenAccounts} />
+      <TopbarServiceCard
+        service={service}
+        onOpenAccounts={onOpenAccounts}
+        onRefreshUsage={onRefreshUsage}
+        refreshingUsage={refreshingUsage}
+      />
     </div>,
     document.body,
   );
@@ -91,6 +100,7 @@ export function TopbarAiResources({
 }: TopbarAiResourcesProps) {
   useUILocale();
   const [openServiceId, setOpenServiceId] = useState<TopbarServiceId | null>(null);
+  const [refreshingServiceId, setRefreshingServiceId] = useState<TopbarServiceId | null>(null);
   const [profiles, setProfiles] = useState<ExecutionProfile[]>(initialProfiles ?? []);
   const rootRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -275,6 +285,17 @@ export function TopbarAiResources({
           onOpenAccounts={(harnessId) => {
             setOpenServiceId(null);
             onOpenAccounts(harnessId);
+          }}
+          refreshingUsage={refreshingServiceId === activeService.id}
+          onRefreshUsage={async (harnessId) => {
+            setRefreshingServiceId(activeService.id);
+            try {
+              await api.refreshHarnessUsage(harnessId);
+            } catch {
+              /* backend broadcasts latest snapshot or 404 when no provider exists */
+            } finally {
+              setRefreshingServiceId((cur) => (cur === activeService.id ? null : cur));
+            }
           }}
         />
       )}

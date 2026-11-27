@@ -110,8 +110,8 @@ describe("service-status aggregation model", () => {
     expect(services.every((s) => s.light === "red" && s.reason === "disabled" && !s.connected)).toBe(true);
   });
 
-  test("includes DeepSeek only when detected/connected and marks blocked execution red", () => {
-    const detected = buildTopbarServiceSummary(TOPBAR_SERVICES[4]!, {
+  test("includes DeepSeek in topbar only when connected (not merely detected as desktop app)", () => {
+    const detectedOnly = buildTopbarServiceSummary(TOPBAR_SERVICES[4]!, {
       agents: [],
       harnesses: [],
       usage: {},
@@ -131,11 +131,37 @@ describe("service-status aggregation model", () => {
         },
       ],
     });
-    expect(detected.connected).toBe(true);
-    expect(detected.light).toBe("red");
-    expect(detected.reason).toBe("blocked");
-    expect(detected.technicalNotes.version).toBe("0.2.2-rc.3");
-    expect(detected.technicalNotes.hasDeepSeekBlockedNote).toBe(true);
+    expect(detectedOnly.connected).toBe(false);
+    expect(detectedOnly.technicalNotes.version).toBe("0.2.2-rc.3");
+    expect(detectedOnly.technicalNotes.hasDeepSeekBlockedNote).toBe(true);
+
+    const connected = buildTopbarServiceSummary(TOPBAR_SERVICES[4]!, {
+      agents: [
+        makeAgent({
+          harnessId: "deepseek-dsh",
+          kind: "custom",
+          bin: "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh",
+          available: true,
+          loggedIn: true,
+        }),
+      ],
+      harnesses: [
+        makeHarness({
+          id: "deepseek-dsh",
+          label: "DeepSeek",
+          kind: "custom",
+          isBuiltin: false,
+          bin: "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh",
+          enabled: true,
+          cliConfig: { args: ["--profile", "headless"], promptDelivery: "arg", interactionMode: "manual", serviceId: "deepseek" },
+        }),
+      ],
+      usage: {},
+      profiles: [],
+    });
+    expect(connected.connected).toBe(true);
+    expect(connected.light).toBe("yellow");
+    expect(connected.supportsQuotaRefresh).toBe(true);
 
     const missing = buildTopbarServiceSummary(TOPBAR_SERVICES[4]!, {
       agents: [],

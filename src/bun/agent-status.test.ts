@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach, setSystemTime } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import path, { join } from "node:path";
 import type { AgentKind, Harness } from "../shared/types.ts";
 
 // agent-status.ts imports `harnesses` from db.ts, which opens its sqlite
@@ -277,12 +277,94 @@ test("fx status --json exits non-zero (even with parseable JSON on stdout) -> fa
   expect(status.authHelp).toBeNull();
 });
 
-test("a non-fx kind never populates loggedIn/authHelp (stays null even when available)", async () => {
-  process.env.AGETOR_CODEX_BIN = "/bin/echo";
-  const status = await checkAgent("codex");
-  expect(status.available).toBe(true);
-  expect(status.loggedIn).toBeNull();
-  expect(status.authHelp).toBeNull();
+test("passive local auth detection works for codex, antigravity, gemini, and custom CLIs without spawning", async () => {
+  const isoHome = mkdtempSync(join(tmpdir(), "fo-local-auth-"));
+  try {
+    // 1. Codex without auth.json -> loggedIn: false
+    const codexEmpty: Harness = {
+      id: "codex-empty-test",
+      label: "Codex Empty",
+      kind: "codex",
+      isBuiltin: false,
+      home: isoHome,
+      bin: "/bin/echo",
+      env: {},
+      enabled: true,
+    };
+    const stEmpty = await checkHarness(codexEmpty, { probeVersion: false });
+    expect(stEmpty.available).toBe(true);
+    expect(stEmpty.loggedIn).toBe(false);
+
+    // 2. Codex with auth.json -> loggedIn: true
+    mkdirSync(join(isoHome, ".codex"), { recursive: true });
+    writeFileSync(join(isoHome, ".codex", "auth.json"), JSON.stringify({ tokens: { access_token: "test-tok" } }));
+    const stAuthed = await checkHarness(codexEmpty, { probeVersion: false });
+    expect(stAuthed.loggedIn).toBe(true);
+    expect(stAuthed.authHelp).toBeNull();
+
+    // 3. Antigravity with antigravity_state.pbtxt -> loggedIn: true
+    mkdirSync(join(isoHome, ".gemini", "antigravity"), { recursive: true });
+    writeFileSync(join(isoHome, ".gemini", "antigravity", "antigravity_state.pbtxt"), "agent_onboarding_completed: true\n");
+    const agyHarness: Harness = {
+      id: "agy-auth-test",
+      label: "Antigravity",
+      kind: "antigravity",
+      isBuiltin: false,
+      home: isoHome,
+      bin: "/bin/echo",
+      env: {},
+      enabled: true,
+    };
+    const stAgy = await checkHarness(agyHarness, { probeVersion: false });
+    expect(stAgy.loggedIn).toBe(true);
+
+    // 4. Gemini with oauth_creds.json -> loggedIn: true
+    writeFileSync(join(isoHome, ".gemini", "oauth_creds.json"), JSON.stringify({ access_token: "gem-tok" }));
+    const gemHarness: Harness = {
+      id: "gem-auth-test",
+      label: "Gemini",
+      kind: "gemini",
+      isBuiltin: false,
+      home: isoHome,
+      bin: "/bin/echo",
+      env: {},
+      enabled: true,
+    };
+    const stGem = await checkHarness(gemHarness, { probeVersion: false });
+    expect(stGem.loggedIn).toBe(true);
+
+    // 5. Custom DeepSeek with .credentials.yaml -> loggedIn: true
+    writeFileSync(join(isoHome, ".credentials.yaml"), "version: 1\nrecords:\n  - kind: oauth\n    payload:\n      token: test-dsh\n");
+    const dshHarness: Harness = {
+      id: "dsh-auth-test",
+      label: "DeepSeek",
+      kind: "custom",
+      isBuiltin: false,
+      home: isoHome,
+      bin: "/bin/echo",
+      env: {},
+      enabled: true,
+      cliConfig: { args: [], promptDelivery: "arg", interactionMode: "manual", serviceId: "deepseek" },
+    };
+    const stDsh = await checkHarness(dshHarness, { probeVersion: false });
+    expect(stDsh.loggedIn).toBe(true);
+
+    // 6. Generic custom CLI without env key -> loggedIn: null
+    const genericCustom: Harness = {
+      id: "generic-custom-test",
+      label: "My CLI",
+      kind: "custom",
+      isBuiltin: false,
+      home: isoHome,
+      bin: "/bin/echo",
+      env: {},
+      enabled: true,
+    };
+    const stGeneric = await checkHarness(genericCustom, { probeVersion: false });
+    expect(stGeneric.loggedIn).toBeNull();
+  } finally {
+    rmSync(isoHome, { recursive: true, force: true });
+  }
 });
 
 // --- fx status --json expired-login gate (0.0.7+) ---------------------------
@@ -773,6 +855,7 @@ test("FO-009F: dashboard Codex status checks binary presence without even a vers
   process.env.AGETOR_TMUX_BIN = "/bin/echo";
   const { existsSync } = await import("node:fs");
   const statuses = await checkAllHarnesses();
-  expect(statuses.find(s => s.harnessId === "codex")).toMatchObject({ available: true, path: bin, version: null, loggedIn: null });
+  const codexStatus = statuses.find(s => s.harnessId === "codex");
+  expect(codexStatus).toMatchObject({ available: true, path: bin, version: null });
   expect(existsSync(marker)).toBe(false);
 });

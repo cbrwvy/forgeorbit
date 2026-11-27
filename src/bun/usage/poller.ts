@@ -5,6 +5,7 @@ import { broadcastAppEvent } from "../quit-guard.ts";
 import { fetchClaudeQuota } from "./claude-usage.ts";
 import { fetchCodexQuota } from "./codex-usage.ts";
 import { fetchCursorQuota } from "./cursor-usage.ts";
+import { fetchDeepSeekQuota } from "./deepseek-usage.ts";
 
 /**
  * Per-harness usage poller (docs/plans/harness-usage-tracker.md, §3 "Refresh:
@@ -26,7 +27,7 @@ import { fetchCursorQuota } from "./cursor-usage.ts";
  * since every provider has the same `(h, opts?)` shape; providers that don't
  * care simply ignore it.
  */
-export type UsageProviderOpts = { allowIdeRead?: boolean };
+export type UsageProviderOpts = { allowIdeRead?: boolean; allowKeychainPrompt?: boolean };
 
 /**
  * Registry mapping `AgentKind` → provider fetcher. Deliberately a `Partial`
@@ -68,9 +69,19 @@ function usageOffline(): boolean {
   return (process.env.FORGEORBIT_USAGE_OFFLINE ?? process.env.AGETOR_USAGE_OFFLINE) === "1";
 }
 
-function resolveProvider(kind: AgentKind): UsageProvider | undefined {
+function isDeepSeekHarness(harness: Harness): boolean {
+  if (harness.kind !== "custom") return false;
+  const serviceId = harness.cliConfig?.serviceId?.toLowerCase();
+  if (serviceId === "deepseek") return true;
+  return harness.id.toLowerCase().includes("deepseek") || (harness.bin ?? "").toLowerCase().endsWith("/dsh") || harness.bin === "dsh";
+}
+
+function resolveProvider(kind: AgentKind, harness?: Harness): UsageProvider | undefined {
   if (usageOffline()) return providerOverrides.get(kind);
-  return providerOverrides.get(kind) ?? USAGE_PROVIDERS[kind];
+  const override = providerOverrides.get(kind);
+  if (override) return override;
+  if (harness && isDeepSeekHarness(harness)) return fetchDeepSeekQuota;
+  return USAGE_PROVIDERS[kind];
 }
 
 /** Test-only: override the provider for a kind (pass null to clear). Never use in production. */
@@ -108,7 +119,7 @@ export async function refreshOne(
   const harness = harnesses.getByIdOrKind(harnessId);
   if (!harness || !harness.enabled) return null;
 
-  const provider = resolveProvider(harness.kind);
+  const provider = resolveProvider(harness.kind, harness);
   if (!provider) return null;
 
   if (!opts?.force) {
@@ -142,9 +153,11 @@ export async function refreshOne(
   const allowIdeRead =
     Boolean(opts?.force) || priorStatus === "ok" || priorStatus === "error";
 
+  const allowKeychainPrompt = Boolean(opts?.force);
+
   let quota: HarnessQuota;
   try {
-    quota = await provider(harness, { allowIdeRead });
+    quota = await provider(harness, { allowIdeRead, allowKeychainPrompt });
   } catch (err) {
     // Belt-and-braces: providers are documented to always resolve, never
     // throw. If one regresses, synthesize a snapshot rather than letting
@@ -185,7 +198,7 @@ export async function pollAllUsage(): Promise<void> {
   if (pollInFlight) return;
   pollInFlight = true;
   try {
-    const candidates = harnesses.list().filter((h) => h.enabled && USAGE_PROVIDERS[h.kind]);
+    const candidates = harnesses.list().filter((h) => h.enabled && Boolean(resolveProvider(h.kind, h)));
     for (const h of candidates) {
       // Yield between harnesses — mirrors reapIdleSessions's per-candidate
       // `Bun.sleep(0)` so a large harness list never blocks the event loop.
