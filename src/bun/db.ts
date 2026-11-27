@@ -2050,6 +2050,16 @@ export const portfolioManagerStore = {
   listMessages(): string[] {
     return db.query<{ data: string }, []>(`SELECT data FROM portfolio_manager_messages ORDER BY seq ASC`).all().map((row) => row.data);
   },
+  clearConversation(): { deletedMessages: number } {
+    return db.transaction(() => {
+      const count = (db.query<{ c: number }, []>(`SELECT COUNT(*) AS c FROM portfolio_manager_messages`).get()?.c) ?? 0;
+      db.run(`DELETE FROM portfolio_manager_messages`);
+      db.run(`DELETE FROM head_board_proposals`);
+      db.run(`DELETE FROM portfolio_manager_plans`);
+      db.run(`DELETE FROM portfolio_manager_delegations WHERE status NOT IN ('sending', 'sent')`);
+      return { deletedMessages: count };
+    })();
+  },
   appendMessage(id: string, data: string, keep: number): void {
     const now = Date.now();
     db.transaction(() => {

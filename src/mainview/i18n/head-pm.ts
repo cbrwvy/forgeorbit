@@ -216,6 +216,10 @@ export const headPmEn = {
   "headPm.board.techDetails": "Technical details",
   "headPm.board.showDetails": "Details",
   "headPm.board.hideDetails": "Hide",
+  "headPm.clear.button": "Clear chat",
+  "headPm.clear.title": "Clear Head of PM conversation?",
+  "headPm.clear.description": "Removes all messages and proposal cards from this chat. Your projects, tasks, agent settings, and saved decisions stay intact.",
+  "headPm.clear.confirm": "Clear chat",
 } as const;
 
 export const headPmRu: { [K in keyof typeof headPmEn]: string } = {
@@ -434,4 +438,8 @@ export const headPmRu: { [K in keyof typeof headPmEn]: string } = {
   "headPm.board.techDetails": "Технические детали",
   "headPm.board.showDetails": "Подробнее",
   "headPm.board.hideDetails": "Скрыть",
+  "headPm.clear.button": "Очистить чат",
+  "headPm.clear.title": "Очистить разговор с руководителем проектов?",
+  "headPm.clear.description": "Все сообщения и карточки предложений из этого чата будут удалены. Проекты, задачи, настройки агента и сохранённые решения останутся на месте.",
+  "headPm.clear.confirm": "Очистить",
 };

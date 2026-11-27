@@ -1754,6 +1754,15 @@ export function deletePortfolioDecision(id: string): PortfolioResult<{ deleted: 
   return { ok: true, value: { deleted: portfolioManagerStore.deleteDecision(id) } };
 }
 
+export function clearPortfolioMessages(): PortfolioResult<{ deletedMessages: number }> {
+  if (activeTurn()) {
+    return fail(409, "Cancel the active request before clearing the conversation.");
+  }
+  const result = portfolioManagerStore.clearConversation();
+  portfolioManagerStore.touch();
+  return { ok: true, value: result };
+}
+
 /**
  * Follow a delegated request the moment its project manager settles: bring
  * the delegation up to date and announce it. Reads stored rows only; never

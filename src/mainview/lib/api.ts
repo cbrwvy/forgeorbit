@@ -2118,6 +2118,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }, { retry: false }),
+  clearPortfolioMessages: () =>
+    j<{ deletedMessages: number }>("/portfolio-manager/messages", { method: "DELETE" }, { retry: false }),
   settleHeadBoardProposal: (id: string, decision: "approve" | "reject", executionPermission?: import("../../shared/execution/workspace-grant.ts").TaskStagingGrant, resourceDigest?: string) =>
     j<import("../../shared/head-pm-scope.ts").HeadBoardProposal>(`/head-pm/board-proposals/${encodeURIComponent(id)}/${decision}`, {
       method: "POST", body: JSON.stringify({ confirm: true, executionPermission, resourceDigest }),

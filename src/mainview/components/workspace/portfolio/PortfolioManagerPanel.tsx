@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import { BookmarkPlus, Globe2, Loader2, Square, Trash2 } from "lucide-react";
 import { ApiError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm";
 import { BrowserActionCard } from "../browser/BrowserAccessPicker";
 import { NativeActionCard } from "../native/NativeAccessPicker";
 import { MemoryProposalList } from "../brain/MemoryProposals";
@@ -68,6 +69,8 @@ export function PortfolioManagerPanel({ onOpenHead, onOpenProjectManager, onOpen
   const [sources, setSources] = useState<ContextSource[] | null>(null);
   const [decisionDraft, setDecisionDraft] = useWorkspaceDraft("portfolio-manager:decision", "");
   const [error, setError] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const confirm = useConfirm();
   const [agent, setAgent] = useState<ManagerAgentStatus>({ problem: "Loading agents…", needsConsent: false, label: null, model: null });
   const logRef = useRef<HTMLDivElement>(null);
   // Every re-read goes through one loader: coalesced, and only the newest
@@ -242,9 +245,43 @@ export function PortfolioManagerPanel({ onOpenHead, onOpenProjectManager, onOpen
                 <p className="truncate text-xs text-muted-foreground" data-testid="portfolio-manager-agent-label"><I18nText id="portfolio.all_registered_projects" />{agent.label ? ` · ${agent.label}` : ""}{agent.model ? ` · ${agent.model}` : ""}
                 </p>
               </div>
-              <span className={cn("text-xs font-medium", connection.tone)} role="status" data-testid="portfolio-manager-connection">
-                {connection.label}
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                {state.messages.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={activeTurn != null || clearing}
+                    className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    data-testid="portfolio-manager-clear"
+                    onClick={async () => {
+                      const ok = await confirm(() => ({
+                        title: tr("headPm.clear.title"),
+                        description: tr("headPm.clear.description"),
+                        confirmLabel: tr("headPm.clear.confirm"),
+                        variant: "destructive",
+                      }));
+                      if (!ok) return;
+                      setClearing(true);
+                      try {
+                        await api.clearPortfolioMessages();
+                        await reload();
+                        reloadSources();
+                      } catch (caught) {
+                        setError(messageOf(caught));
+                      } finally {
+                        setClearing(false);
+                      }
+                    }}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                    <span>{tr("headPm.clear.button")}</span>
+                  </Button>
+                )}
+                <span className={cn("text-xs font-medium", connection.tone)} role="status" data-testid="portfolio-manager-connection">
+                  {connection.label}
+                </span>
+              </div>
             </header>
 
             <div

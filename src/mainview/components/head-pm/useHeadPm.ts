@@ -14,6 +14,7 @@ export interface HeadPm {
   thinking: boolean;
   error: string | null;
   send(input: SendInput): Promise<boolean>;
+  clear(): Promise<boolean>;
   cancel(): void;
   reload(): Promise<void>;
   mutate(update: (data: PortfolioManagerState) => PortfolioManagerState): void;
@@ -99,8 +100,19 @@ export function useHeadPm(): HeadPm {
       setSending(false);
     }
   }, [reload, mutate]);
+  const clear = useCallback(async () => {
+    setError(null);
+    try {
+      await api.clearPortfolioMessages();
+      await reload();
+      return true;
+    } catch (caught) {
+      setError(messageOf(caught));
+      return false;
+    }
+  }, [reload]);
   const cancel = useCallback(() => {
     if (activeId) void api.cancelPortfolioTurn(activeId).catch(() => {});
   }, [activeId]);
-  return { data, loadError, sending, thinking: sending || !!activeId, error, send, cancel, reload, mutate };
+  return { data, loadError, sending, thinking: sending || !!activeId, error, send, clear, cancel, reload, mutate };
 }

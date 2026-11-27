@@ -5,8 +5,9 @@ import { useLocale as useUILocale } from "@/i18n/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Compass, Flame, HelpCircle, ListTodo, Loader2, RotateCcw, Send, Settings2, ShieldPlus, Sparkles, Square, X } from "lucide-react";
+import { Compass, Flame, HelpCircle, ListTodo, Loader2, RotateCcw, Send, Settings2, ShieldPlus, Sparkles, Square, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { setDockClearance } from "../ShellDock";
@@ -91,6 +92,8 @@ export function HeadOfPmDock({ workspace, openRequest, projects, tasks, hidden, 
   useUILocale();
   const [open, setOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const confirm = useConfirm();
   const [selectedScope, setSelectedScope] = useState<HeadScope | null>(null);
   const [clusters, setClusters] = useState<{ id: string; name: string; slug: string | null }[]>([]);
   const [clusterMembers, setClusterMembers] = useState<{ id: string; paths: string[] } | null>(null);
@@ -297,6 +300,35 @@ export function HeadOfPmDock({ workspace, openRequest, projects, tasks, hidden, 
             </div>
 
             <div className="flex shrink-0 items-center gap-0.5">
+              {(data?.messages.length ?? 0) > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={pm.thinking || clearing}
+                  className="size-7 text-muted-foreground hover:text-destructive"
+                  onClick={async () => {
+                    const ok = await confirm(() => ({
+                      title: tr("headPm.clear.title"),
+                      description: tr("headPm.clear.description"),
+                      confirmLabel: tr("headPm.clear.confirm"),
+                      variant: "destructive",
+                    }));
+                    if (!ok) return;
+                    setClearing(true);
+                    try {
+                      await pm.clear();
+                    } finally {
+                      setClearing(false);
+                    }
+                  }}
+                  aria-label={tr("headPm.clear.button")}
+                  title={tr("headPm.clear.button")}
+                  data-testid="head-pm-clear"
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"

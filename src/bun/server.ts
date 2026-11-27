@@ -229,6 +229,7 @@ import {
   addPortfolioDecision,
   approveDelegation,
   cancelPortfolioTurn,
+  clearPortfolioMessages,
   deletePortfolioDecision,
   getPortfolioContextSources,
   getHeadPmCoordination,
@@ -2298,6 +2299,7 @@ export function startApiServer(deps: { native?: ApiNative; hostname?: string; cu
           const locale = lang.toLowerCase().startsWith("ru") ? "ru" : "en";
           return sendPortfolioMessage(body, {}, { locale });
         }, 202),
+        DELETE: managerRoute(() => clearPortfolioMessages()),
       },
       "/head-pm/board-proposals/:id/approve": {
         POST: managerRoute((req, body) => resolveHeadBoardProposal((req as Request & { params: { id: string } }).params.id, body, "approve")),
